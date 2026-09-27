@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../allways_design.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
@@ -85,7 +86,7 @@ class _NotificationsSettingsScreenState
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF7F8),
+      backgroundColor: AllwaysColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -114,8 +115,44 @@ class _NotificationsSettingsScreenState
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFE7F1), Color(0xFFFFF3F7)],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AllwaysColors.border),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 104,
+                  height: 104,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AllwaysColors.primarySoft,
+                  ),
+                  child: const Icon(Icons.notifications_active_rounded, size: 58, color: AllwaysColors.primary),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Stay updated at every step!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 25, height: 1.05, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Get real-time notifications about your order, delivery updates, offers and more.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AllwaysColors.muted, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           _buildToggleCard(
             title: 'ALLways notifications',
             subtitle: 'Central app alerts and updates',
@@ -138,7 +175,7 @@ class _NotificationsSettingsScreenState
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFFCECEF),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -239,7 +276,7 @@ class _NotificationsSettingsScreenState
                   child: ChoiceChip(
                     label: Text(tab),
                     selected: isSelected,
-                    selectedColor: const Color(0xFFB06A78),
+                    selectedColor: AllwaysColors.primary,
                     backgroundColor: Colors.white,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Colors.black87,
