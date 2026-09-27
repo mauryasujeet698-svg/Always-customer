@@ -35,9 +35,9 @@ class AllwaysBottomNav extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
         padding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AllwaysColors.border),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           boxShadow: const [
             BoxShadow(
               color: Color(0x18000000),
@@ -71,8 +71,8 @@ class AllwaysBottomNav extends StatelessWidget {
                               : items[i].icon,
                           size: 22,
                           color: selectedIndex == i
-                              ? AllwaysColors.primary
-                              : AllwaysColors.muted,
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -85,8 +85,8 @@ class AllwaysBottomNav extends StatelessWidget {
                                 ? FontWeight.w800
                                 : FontWeight.w600,
                             color: selectedIndex == i
-                                ? AllwaysColors.primary
-                                : AllwaysColors.muted,
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
