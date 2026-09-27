@@ -1237,14 +1237,86 @@ class _ShopPageState extends State<ShopPage>{
   void openCat(BuildContext c,String n)=>Navigator.push(c,MaterialPageRoute(builder:(_)=>CategoryProductsPage(category:n,products:byCat(n),onAdd:widget.onAdd,cart:widget.cart,onQty:widget.onQty,wishlistIds:widget.wishlistIds,onWishlist:widget.onWishlist)));
   Widget categoryChip(BuildContext c,String n)=>InkWell(onTap:()=>openCat(c,n),borderRadius:BorderRadius.circular(16),child:SizedBox(width:76,child:Column(children:[Container(height:60,width:60,decoration:BoxDecoration(color:n=='All'?const Color(0xFFE7F7EE):const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(18)),alignment:Alignment.center,child:Text(icons[n]??'🛍️',style:const TextStyle(fontSize:28))),const SizedBox(height:5),Text(n,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontSize:10.5,fontWeight:FontWeight.w700))])));
   Widget productCard(BuildContext c,Product p){
-    final item=widget.cart[p.id],liked=widget.wishlistIds.contains(p.id);
-    return Card(elevation:0,margin:EdgeInsets.zero,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),clipBehavior:Clip.antiAlias,child:InkWell(onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>ProductScreen(product:p,onAdd:()=>widget.onAdd(p),liked:liked,onWishlist:()=>widget.onWishlist(p))),child:Padding(padding:const EdgeInsets.all(8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Stack(children:[Container(height:96,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:const Color(0xFFF5F5F5),borderRadius:BorderRadius.circular(12)),child:Text(p.icon,style:const TextStyle(fontSize:42))),Positioned(right:-2,top:-2,child:IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red,size:20)))]),
-      const SizedBox(height:6),Text(p.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:Colors.grey)),const Spacer(),Text('₹'+p.price.toString(),style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
-      const SizedBox(height:5),
-      if(item==null)SizedBox(height:32,width:double.infinity,child:FilledButton(style:FilledButton.styleFrom(backgroundColor:green,foregroundColor:Colors.white,padding:EdgeInsets.zero),onPressed:p.stock>0?()=>widget.onAdd(p):null,child:const Text('ADD',style:TextStyle(fontSize:11,fontWeight:FontWeight.w900))))
-      else Container(height:32,decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(16)),child:Row(children:[Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:()=>widget.onQty(p.id,-1),icon:const Icon(Icons.remove,size:16,color:green))),Expanded(child:Center(child:Text(item.qty.toString(),style:const TextStyle(fontWeight:FontWeight.w900)))),Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:p.stock>item.qty?()=>widget.onQty(p.id,1):null,icon:const Icon(Icons.add,size:16,color:green)))])),
-    ]))));
+    final item=widget.cart[p.id];
+    final liked=widget.wishlistIds.contains(p.id);
+    return Card(
+      elevation:0,
+      margin:EdgeInsets.zero,
+      shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),
+      clipBehavior:Clip.antiAlias,
+      child:InkWell(
+        onTap:()=>Navigator.push(
+          c,
+          MaterialPageRoute(
+            builder:(_)=>ProductScreen(
+              product:p,
+              onAdd:()=>widget.onAdd(p),
+              liked:liked,
+              onWishlist:()=>widget.onWishlist(p),
+            ),
+          ),
+        ),
+        child:Padding(
+          padding:const EdgeInsets.all(8),
+          child:Column(
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              Stack(
+                children:[
+                  Container(
+                    height:96,
+                    width:double.infinity,
+                    alignment:Alignment.center,
+                    decoration:BoxDecoration(
+                      color:const Color(0xFFF5F5F5),
+                      borderRadius:BorderRadius.circular(12),
+                    ),
+                    child:Text(p.icon,style:const TextStyle(fontSize:42)),
+                  ),
+                  Positioned(
+                    right:-2,
+                    top:-2,
+                    child:IconButton(
+                      visualDensity:VisualDensity.compact,
+                      onPressed:()=>widget.onWishlist(p),
+                      icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red,size:20),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height:6),
+              Text(p.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),
+              Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:Colors.grey)),
+              const Spacer(),
+              Text('₹'+p.price.toString(),style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
+              const SizedBox(height:5),
+              if(item==null)
+                SizedBox(
+                  height:32,
+                  width:double.infinity,
+                  child:FilledButton(
+                    style:FilledButton.styleFrom(backgroundColor:green,foregroundColor:Colors.white,padding:EdgeInsets.zero),
+                    onPressed:p.stock>0?()=>widget.onAdd(p):null,
+                    child:const Text('ADD',style:TextStyle(fontSize:11,fontWeight:FontWeight.w900)),
+                  ),
+                )
+              else
+                Container(
+                  height:32,
+                  decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(16)),
+                  child:Row(
+                    children:[
+                      Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:()=>widget.onQty(p.id,-1),icon:const Icon(Icons.remove,size:16,color:green))),
+                      Expanded(child:Center(child:Text(item.qty.toString(),style:const TextStyle(fontWeight:FontWeight.w900)))),
+                      Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:p.stock>item.qty?()=>widget.onQty(p.id,1):null,icon:const Icon(Icons.add,size:16,color:green))),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
   Widget productSection(BuildContext c,String title,List<Product> items,{bool seeAll=true}){
     if(items.isEmpty)return const SizedBox.shrink();
@@ -1306,7 +1378,7 @@ class _ShopPageState extends State<ShopPage>{
               if(showPopular)productSection(c,'Popular Near You',searched.skip(showOffers?4:0).take(4).toList()),
             ],
             if(showLocal)InkWell(onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const LocalSellersPage())),borderRadius:BorderRadius.circular(16),child:Container(margin:const EdgeInsets.only(top:4,bottom:12),padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(16)),child:Row(children:[Container(width:48,height:48,decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(14)),child:const Icon(Icons.storefront_outlined,color:green)),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Local sellers near you',style:TextStyle(fontWeight:FontWeight.w900)),Text('Discover shops and contact them directly',style:TextStyle(color:Colors.grey,fontSize:12))])),const Icon(Icons.chevron_right,color:green)]))),
-            if(showTravel)InkWell(onTap:()=>setState(()=>tab=1),borderRadius:BorderRadius.circular(16),child:Container(padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFFFF4D6),borderRadius:BorderRadius.circular(16)),child:Row(children:[const Icon(Icons.two_wheeler,size:36,color:Colors.black87),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Need a ride?',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),Text('Bike, auto and vehicle booking in one place',style:TextStyle(color:Colors.black54,fontSize:12))])),const Icon(Icons.chevron_right)]))),
+            if(showTravel)InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const TravelPage())),borderRadius:BorderRadius.circular(16),child:Container(padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFFFF4D6),borderRadius:BorderRadius.circular(16)),child:Row(children:[const Icon(Icons.two_wheeler,size:36,color:Colors.black87),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Need a ride?',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),Text('Bike, auto and vehicle booking in one place',style:TextStyle(color:Colors.black54,fontSize:12))])),const Icon(Icons.chevron_right)]))),
           ]),
         );
       },
