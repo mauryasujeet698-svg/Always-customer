@@ -738,3 +738,30 @@ exports.onNotificationBroadcastCreated = onDocumentCreated(
     );
   }
 );
+
+
+exports.onAllwaysAnnouncementCreated = onDocumentCreated(
+  "announcements/{announcementId}",
+  async (event) => {
+    const announcement = event.data?.data();
+    if (!announcement) return;
+    const title = String(announcement.title || "ALLways");
+    const body = String(announcement.body || "");
+    if (!body) return;
+    try {
+      await messaging.send(
+        notificationMessage(
+          title,
+          body,
+          {
+            type: "announcement",
+            announcementId: event.params.announcementId,
+          },
+          { topic: "all_users" }
+        )
+      );
+    } catch (error) {
+      console.error("ALLways announcement notification failed:", error);
+    }
+  }
+);
