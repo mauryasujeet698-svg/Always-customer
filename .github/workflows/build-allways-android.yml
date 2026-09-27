@@ -605,7 +605,7 @@ jobs:
       - name: Build release APK
         run: |
           cd mobile
-          flutter build apk --release --target-platform android-arm64 --shrink
+          flutter build apk --release --target-platform android-arm64,android-x64 --shrink
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
           MAX_SIZE=$((40*1024*1024))
           echo "Release APK size: $APK_SIZE bytes"
@@ -647,8 +647,11 @@ jobs:
           adb shell settings put global transition_animation_scale 0 || true
           adb shell settings put global animator_duration_scale 0 || true
 
-          echo "Installing ALLways APK..."
-          adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
+          echo "Installing ALLways APK..." 
+          echo "Emulator ABI:"
+          adb shell getprop ro.product.cpu.abilist || true
+          echo "APK install (no streaming):"
+          adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk
 
           echo "Launching ALLways..."
           adb shell am force-stop com.allways.app || true
