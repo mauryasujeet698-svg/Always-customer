@@ -16,7 +16,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -623,6 +626,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
+            # Keep this script POSIX-compatible because the emulator action may
+            # execute the supplied script through /bin/sh on the runner.
             set -eu
 
             echo "Waiting for ADB device..."
@@ -657,7 +662,8 @@ jobs:
 
             echo "Launching ALLways..."
             adb shell am force-stop com.allways.app || true
-            adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1
+            launch_output="$(adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1 2>&1 || true)"
+            echo "$launch_output"
 
             echo "Waiting for ALLways process..."
             running=0
@@ -673,11 +679,14 @@ jobs:
 
             if [ "$running" -ne 1 ]; then
               echo "ERROR: ALLways process did not remain running."
-              adb logcat -d -t 500 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+              echo "Installed package:"
+              adb shell dumpsys package com.allways.app | head -n 120 || true
+              echo "Recent ALLways/Android runtime log:"
+              adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
               exit 1
             fi
 
-            fatal_log="$(adb logcat -d -t 500 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
+            fatal_log="$(adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
             if [ -n "$fatal_log" ]; then
               echo "ERROR: fatal Android runtime exception detected."
               echo "$fatal_log"
