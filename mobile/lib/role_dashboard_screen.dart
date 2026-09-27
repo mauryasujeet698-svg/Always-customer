@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'role_workspace_screen.dart';
+import 'allways_design.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -84,14 +85,18 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
   void open(String feature)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>RoleFeatureScreen(role:widget.role,feature:feature,user:widget.user,accent:accent))).then((_)=>_load());
 
   @override Widget build(BuildContext context)=>Scaffold(
-    backgroundColor:const Color(0xFFF7F7F7),
+    backgroundColor:AllwaysColors.background,
     body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),_categoryPage('Analytics'),_categoryPage('Account')])),
-    bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:[
-      NavigationDestination(icon:Icon(Icons.home_outlined),selectedIcon:Icon(icon,color:accent),label:'Home'),
-      NavigationDestination(icon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long),selectedIcon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,color:accent),label:admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),
-      NavigationDestination(icon:Icon(admin?Icons.analytics:Icons.account_balance_wallet),selectedIcon:Icon(admin?Icons.analytics:Icons.account_balance_wallet,color:accent),label:admin?'Analytics':'Earnings'),
-      NavigationDestination(icon:const Icon(Icons.person_outline),selectedIcon:Icon(Icons.person,color:accent),label:'Account'),
-    ]),
+    bottomNavigationBar:AllwaysBottomNav(
+      selectedIndex:tab,
+      onSelected:(v)=>setState(()=>tab=v),
+      items:[
+        (icon:Icons.home_outlined,activeIcon:Icons.home,label:'Home'),
+        (icon:admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,activeIcon:admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,label:admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),
+        (icon:admin?Icons.analytics:Icons.account_balance_wallet,activeIcon:admin?Icons.analytics:Icons.account_balance_wallet,label:admin?'Analytics':'Earnings'),
+        (icon:Icons.person_outline,activeIcon:Icons.person,label:'Account'),
+      ],
+    ),
   );
 
   Widget _home()=>RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,24),children:[
@@ -108,7 +113,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
     _recent(),
   ]));
 
-  Widget _profileCard()=>Card(elevation:0,color:accent.withOpacity(.08),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
+  Widget _profileCard()=>Card(elevation:0,color:accent.withOpacity(.07),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
     CircleAvatar(radius:29,backgroundColor:accent.withOpacity(.13),child:Text(_name.substring(0,1).toUpperCase(),style:TextStyle(fontSize:23,fontWeight:FontWeight.w900,color:accent))),
     const SizedBox(width:13),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(_name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(_roleLine,style:TextStyle(color:accent,fontWeight:FontWeight.w700,fontSize:12))])),
     if(carrier||delivery)Switch(value:online,onChanged:busyStatus?null:_setOnline),
