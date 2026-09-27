@@ -146,7 +146,7 @@ class RoleFeatureScreen extends StatelessWidget {
             title:Text((x['name']??'Product').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
             subtitle:Text('₹'+_num(x['price']).toStringAsFixed(0)+' • Stock '+stock.toStringAsFixed(0)+' • '+(x['category']??'Other').toString()),
             trailing:PopupMenuButton<String>(onSelected:(v)=>_productAction(v,i,data,items),itemBuilder:(_)=>const[PopupMenuItem(value:'plus',child:Text('Add stock')),PopupMenuItem(value:'minus',child:Text('Remove stock')),PopupMenuItem(value:'delete',child:Text('Delete'))]),
-          );
+          ));
         }),
       ]);
     },
@@ -178,7 +178,7 @@ class RoleFeatureScreen extends StatelessWidget {
       _editable(context,'About',(d['about']??'').toString(),'about',maxLines:4),
       _editable(context,'Opening hours',(d['openingHours']??'').toString(),'openingHours'),
       Card(child:SwitchListTile(title:const Text('Shop open now'),value:d['isOpen']==true,onChanged:(v)=>FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({'isOpen':v},SetOptions(merge:true)))),
-    ]);}
+    ]);});
   Widget _editable(BuildContext context,String label,String value,String field,{int maxLines=1})=>Card(elevation:0,child:ListTile(title:Text(label,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(value.isEmpty?'Not set':value),trailing:const Icon(Icons.edit_outlined),onTap:()async{
     final c=TextEditingController(text:value);final ok=await showDialog<bool>(context:context,builder:(d)=>AlertDialog(title:Text('Edit '+label),content:TextField(controller:c,maxLines:maxLines,decoration:InputDecoration(labelText:label)),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Save'))]));if(ok==true)await FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({field:c.text.trim()},SetOptions(merge:true));
   }));
