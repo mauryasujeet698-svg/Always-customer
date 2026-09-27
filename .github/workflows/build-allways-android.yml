@@ -647,11 +647,35 @@ jobs:
           adb shell settings put global transition_animation_scale 0 || true
           adb shell settings put global animator_duration_scale 0 || true
 
-          echo "Installing ALLways APK..." 
-          echo "Emulator ABI:"
+          echo "Preparing PackageManager/ADB..."
           adb shell getprop ro.product.cpu.abilist || true
-          echo "APK install (no streaming):"
-          adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk
+          adb shell cmd package list packages >/dev/null
+          sleep 8
+
+          echo "Installing ALLways APK..."
+          install_ok=0
+          for attempt in 1 2 3; do
+            echo "APK install attempt $attempt/3"
+            if adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk; then
+              install_ok=1
+              break
+            fi
+            echo "Install attempt $attempt failed; reconnecting ADB..."
+            adb reconnect || true
+            sleep 5
+            adb wait-for-device
+            adb shell cmd package list packages >/dev/null || true
+            sleep 3
+          done
+
+          if [ "$install_ok" -ne 1 ]; then
+            echo "ERROR: ALLways APK installation failed after 3 attempts."
+            echo "PackageManager diagnostics:"
+            adb shell cmd package list packages 2>&1 || true
+            echo "Relevant Android logcat:"
+            adb logcat -d -t 1500 | grep -E 'PackageManager|installd|system_server|FATAL EXCEPTION|AndroidRuntime|Broken pipe|com\.allways\.app' | tail -n 400 || true
+            exit 1
+          fi
 
           echo "Launching ALLways..."
           adb shell am force-stop com.allways.app || true
@@ -710,7 +734,7 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          disable-linux-hw-accel: true
+          # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
           emulator-boot-timeout: 900
           pre-emulator-launch-script: |
             echo "Resetting ADB before emulator launch..."
