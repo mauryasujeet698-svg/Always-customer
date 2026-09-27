@@ -231,12 +231,15 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
   Position? position;
   Map<String,double> distances={};
   bool online=false,loading=true;
+  String vehicle='bike';
   Stream<QuerySnapshot<Map<String,dynamic>>> get stream=>FirebaseFirestore.instance.collection('autoRideRequests').where('status',isEqualTo:'searching').snapshots();
 
   @override void initState(){super.initState();_load();}
   Future<void> _load()async{
     final snap=await FirebaseFirestore.instance.collection('ridePartners').doc(widget.user.uid).get();
     online=(snap.data()?['status']??'offline').toString().toLowerCase()=='online';
+    final rawVehicle=(snap.data()?['vehicleType']??'bike').toString().toLowerCase();
+    vehicle=rawVehicle=='two_wheeler'?'bike':rawVehicle;
     await _locate();
     if(mounted)setState(()=>loading=false);
   }
@@ -291,11 +294,11 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
           final o=d.data();final rejected=o['rejectedBy'] is List?List.from(o['rejectedBy']):<dynamic>[];
           if(rejected.contains(widget.user.uid))continue;
           final type=(o['rideType']??'bike').toString().toLowerCase();
+          if(type!=vehicle)continue;
           final lat=_num(o['pickupLatitude']),lng=_num(o['pickupLongitude']);
           if(lat==null||lng==null)continue;
           final km=Geolocator.distanceBetween(position!.latitude,position!.longitude,lat,lng)/1000;
           if(km<=radiusKm){distances[d.id]=km;list.add(d);}
-          if(type!='bike'&&type!='auto'){}
         }
         list.sort((a,b)=>(distances[a.id]??99).compareTo(distances[b.id]??99));
         if(list.isEmpty)return const Center(child:Padding(padding:EdgeInsets.all(28),child:Text('No ride requests within 7 km right now.',textAlign:TextAlign.center)));
