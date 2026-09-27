@@ -115,7 +115,7 @@ class _AdminCmsScreenState extends State<AdminCmsScreen> {
     Row(children:[
       Expanded(child:OutlinedButton.icon(onPressed:_uploadBanner,icon:const Icon(Icons.upload),label:const Text('Upload banner'))),
       const SizedBox(width:8),
-      Expanded(child:DropdownButtonFormField<int>(initialValue:rotationSeconds,decoration:const InputDecoration(labelText:'Rotation'),items:[2,3,4,5,6,8,10].map((x)=>DropdownMenuItem(value:x,child:Text(x.toString()+' sec'))).toList(),onChanged:(v)=>setState(()=>rotationSeconds=v??4))),
+      Expanded(child:DropdownButtonFormField<int>(initialValue:[2,3,4,5,6,8,10].contains(rotationSeconds)?rotationSeconds:4,decoration:const InputDecoration(labelText:'Rotation'),items:[2,3,4,5,6,8,10].map((x)=>DropdownMenuItem(value:x,child:Text(x.toString()+' sec'))).toList(),onChanged:(v)=>setState(()=>rotationSeconds=v??4))),
     ]),
   ]));
 
