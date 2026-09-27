@@ -623,7 +623,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
-            set -euo pipefail
+            set -eu
 
             echo "Waiting for ADB device..."
             adb wait-for-device
