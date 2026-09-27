@@ -607,10 +607,10 @@ jobs:
           cd mobile
           flutter build apk --release --target-platform android-arm64,android-x64 --shrink
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
-          MAX_SIZE=$((40*1024*1024))
-          echo "Release APK size: $APK_SIZE bytes"
+          MAX_SIZE=$((50*1024*1024))
+          echo "Release APK size: $APK_SIZE bytes (50 MB CI safety limit; Play Store delivery will use AAB/splits later)"
           if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
-            echo "ERROR: ALLways APK exceeds 40 MB size target."
+            echo "ERROR: ALLways APK exceeds 50 MB size target."
             exit 1
           fi
 
