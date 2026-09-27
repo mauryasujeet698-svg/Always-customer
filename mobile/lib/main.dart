@@ -3854,6 +3854,34 @@ class _OnDemandRideTrackingPageState extends State<OnDemandRideTrackingPage> {
   );
 }
 
+class _PopularDestination extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  const _PopularDestination({required this.label,required this.icon});
+
+  @override
+  Widget build(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    return Container(
+      width:148,
+      margin:const EdgeInsets.only(right:10),
+      padding:const EdgeInsets.all(12),
+      decoration:BoxDecoration(
+        color:scheme.surfaceContainerHighest,
+        borderRadius:BorderRadius.circular(18),
+        border:Border.all(color:scheme.outlineVariant),
+      ),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Icon(icon,color:scheme.onSurface,size:28),
+        const Spacer(),
+        Text(label,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:scheme.onSurface)),
+        const SizedBox(height:3),
+        Text('Popular nearby place',style:TextStyle(fontSize:11,color:scheme.onSurfaceVariant)),
+      ]),
+    );
+  }
+}
+
 class RiderLoginPage extends StatefulWidget {
   const RiderLoginPage({super.key});
   @override State<RiderLoginPage> createState()=>_RiderLoginPageState();
@@ -4194,33 +4222,57 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
     final markers=<Marker>[
       if(_position!=null)Marker(
         point:LatLng(_position!.latitude,_position!.longitude),width:58,height:58,
-        child:Container(decoration:BoxDecoration(color:scheme.primary,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:4),boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:10)]),child:const Icon(Icons.two_wheeler,color:Colors.white,size:30)),
+        child:Container(
+          decoration:BoxDecoration(
+            color:scheme.primary,shape:BoxShape.circle,
+            border:Border.all(color:Colors.white,width:4),
+            boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:10)],
+          ),
+          child:const Icon(Icons.two_wheeler,color:Colors.white,size:30),
+        ),
       ),
       ..._requests.take(12).map((doc){
         final d=doc.data(),lat=_n(d['pickupLatitude']),lng=_n(d['pickupLongitude']);
         if(lat==null||lng==null)return null;
         return Marker(
           point:LatLng(lat,lng),width:50,height:50,
-          child:Container(decoration:BoxDecoration(color:AllwaysColors.amber,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:8)]),child:const Icon(Icons.person_pin_circle_outlined,color:Colors.black,size:28)),
+          child:Container(
+            decoration:BoxDecoration(
+              color:AllwaysColors.amber,shape:BoxShape.circle,
+              border:Border.all(color:Colors.white,width:3),
+              boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:8)],
+            ),
+            child:const Icon(Icons.person_pin_circle_outlined,color:Colors.black,size:28),
+          ),
         );
       }).whereType<Marker>(),
     ];
-    return ClipRRect(
-      borderRadius:const BorderRadius.only(bottomLeft:Radius.circular(28),bottomRight:Radius.circular(28)),
-      child:flutter_map.FlutterMap(
-        mapController:_mapController,
-        options:MapOptions(initialCenter:center,initialZoom:15,minZoom:11,maxZoom:19),
-        children:[
-          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'com.allways.app'),
-          MarkerLayer(markers:markers),
-          Positioned(left:16,bottom:16,child:DecoratedBox(
-            decoration:BoxDecoration(color:scheme.surface.withOpacity(.95),borderRadius:BorderRadius.circular(14)),
-            child:Padding(padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),
-              child:Text(_online?'Online • '+_requests.length.toString()+' requests nearby':'Offline',style:TextStyle(color:scheme.onSurface,fontWeight:FontWeight.w800,fontSize:12))),
-          )),
-        ],
+    return Stack(children:[
+      ClipRRect(
+        borderRadius:const BorderRadius.only(bottomLeft:Radius.circular(28),bottomRight:Radius.circular(28)),
+        child:flutter_map.FlutterMap(
+          mapController:_mapController,
+          options:MapOptions(initialCenter:center,initialZoom:15,minZoom:11,maxZoom:19),
+          children:[
+            TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'com.allways.app'),
+            MarkerLayer(markers:markers),
+          ],
+        ),
       ),
-    );
+      Positioned(
+        left:16,bottom:16,
+        child:DecoratedBox(
+          decoration:BoxDecoration(color:scheme.surface.withOpacity(.95),borderRadius:BorderRadius.circular(14)),
+          child:Padding(
+            padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),
+            child:Text(
+              _online?'Online • '+_requests.length.toString()+' requests nearby':'Offline',
+              style:TextStyle(color:scheme.onSurface,fontWeight:FontWeight.w800,fontSize:12),
+            ),
+          ),
+        ),
+      ),
+    ]);
   }
 
   Widget _carrierRequestsView(BuildContext context){
