@@ -107,7 +107,7 @@ class RoleFeatureScreen extends StatelessWidget {
               const SizedBox(width:8),
               if(!delivery&&role=='carrier')Expanded(child:OutlinedButton(onPressed:()=>_reject(d),child:const Text('Reject'))),
               if(!delivery&&role=='carrier')const SizedBox(width:8),
-              Expanded(child:FilledButton(onPressed:()=>_accept(d,delivery),style:FilledButton.styleFrom(backgroundColor:accent),child:const Text('Accept'))),
+              Expanded(child:FilledButton(onPressed:()=>_accept(context,d,delivery),style:FilledButton.styleFrom(backgroundColor:accent),child:const Text('Accept'))),
             ]),
           ])));
         }),
@@ -115,15 +115,15 @@ class RoleFeatureScreen extends StatelessWidget {
     },
   );
 
-  Future<void> _accept(QueryDocumentSnapshot<Map<String,dynamic>> d,bool delivery)async{
+  Future<void> _accept(BuildContext context,QueryDocumentSnapshot<Map<String,dynamic>> d,bool delivery)async{
     try{
       if(delivery){
         await d.reference.update({'carrierUid':user.uid,'status':'Assigned','carrierAccepted':true,'assignedAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
       }else{
         await d.reference.update({'driverUid':user.uid,'status':'accepted','driverName':user.displayName??'ALLways Rider','driverPhone':user.phoneNumber??'','acceptedAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
       }
-      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Request accepted.')));
-    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not accept: '+e.toString())));}
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Request accepted.')));
+    }catch(e){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not accept: '+e.toString())));}
   }
   Future<void> _reject(QueryDocumentSnapshot<Map<String,dynamic>> d)async{try{await d.reference.update({'rejectedBy':FieldValue.arrayUnion([user.uid]),'updatedAt':FieldValue.serverTimestamp()});}catch(_){}}
   void _details(BuildContext context,Map<String,dynamic> o)=>showModalBottomSheet(context:context,showDragHandle:true,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Request details',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),Text((o['name']??o['customerName']??'Customer').toString()),Text((o['phone']??o['customerPhone']??'').toString()),Text((o['address']??o['pickupAddress']??'').toString()),Text('Fare: ₹'+_num(o['total']??o['estimatedFare']).toStringAsFixed(0))]))));
