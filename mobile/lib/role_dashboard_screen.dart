@@ -85,7 +85,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
 
   @override Widget build(BuildContext context)=>Scaffold(
     backgroundColor:const Color(0xFFF7F7F7),
-    body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(tab==1?'Operations':tab==2?'Analytics':'Account')])),
+    body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),_categoryPage('Analytics'),_categoryPage('Account')])),
     bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:[
       NavigationDestination(icon:Icon(Icons.home_outlined),selectedIcon:Icon(icon,color:accent),label:'Home'),
       NavigationDestination(icon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long),selectedIcon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,color:accent),label:admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),
