@@ -33,7 +33,7 @@ class _AdminCmsScreenState extends State<AdminCmsScreen> {
       final bd = b.data() ?? {}, hd = h.data() ?? {}, sd = s.data() ?? {};
       final raw = bd['imageUrls'];
       banners = raw is List ? raw.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).take(7).toList() : <String>[];
-      rotationSeconds = ((bd['rotationSeconds'] is num ? (bd['rotationSeconds'] as num).toInt() : int.tryParse((bd['rotationSeconds'] ?? 4).toString()) ?? 4)).clamp(2, 20);
+      rotationSeconds = ((bd['rotationSeconds'] is num ? (bd['rotationSeconds'] as num).toInt() : int.tryParse((bd['rotationSeconds'] ?? 4).toString()) ?? 4)).clamp(2, 20).toInt();
       heroTitle.text = (hd['heroTitle'] ?? 'Closer to You, Always').toString();
       heroSubtitle.text = (hd['heroSubtitle'] ?? 'Everything you need, delivered locally.').toString();
       deliveryText.text = (hd['deliveryText'] ?? 'Fast local delivery').toString();
