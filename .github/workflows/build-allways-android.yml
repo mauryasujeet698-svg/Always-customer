@@ -620,18 +620,26 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
+            set -euo pipefail
             adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
             adb shell pm clear com.allways.app || true
             adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1
             sleep 12
-            if ! adb shell pidof com.allways.app | tr -d '\\r' | grep -q '[0-9]'; then
+            pid="$(adb shell pidof com.allways.app | tr -d '\r' | tr -d '[:space:]')"
+            if [[ -z "$pid" ]]; then
               echo 'ERROR: ALLways process exited after launch.'
               adb logcat -d -t 300 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 200 || true
               exit 1
             fi
-            echo 'PASS: ALLways APK installed and remained running on Android emulator.'
+            echo "PASS: ALLways APK installed and remained running on Android emulator (pid=$pid)."
             adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
-            adb logcat -d -t 200 | grep -E 'FATAL EXCEPTION|AndroidRuntime' && { echo 'ERROR: fatal runtime exception detected.'; exit 1; } || true
+            fatal_log="$(adb logcat -d -t 200 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
+            if [[ -n "$fatal_log" ]]; then
+              echo 'ERROR: fatal runtime exception detected.'
+              echo "$fatal_log"
+              exit 1
+            fi
+            echo 'PASS: no fatal Android runtime exception detected.'
 
       - name: Verify Android launcher manifest
         run: |
