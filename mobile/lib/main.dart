@@ -227,21 +227,61 @@ class AllwaysApp extends StatelessWidget {
         ),
         darkTheme:ThemeData(
           useMaterial3:true,
-          scaffoldBackgroundColor:const Color(0xFF121014),
+          scaffoldBackgroundColor:const Color(0xFF111015),
           colorScheme:ColorScheme.fromSeed(
             seedColor:AllwaysColors.primary,
             brightness:Brightness.dark,
+          ).copyWith(
+            primary:AllwaysColors.primary,
+            onPrimary:Colors.white,
+            secondary:AllwaysColors.amber,
+            onSecondary:Colors.black,
+            surface:const Color(0xFF19171C),
+            onSurface:const Color(0xFFF8F5F8),
+            surfaceContainerLowest:const Color(0xFF111015),
+            surfaceContainerLow:const Color(0xFF17151A),
+            surfaceContainer:const Color(0xFF1D1A20),
+            surfaceContainerHigh:const Color(0xFF252128),
+            surfaceContainerHighest:const Color(0xFF2D2830),
+            onSurfaceVariant:const Color(0xFFD1CAD2),
+            outline:const Color(0xFF514A54),
+            outlineVariant:const Color(0xFF3B353E),
+            inverseSurface:const Color(0xFFF8F5F8),
+            onInverseSurface:const Color(0xFF17151A),
+            inversePrimary:const Color(0xFF7E003B),
           ),
-          textTheme:GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
+          textTheme:GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme).apply(
+            bodyColor:const Color(0xFFF8F5F8),
+            displayColor:const Color(0xFFF8F5F8),
+          ),
           appBarTheme:const AppBarTheme(
-            backgroundColor:Color(0xFF121014),
-            foregroundColor:Colors.white,
+            backgroundColor:Color(0xFF111015),
+            foregroundColor:Color(0xFFF8F5F8),
             elevation:0,
           ),
           cardTheme:const CardThemeData(
-            color:Color(0xFF1C191D),
+            color:Color(0xFF1D1A20),
             elevation:0,
             margin:EdgeInsets.zero,
+          ),
+          inputDecorationTheme:const InputDecorationTheme(
+            filled:true,
+            fillColor:Color(0xFF252128),
+            hintStyle:TextStyle(color:Color(0xFFAAA2AD)),
+            prefixIconColor:Color(0xFFD1CAD2),
+            suffixIconColor:Color(0xFFD1CAD2),
+            border:OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:Color(0xFF514A54)),
+            ),
+            enabledBorder:OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:Color(0xFF514A54)),
+            ),
+            focusedBorder:OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:AllwaysColors.primary,width:1.5),
+            ),
           ),
         ),
         themeMode:mode,
@@ -1217,7 +1257,6 @@ class _ShellState extends State<Shell> {
     final pages=[
       ShopPage(products:products,loading:loading,error:error,onRefresh:loadInventory,onAdd:add,cart:cart,onQty:qty,user:user,wishlistIds:wishlistIds,onWishlist:toggleWishlist,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),addresses:addresses),
       const TravelPage(),
-      const LocalSellersPage(),
       ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems),
     ];
     return ValueListenableBuilder<String>(valueListenable:languageNotifier,builder:(context,lang,_)=>Scaffold(
@@ -1236,7 +1275,6 @@ class _ShellState extends State<Shell> {
         items:[
           (icon:Icons.shopping_bag_outlined,activeIcon:Icons.shopping_bag,label:tr('Shop')),
           (icon:Icons.directions_car_outlined,activeIcon:Icons.directions_car,label:tr('Travel')),
-          (icon:Icons.storefront_outlined,activeIcon:Icons.storefront,label:tr('Local sellers')),
           (icon:Icons.person_outline,activeIcon:Icons.person,label:tr('Profile')),
         ],
       ),
@@ -1389,7 +1427,7 @@ class _ShopPageState extends State<ShopPage>{
       stream:FirebaseFirestore.instance.collection('settings').doc('homepage').snapshots(),
       builder:(context,homeSnap){
         final h=homeSnap.data?.data()??<String,dynamic>{};
-        final showCategories=h['showCategories']!=false,showOffers=h['showOffers']!=false,showPopular=h['showPopular']!=false,showLocal=h['showLocalSellers']!=false,showTravel=h['showTravel']!=false;
+        final showCategories=h['showCategories']!=false,showOffers=h['showOffers']!=false,showPopular=h['showPopular']!=false;
         final heroTitle=(h['heroTitle']??'Closer to You, Always').toString();
         final heroSubtitle=(h['heroSubtitle']??'Everything you need, delivered locally.').toString();
         final deliveryText=(h['deliveryText']??'Fast local delivery').toString();
@@ -1398,16 +1436,16 @@ class _ShopPageState extends State<ShopPage>{
           child:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,110),children:[
             Row(children:[
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                RichText(text:const TextSpan(style:TextStyle(fontSize:30,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:AllwaysColors.purple)),TextSpan(text:'ways',style:TextStyle(color:AllwaysColors.text))])),
-                Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12,fontWeight:FontWeight.w500)),
+                RichText(text:const TextSpan(style:TextStyle(fontSize:30,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:AllwaysColors.purple)),TextSpan(text:'ways',style:TextStyle(color:Theme.of(c).colorScheme.onSurface))])),
+                Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant,fontSize:12,fontWeight:FontWeight.w500)),
               ])),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/wishlist'),icon:const Icon(Icons.favorite_border)),
               IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
             ]),
-            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16),border:Border.all(color:AllwaysColors.border)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
+            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
             const SizedBox(height:10),
-            TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Colors.white,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide.none)),onChanged:(v)=>setState(()=>search=v)),
+            TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Theme.of(c).colorScheme.surface,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide(color:Theme.of(c).colorScheme.outlineVariant))),onChanged:(v)=>setState(()=>search=v)),
             const SizedBox(height:12),
             StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
               stream:FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
@@ -1427,8 +1465,6 @@ class _ShopPageState extends State<ShopPage>{
               if(showOffers)productSection(c,'Top offers',searched),
               if(showPopular)productSection(c,'Popular Near You',searched.skip(showOffers?4:0).take(4).toList()),
             ],
-            if(showLocal)InkWell(onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const LocalSellersPage())),borderRadius:BorderRadius.circular(16),child:Container(margin:const EdgeInsets.only(top:4,bottom:12),padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(16)),child:Row(children:[Container(width:48,height:48,decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(14)),child:const Icon(Icons.storefront_outlined,color:green)),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Local sellers near you',style:TextStyle(fontWeight:FontWeight.w900)),Text('Discover shops and contact them directly',style:TextStyle(color:Colors.grey,fontSize:12))])),const Icon(Icons.chevron_right,color:green)]))),
-            if(showTravel)InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const TravelPage())),borderRadius:BorderRadius.circular(16),child:Container(padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFFFF4D6),borderRadius:BorderRadius.circular(16)),child:Row(children:[const Icon(Icons.two_wheeler,size:36,color:Colors.black87),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Need a ride?',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),Text('Bike, auto and vehicle booking in one place',style:TextStyle(color:Colors.black54,fontSize:12))])),const Icon(Icons.chevron_right)]))),
           ]),
         );
       },
@@ -2241,7 +2277,6 @@ class TravelPage extends StatelessWidget {
     _rideCard(context,icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride. Upfront estimate and live tracking after acceptance.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),
     _rideCard(context,icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',color:const Color(0xFF111111),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),
     _rideCard(context,icon:Icons.directions_car_outlined,title:'Book a vehicle',subtitle:'Choose from 25 vehicle categories. Owners set price and booking terms.',color:const Color(0xFF303030),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage()))),
-    _rideCard(context,icon:Icons.login_outlined,title:'Rider login',subtitle:'Go online, see nearby requests within 7 km, accept or reject and complete rides.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const RiderLoginPage()))),
     Card(elevation:0,color:const Color(0xFFF6F6F6),child:const Padding(padding:EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.shield_outlined),SizedBox(width:10),Expanded(child:Text('Safety tools, calling, cancellation and live location are available during an active ride.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
   ]);
 }
@@ -2473,7 +2508,19 @@ class _NotificationsPageState extends State<NotificationsPage>{
   bool enabled=true,loading=true; List<Map<String,dynamic>> notifications=[];
   final Map<String,bool> prefs=<String,bool>{'orderUpdates':true,'deliveryUpdates':true,'travelUpdates':true,'offers':true,'announcements':true};
   String filter='All';
-  @override void initState(){super.initState();_load();}
+  @override void initState(){super.initState();_load();_startUiLocationStream();}
+  void _startUiLocationStream(){
+    _uiPositionSub?.cancel();
+    _uiPositionSub=Geolocator.getPositionStream(
+      locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:10),
+    ).listen((p){
+      if(!mounted)return;
+      setState(()=>_position=p);
+      if(_carrierTab==0)_mapController.move(LatLng(p.latitude,p.longitude),15);
+      _listenRequests();
+    });
+  }
+
   Future<void> _load() async {try{final p=await SharedPreferences.getInstance();enabled=p.getBool('notifications_enabled')??p.getBool('allways_notifications_enabled')??true;for(final key in prefs.keys){prefs[key]=p.getBool('notification_'+key)??true;}final raw=p.getStringList('allways_notifications')??<String>[];notifications=raw.map((x){try{final d=jsonDecode(x);return d is Map?Map<String,dynamic>.from(d):<String,dynamic>{};}catch(_){return <String,dynamic>{};}}).where((x)=>x.isNotEmpty).toList();}catch(_){}if(mounted)setState(()=>loading=false);}
   Future<void> _savePreference(String key,bool value) async {prefs[key]=value;final p=await SharedPreferences.getInstance();await p.setBool('notification_'+key,value);final u=FirebaseAuth.instance.currentUser;if(u!=null){try{await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'notificationPreferences':Map<String,bool>.from(prefs),'notificationsEnabled':enabled,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));}catch(_){}}if(mounted)setState((){});}
   Future<void> _toggle(bool value) async {try{if(value){final status=await FirebaseMessaging.instance.requestPermission(alert:true,badge:true,sound:true,provisional:false);if(status.authorizationStatus==AuthorizationStatus.denied){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Notification permission is disabled for ALLways.')));return;}await FirebaseMessaging.instance.subscribeToTopic('all_users');enabled=true;}else{await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');enabled=false;}final p=await SharedPreferences.getInstance();await p.setBool('notifications_enabled',enabled);await p.setBool('allways_notifications_enabled',enabled);final u=FirebaseAuth.instance.currentUser;if(u!=null)await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','notificationsEnabled':enabled,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));if(enabled){final token=await FirebaseMessaging.instance.getToken();if(token!=null&&u!=null){await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).collection('tokens').doc(token).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await p.setString('allways_fcm_token',token);}}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Notification setting could not be saved: '+e.toString())));}if(mounted)setState((){});}
@@ -3823,10 +3870,14 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
   bool _online=false;
   bool _loading=true;
   bool _hadActiveRide=false;
+  int _carrierTab=0;
+  final TextEditingController _destinationController=TextEditingController();
+  final MapController _mapController=MapController();
+  StreamSubscription<Position>? _uiPositionSub;
   static const double maxRadiusKm=7.0;
 
   @override void initState(){super.initState();_load();}
-  @override void dispose(){_requestsSub?.cancel();_activeSub?.cancel();_locationBroadcaster?.stop();super.dispose();}
+  @override void dispose(){_requestsSub?.cancel();_activeSub?.cancel();_uiPositionSub?.cancel();_locationBroadcaster?.stop();_destinationController.dispose();super.dispose();}
 
   double? _n(dynamic v)=>v is num?v.toDouble():double.tryParse(v?.toString()??'');
   String _vehicle(){final v=(_profile['vehicleType']??'bike').toString().toLowerCase();return v=='two_wheeler'?'bike':(v=='auto'?'auto':'bike');}
@@ -4076,42 +4127,243 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
     ])));
   }
 
-  @override Widget build(BuildContext context){
-    final u=FirebaseAuth.instance.currentUser;
-    if(u==null)return Scaffold(appBar:AppBar(title:const Text('Carrier login')),body:Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
-      const Icon(Icons.two_wheeler_outlined,size:64),const SizedBox(height:12),const Text('Sign in to Carrier mode',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-      const Text('Use your approved ALLways Carrier account to receive nearby ride requests.',textAlign:TextAlign.center),const SizedBox(height:18),
-      FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const AuthScreen())),child:const Text('Sign in')),
-    ]))));
-    if(_loading)return Scaffold(appBar:AppBar(title:const Text('Carrier login')),body:const Center(child:CircularProgressIndicator()));
-    if(_profile.isEmpty)return Scaffold(appBar:AppBar(title:const Text('Carrier login')),body:ListView(padding:const EdgeInsets.all(20),children:[
-      const Icon(Icons.two_wheeler_outlined,size:64),const SizedBox(height:12),const Text('Carrier profile not found',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
-      const SizedBox(height:8),const Text('Complete your carrier profile first. The account must be approved before it can receive public ride requests.'),
-      const SizedBox(height:18),FilledButton.icon(onPressed:_editProfile,icon:const Icon(Icons.person_add_alt_1_outlined),label:const Text('Set up carrier profile')),
-    ]));
-    return Scaffold(appBar:AppBar(title:const Text('Carrier'),actions:[IconButton(onPressed:_editProfile,icon:const Icon(Icons.edit_outlined))]),body:RefreshIndicator(
-      onRefresh:_refreshLocation,child:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,30),children:[
-        Card(child:Column(children:[
-          SwitchListTile(title:Text(_online?'Online — accepting rides':'Offline — not receiving rides',style:const TextStyle(fontWeight:FontWeight.w900)),
-            subtitle:Text((_profile['name']??'Carrier').toString()+' • '+_vehicle().toUpperCase()+' • '+(_position==null?'Location not ready':'Location ready')),value:_online,onChanged:_setOnline),
-          const Divider(height:1),
-          ListTile(leading:const Icon(Icons.radar_outlined),title:const Text('Nearby requests',style:TextStyle(fontWeight:FontWeight.w900)),
-            subtitle:Text(_online?'Showing '+_requests.length.toString()+' '+_vehicle()+' request(s) within 7 km':'Go online to see customers within 7 km'),
-            trailing:IconButton(onPressed:_refreshLocation,icon:const Icon(Icons.my_location))),
+  Widget _destinationSearch(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    final recent=_profile['recentDestinations'] is List
+        ? List<String>.from((_profile['recentDestinations'] as List).map((e)=>e.toString()))
+        : <String>['Pratapgarh, Uttar Pradesh','Bela Pratapgarh','Bhadausi, Uttar Pradesh'];
+    final favourites=_profile['favoriteDestinations'] is List
+        ? List<String>.from((_profile['favoriteDestinations'] as List).map((e)=>e.toString()))
+        : <String>['Home','Work'];
+    return Container(
+      decoration:BoxDecoration(color:scheme.surface,borderRadius:const BorderRadius.vertical(top:Radius.circular(28)),
+        boxShadow:[BoxShadow(color:Colors.black.withOpacity(.12),blurRadius:20,offset:const Offset(0,-4))]),
+      padding:const EdgeInsets.fromLTRB(20,12,20,10),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Center(child:Container(width:42,height:5,decoration:BoxDecoration(color:scheme.outlineVariant,borderRadius:BorderRadius.circular(99)))),
+        const SizedBox(height:12),
+        Container(
+          decoration:BoxDecoration(color:scheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),
+          child:TextField(
+            controller:_destinationController,
+            style:TextStyle(color:scheme.onSurface,fontWeight:FontWeight.w700),
+            decoration:InputDecoration(
+              hintText:'Where are you going?',
+              hintStyle:TextStyle(color:scheme.onSurfaceVariant,fontWeight:FontWeight.w700),
+              prefixIcon:Icon(Icons.search,color:scheme.onSurface),
+              suffixIcon:IconButton(onPressed:(){if(_destinationController.text.trim().isNotEmpty)setState((){});},icon:Icon(Icons.mic_none,color:scheme.primary)),
+              filled:false,border:InputBorder.none,contentPadding:const EdgeInsets.symmetric(vertical:16),
+            ),
+          ),
+        ),
+        const SizedBox(height:14),
+        _destinationSection(context,'Recent destinations',recent),
+        const SizedBox(height:8),
+        _destinationSection(context,'Favourites',favourites),
+        const SizedBox(height:8),
+        Text('Popular places',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+        const SizedBox(height:8),
+        SizedBox(height:112,child:ListView(scrollDirection:Axis.horizontal,children:const[
+          _PopularDestination(label:'Bus Stand',icon:Icons.directions_bus_outlined),
+          _PopularDestination(label:'Railway station',icon:Icons.train_outlined),
+          _PopularDestination(label:'Market',icon:Icons.storefront_outlined),
         ])),
-        if(_requests.isNotEmpty)...[const SizedBox(height:8),const Text('Ride requests near you',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:6),..._requests.map(_requestCard)],
-        if(_online&&_requests.isEmpty)const Card(child:Padding(padding:EdgeInsets.all(20),child:Column(children:[Icon(Icons.radar_outlined,size:48),SizedBox(height:10),Text('No nearby ride requests',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),SizedBox(height:5),Text('Keep the Carrier app online. New requests within 7 km will appear here.',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey))]))),
+      ]),
+    );
+  }
+
+  Widget _destinationSection(BuildContext context,String title,List<String> places){
+    final scheme=Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Text(title,style:TextStyle(fontSize:16,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+      const SizedBox(height:2),
+      for(final place in places.take(3))
+        ListTile(
+          dense:true,contentPadding:EdgeInsets.zero,
+          leading:Icon(title=='Favourites'?Icons.favorite_border:Icons.history,color:scheme.onSurfaceVariant),
+          title:Text(place,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w700,color:scheme.onSurface)),
+          trailing:title=='Favourites'?Icon(Icons.favorite,color:scheme.primary,size:20):null,
+          onTap:(){_destinationController.text=place;setState((){});},
+        ),
+    ]);
+  }
+
+  Widget _rideMap(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    final center=_position==null?const LatLng(25.89,81.99):LatLng(_position!.latitude,_position!.longitude);
+    final markers=<Marker>[
+      if(_position!=null)Marker(
+        point:LatLng(_position!.latitude,_position!.longitude),width:58,height:58,
+        child:Container(decoration:BoxDecoration(color:scheme.primary,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:4),boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:10)]),child:const Icon(Icons.two_wheeler,color:Colors.white,size:30)),
+      ),
+      ..._requests.take(12).map((doc){
+        final d=doc.data(),lat=_n(d['pickupLatitude']),lng=_n(d['pickupLongitude']);
+        if(lat==null||lng==null)return null;
+        return Marker(
+          point:LatLng(lat,lng),width:50,height:50,
+          child:Container(decoration:BoxDecoration(color:AllwaysColors.amber,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:3),boxShadow:[const BoxShadow(color:Colors.black26,blurRadius:8)]),child:const Icon(Icons.person_pin_circle_outlined,color:Colors.black,size:28)),
+        );
+      }).whereType<Marker>(),
+    ];
+    return ClipRRect(
+      borderRadius:const BorderRadius.only(bottomLeft:Radius.circular(28),bottomRight:Radius.circular(28)),
+      child:flutter_map.FlutterMap(
+        mapController:_mapController,
+        options:MapOptions(initialCenter:center,initialZoom:15,minZoom:11,maxZoom:19),
+        children:[
+          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'com.allways.app'),
+          MarkerLayer(markers:markers),
+          Positioned(left:16,bottom:16,child:DecoratedBox(
+            decoration:BoxDecoration(color:scheme.surface.withOpacity(.95),borderRadius:BorderRadius.circular(14)),
+            child:Padding(padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),
+              child:Text(_online?'Online • '+_requests.length.toString()+' requests nearby':'Offline',style:TextStyle(color:scheme.onSurface,fontWeight:FontWeight.w800,fontSize:12))),
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _carrierRequestsView(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    return SafeArea(child:RefreshIndicator(
+      onRefresh:_refreshLocation,
+      child:ListView(padding:const EdgeInsets.fromLTRB(16,18,16,110),children:[
+        Text('Ride requests',style:TextStyle(fontSize:30,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+        const SizedBox(height:6),
+        Text(_online?'Requests within 7 km are shown live.':'Go online to receive ride requests.',style:TextStyle(color:scheme.onSurfaceVariant)),
+        const SizedBox(height:14),
+        Card(child:SwitchListTile(
+          title:Text(_online?'Online':'Offline',style:const TextStyle(fontWeight:FontWeight.w900)),
+          subtitle:Text(_online?'Accepting nearby bike/auto requests':'Not receiving new ride requests'),
+          value:_online,onChanged:_setOnline,
+          secondary:Icon(_online?Icons.radio_button_checked:Icons.radio_button_off,color:_online?Colors.green:scheme.onSurfaceVariant),
+        )),
+        const SizedBox(height:10),
+        if(_requests.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(22),child:Column(children:[
+          Icon(Icons.radar_outlined,size:46,color:scheme.primary),const SizedBox(height:8),
+          Text('No nearby requests',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+          const SizedBox(height:4),
+          Text('New requests within 7 km will appear here.',textAlign:TextAlign.center,style:TextStyle(color:scheme.onSurfaceVariant)),
+        ]))) else ...[for(final request in _requests)_requestCard(request)],
         const SizedBox(height:12),
-        StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('autoRideRequests').where('driverUid',isEqualTo:u.uid).snapshots(),builder:(context,snapshot){
-          final active=(snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]).where((d){final st=(d.data()['status']??'').toString().toLowerCase();return st=='accepted'||st=='arrived'||st=='started';}).toList();
-          if(active.isEmpty)return const SizedBox.shrink();
-          return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Active ride',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:6),_activeCard(active.first)]);
-        }),
-        const SizedBox(height:12),
-        Card(child:ListTile(leading:const Icon(Icons.shield_outlined),title:const Text('Carrier safety',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Confirm the customer and pickup before starting. Use Track, Call or Cancel if something is wrong. Never use the phone while actively driving.'))),
+        StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+          stream:FirebaseFirestore.instance.collection('autoRideRequests').where('driverUid',isEqualTo:FirebaseAuth.instance.currentUser?.uid).snapshots(),
+          builder:(context,snapshot){
+            final active=(snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]).where((d){
+              final st=(d.data()['status']??'').toString().toLowerCase();
+              return st=='accepted'||st=='arrived'||st=='started';
+            }).toList();
+            if(active.isEmpty)return const SizedBox.shrink();
+            return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Text('Active ride',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+              const SizedBox(height:8),_activeCard(active.first),
+            ]);
+          },
+        ),
       ]),
     ));
   }
+
+  Widget _earningsView(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    return SafeArea(child:ListView(padding:const EdgeInsets.fromLTRB(16,18,16,110),children:[
+      Text('Earnings',style:TextStyle(fontSize:30,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+      const SizedBox(height:6),
+      Text('Completed rides and earnings stay linked to your ALLways Carrier account.',style:TextStyle(color:scheme.onSurfaceVariant)),
+      const SizedBox(height:16),
+      StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+        stream:FirebaseFirestore.instance.collection('autoRideRequests').where('driverUid',isEqualTo:FirebaseAuth.instance.currentUser?.uid).snapshots(),
+        builder:(context,snapshot){
+          num total=0;int completed=0;
+          for(final d in snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]){
+            final x=d.data();
+            if((x['status']??'').toString().toLowerCase()=='completed'){completed++;total+=_n(x['fare'])??_n(x['estimatedFare'])??0;}
+          }
+          return Row(children:[
+            Expanded(child:Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Icon(Icons.currency_rupee,color:scheme.primary),const SizedBox(height:8),
+              Text('₹'+total.toStringAsFixed(0),style:TextStyle(fontSize:24,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+              Text('Total ride earnings',style:TextStyle(color:scheme.onSurfaceVariant)),
+            ])))),
+            const SizedBox(width:10),
+            Expanded(child:Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              const Icon(Icons.check_circle_outline,color:Colors.green),const SizedBox(height:8),
+              Text(completed.toString(),style:TextStyle(fontSize:24,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+              Text('Completed rides',style:TextStyle(color:scheme.onSurfaceVariant)),
+            ])))),
+          ]);
+        },
+      ),
+      const SizedBox(height:12),
+      Card(child:ListTile(leading:Icon(Icons.account_balance_wallet_outlined,color:scheme.primary),title:Text('Payouts',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),subtitle:Text('Payout details remain available from the carrier account.',style:TextStyle(color:scheme.onSurfaceVariant)))),
+      Card(child:ListTile(leading:Icon(Icons.star_outline,color:AllwaysColors.amber),title:Text('Ratings',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),subtitle:Text('Ride ratings remain attached to completed trips.',style:TextStyle(color:scheme.onSurfaceVariant)))),
+    ]));
+  }
+
+  Widget _carrierProfileView(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    final u=FirebaseAuth.instance.currentUser;
+    return SafeArea(child:ListView(padding:const EdgeInsets.fromLTRB(16,18,16,110),children:[
+      Text('Profile',style:TextStyle(fontSize:30,fontWeight:FontWeight.w900,color:scheme.onSurface)),
+      const SizedBox(height:12),
+      Card(child:ListTile(
+        leading:CircleAvatar(backgroundColor:scheme.primaryContainer,foregroundColor:scheme.onPrimaryContainer,child:const Icon(Icons.two_wheeler)),
+        title:Text((_profile['name']??u?.displayName??'ALLways Carrier').toString(),style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),
+        subtitle:Text((_profile['mobileNumber']??u?.email??'').toString(),style:TextStyle(color:scheme.onSurfaceVariant)),
+        trailing:IconButton(onPressed:_editProfile,icon:Icon(Icons.edit_outlined,color:scheme.primary)),
+      )),
+      Card(child:SwitchListTile(
+        title:Text('Online status',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),
+        subtitle:Text(_online?'You are visible to nearby customers.':'You are offline.',style:TextStyle(color:scheme.onSurfaceVariant)),
+        value:_online,onChanged:_setOnline,
+      )),
+      Card(child:ListTile(leading:Icon(Icons.description_outlined,color:scheme.primary),title:Text('Vehicle & documents',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),subtitle:Text('Vehicle type: '+_vehicle().toUpperCase(),style:TextStyle(color:scheme.onSurfaceVariant)))),
+      Card(child:ListTile(leading:Icon(Icons.shield_outlined,color:scheme.primary),title:Text('Safety & SOS',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),subtitle:Text('Safety tools and active-ride tracking remain available.',style:TextStyle(color:scheme.onSurfaceVariant)))),
+      Card(child:ListTile(leading:Icon(Icons.help_outline,color:scheme.primary),title:Text('Help & support',style:TextStyle(fontWeight:FontWeight.w900,color:scheme.onSurface)),subtitle:Text('Contact ALLways support for account or ride issues.',style:TextStyle(color:scheme.onSurfaceVariant)))),
+      const SizedBox(height:8),
+      OutlinedButton.icon(onPressed:()=>FirebaseAuth.instance.signOut(),icon:const Icon(Icons.logout),label:const Text('Sign out')),
+    ]));
+  }
+
+  @override Widget build(BuildContext context){
+    if(_loading)return const Scaffold(body:Center(child:CircularProgressIndicator()));
+    if(_profile.isEmpty)return Scaffold(
+      body:SafeArea(child:Center(child:Padding(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,children:[
+        const Icon(Icons.two_wheeler_outlined,size:64),const SizedBox(height:12),
+        const Text('Carrier profile not found',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
+        const SizedBox(height:8),
+        const Text('Complete your carrier profile first. The account must be approved before it can receive public ride requests.',textAlign:TextAlign.center),
+        const SizedBox(height:18),
+        FilledButton.icon(onPressed:_editProfile,icon:const Icon(Icons.person_add_alt_1_outlined),label:const Text('Set up carrier profile')),
+      ]))),
+    );
+    final views=<Widget>[
+      Stack(children:[
+        Positioned.fill(child:_rideMap(context)),
+        Align(alignment:Alignment.bottomCenter,child:DraggableScrollableSheet(
+          initialChildSize:.48,minChildSize:.36,maxChildSize:.72,
+          builder:(context,scrollController)=>SingleChildScrollView(controller:scrollController,child:_destinationSearch(context)),
+        )),
+      ]),
+      _carrierRequestsView(context),_earningsView(context),_carrierProfileView(context),
+    ];
+    const labels=['Ride','Requests','Earnings','Profile'];
+    return Scaffold(
+      backgroundColor:Theme.of(context).colorScheme.surface,
+      body:IndexedStack(index:_carrierTab,children:views),
+      bottomNavigationBar:AllwaysBottomNav(
+        selectedIndex:_carrierTab,
+        onSelected:(v)=>setState(()=>_carrierTab=v),
+        items:[
+          (icon:Icons.home_outlined,activeIcon:Icons.home,label:labels[0]),
+          (icon:Icons.list_alt_outlined,activeIcon:Icons.list_alt,label:labels[1]),
+          (icon:Icons.account_balance_wallet_outlined,activeIcon:Icons.account_balance_wallet,label:labels[2]),
+          (icon:Icons.person_outline,activeIcon:Icons.person,label:labels[3]),
+        ],
+      ),
+    );
+  }
+
 }
 
 class TravelBookingsSection extends StatelessWidget {
