@@ -1658,22 +1658,122 @@ class _CartScreenState extends State<CartScreen>{
   }
   void msg(String text){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));}
   Widget build(BuildContext c){
-    final sub=widget.cart.values.fold<num>(0,(s,x)=>s+x.product.price*x.qty);final fee=sub>=499?0:30;final grand=sub+fee;
-    return Scaffold(appBar:AppBar(title:const Text('Cart & Checkout')),body:ListView(padding:const EdgeInsets.all(16),children:[
-      ...widget.cart.values.map((x)=>Card(child:ListTile(leading:CircleAvatar(child:Text(x.product.icon)),title:Text(x.product.name),subtitle:Text('₹'+x.product.price.toString()+' × '+x.qty.toString()),trailing:Wrap(children:[
-        IconButton(onPressed:()=>widget.onQty(x.product.id,-1),icon:const Icon(Icons.remove)),Text(x.qty.toString()),IconButton(onPressed:()=>widget.onQty(x.product.id,1),icon:const Icon(Icons.add))])))),
-      const Divider(height:25),const Text('Delivery details',style:TextStyle(fontSize:20,fontWeight:FontWeight.w800)),const SizedBox(height:10),
-      if(widget.addresses.isNotEmpty) ...[const Text('Saved addresses'),...widget.addresses.map((x)=>Card(child:ListTile(onTap:()=>use(x),leading:const Icon(Icons.location_on_outlined),title:Text((x['name']??'').toString()),subtitle:Text((x['address']??'').toString()),trailing:const Icon(Icons.arrow_forward_ios,size:15))))],
-      TextField(controller:n,decoration:const InputDecoration(labelText:'Full name')),const SizedBox(height:9),
-      TextField(controller:p,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'10-digit phone number')),const SizedBox(height:9),
-      TextField(controller:a,maxLines:3,decoration:const InputDecoration(labelText:'Delivery address')),
-      const SizedBox(height:6),
-      OutlinedButton.icon(onPressed:locating?null:useCurrentLocation,icon:locating?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.my_location),label:Text(locating?'Getting location…':'Use current location')),
-      const SizedBox(height:9),
-      TextField(controller:note,maxLines:2,decoration:const InputDecoration(labelText:'Delivery note (optional)')),const SizedBox(height:14),
-      Card(child:Padding(padding:const EdgeInsets.all(15),child:Column(children:[Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Subtotal'),Text('₹'+sub.toStringAsFixed(0))]),Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Delivery'),Text(fee==0?'FREE':'₹'+fee.toString())]),const Divider(),Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Total',style:TextStyle(fontWeight:FontWeight.w900)),Text('₹'+grand.toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900))]),const SizedBox(height:7),const Align(alignment:Alignment.centerLeft,child:Text('Payment: Cash on Delivery (COD)',style:TextStyle(fontWeight:FontWeight.w700)))]))),
-      const SizedBox(height:12),FilledButton(onPressed:placing?null:()async{setState(()=>placing=true);await widget.onPlace(n.text,p.text,a.text,note.text,selectedLatitude,selectedLongitude);if(mounted)setState(()=>placing=false);},child:Text(placing?'Placing order…':'Place COD Order'))
-    ]));
+    final sub=widget.cart.values.fold<num>(0,(sum,item)=>sum+item.product.price*item.qty);
+    final fee=sub>=499?0:30;
+    final grand=sub+fee;
+    final dark=Theme.of(c).brightness==Brightness.dark;
+    return Scaffold(
+      backgroundColor:dark?const Color(0xFF121014):AllwaysColors.background,
+      appBar:AppBar(
+        title:const Text('Cart',style:TextStyle(fontWeight:FontWeight.w900)),
+        actions:[IconButton(onPressed:widget.cart.isEmpty?null:()=>showDialog<void>(
+          context:c,
+          builder:(d)=>AlertDialog(
+            title:const Text('Clear cart?'),
+            content:const Text('Remove all items from your cart?'),
+            actions:[
+              TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Keep')),
+              FilledButton(onPressed:(){for(final item in List<CartItem>.from(widget.cart.values))widget.onQty(item.product.id,-item.qty);Navigator.pop(d);},child:const Text('Clear')),
+            ],
+          ),
+        ),icon:const Icon(Icons.delete_outline))],
+      ),
+      body:widget.cart.isEmpty
+        ? Center(child:Padding(padding:const EdgeInsets.all(28),child:AllwaysCard(
+            color:dark?const Color(0xFF1C191D):Colors.white,
+            child:Column(mainAxisSize:MainAxisSize.min,children:[
+              const Icon(Icons.shopping_bag_outlined,size:54,color:AllwaysColors.primary),
+              const SizedBox(height:12),
+              const Text('Your cart is empty',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+              const SizedBox(height:6),
+              const Text('Add products from Shop and they will appear here.',textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted)),
+              const SizedBox(height:16),
+              FilledButton(onPressed:()=>Navigator.pop(c),child:const Text('Continue Shopping')),
+            ]),
+          )))
+        : ListView(
+            padding:const EdgeInsets.fromLTRB(14,8,14,24),
+            children:[
+              ...widget.cart.values.map((x)=>Padding(
+                padding:const EdgeInsets.only(bottom:10),
+                child:AllwaysCard(
+                  child:Row(children:[
+                    Container(width:68,height:68,decoration:BoxDecoration(color:AllwaysColors.primarySoft,borderRadius:BorderRadius.circular(16)),alignment:Alignment.center,child:Text(x.product.icon,style:const TextStyle(fontSize:34))),
+                    const SizedBox(width:12),
+                    Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                      Text(x.product.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w900,fontSize:15)),
+                      const SizedBox(height:3),
+                      Text('₹${x.product.price.toStringAsFixed(x.product.price%1==0?0:2)}',style:const TextStyle(color:AllwaysColors.muted)),
+                      const SizedBox(height:8),
+                      Container(height:34,decoration:BoxDecoration(color:AllwaysColors.primarySoft,borderRadius:BorderRadius.circular(17)),child:Row(mainAxisSize:MainAxisSize.min,children:[
+                        IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onQty(x.product.id,-1),icon:const Icon(Icons.remove,size:18,color:AllwaysColors.primary)),
+                        SizedBox(width:28,child:Center(child:Text('${x.qty}',style:const TextStyle(fontWeight:FontWeight.w900)))),
+                        IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onQty(x.product.id,1),icon:const Icon(Icons.add,size:18,color:AllwaysColors.primary)),
+                      ])),
+                    ])),
+                    const SizedBox(width:8),
+                    Text('₹${(x.product.price*x.qty).toStringAsFixed((x.product.price*x.qty)%1==0?0:2)}',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:16)),
+                  ]),
+                ),
+              )),
+              const SizedBox(height:4),
+              AllwaysCard(
+                child:Column(children:[
+                  const Align(alignment:Alignment.centerLeft,child:Text('Bill Details',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),
+                  const SizedBox(height:12),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Items Total'),Text('₹${sub.toStringAsFixed(0)}')]),
+                  const SizedBox(height:8),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Delivery Fee'),Text(fee==0?'FREE':'₹${fee}',style:const TextStyle(fontWeight:FontWeight.w700))]),
+                  const Divider(height:22),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('You Pay',style:TextStyle(fontWeight:FontWeight.w900)),Text('₹${grand.toStringAsFixed(0)}',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:19))]),
+                  const SizedBox(height:8),
+                  const Align(alignment:Alignment.centerLeft,child:Text('Cash on Delivery (COD)',style:TextStyle(color:AllwaysColors.muted))),
+                ]),
+              ),
+              const SizedBox(height:12),
+              const Text('Delivery details',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+              const SizedBox(height:10),
+              if(widget.addresses.isNotEmpty) ...[
+                ...widget.addresses.map((x)=>AllwaysCard(
+                  padding:const EdgeInsets.symmetric(horizontal:12,vertical:4),
+                  child:ListTile(
+                    contentPadding:EdgeInsets.zero,
+                    onTap:()=>use(x),
+                    leading:const Icon(Icons.location_on_outlined,color:AllwaysColors.primary),
+                    title:Text((x['name']??'Saved address').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
+                    subtitle:Text((x['address']??'').toString(),maxLines:2,overflow:TextOverflow.ellipsis),
+                    trailing:const Icon(Icons.chevron_right),
+                  ),
+                )),
+                const SizedBox(height:8),
+              ],
+              TextField(controller:n,decoration:const InputDecoration(labelText:'Full name')),
+              const SizedBox(height:9),
+              TextField(controller:p,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'10-digit phone number')),
+              const SizedBox(height:9),
+              TextField(controller:a,maxLines:3,decoration:const InputDecoration(labelText:'Delivery address')),
+              const SizedBox(height:6),
+              OutlinedButton.icon(
+                onPressed:locating?null:useCurrentLocation,
+                icon:locating?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.my_location),
+                label:Text(locating?'Getting location…':'Use current location'),
+              ),
+              const SizedBox(height:9),
+              TextField(controller:note,maxLines:2,decoration:const InputDecoration(labelText:'Delivery note (optional)')),
+              const SizedBox(height:14),
+              SizedBox(height:52,child:FilledButton.icon(
+                onPressed:placing?null:()async{
+                  setState(()=>placing=true);
+                  await widget.onPlace(n.text,p.text,a.text,note.text,selectedLatitude,selectedLongitude);
+                  if(mounted)setState(()=>placing=false);
+                },
+                style:FilledButton.styleFrom(backgroundColor:AllwaysColors.primary,foregroundColor:Colors.white,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18))),
+                icon:const Icon(Icons.shopping_bag_outlined),
+                label:Text(placing?'Placing order…':'Place Order (COD)',style:const TextStyle(fontWeight:FontWeight.w900)),
+              )),
+            ],
+          ),
+    );
   }
 }
 
