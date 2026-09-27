@@ -190,7 +190,41 @@ class RoleFeatureScreen extends StatelessWidget {
     final t=TextEditingController(),d=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Create offer'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:t,decoration:const InputDecoration(labelText:'Offer title')),TextField(controller:d,decoration:const InputDecoration(labelText:'Details'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Create'))]));if(ok==true)await FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').add({'title':t.text.trim(),'details':d.text.trim(),'active':true,'createdAt':FieldValue.serverTimestamp()});
   }
 
-  Widget _people(String collection,String label,{String? roleFilter})=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection(collection).snapshots(),builder:(context,s){if(s.hasError)return _page([_error(s.error.toString())]);if(!s.hasData)return const Center(child:CircularProgressIndicator());var docs=s.data!.docs;if(roleFilter!=null)docs=docs.where((d)=>(d.data()['role']??'').toString().toLowerCase()==roleFilter).toList();return _page([_hero(feature,'Review '+label.toLowerCase()+' accounts and status.'),_metricRow(docs.length.toString(),label),...docs.map((d){final x=d.data();final n=(x['businessName']??x['shopName']??x['name']??x['displayName']??x['email']??d.id).toString();final status=(x['status']??x['dutyStatus']??'active').toString();return Card(child:ListTile(title:Text(n,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(status+' • '+(x['email']??'').toString()),trailing:PopupMenuButton<String>(onSelected:(v)=>d.reference.set({'status':v},SetOptions(merge:true)),itemBuilder:(_)=>const[PopupMenuItem(value:'approved',child:Text('Approve')),PopupMenuItem(value:'suspended',child:Text('Suspend')),PopupMenuItem(value:'offline',child:Text('Offline'))]))});])});
+  Widget _people(String collection,String label,{String? roleFilter})=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection(collection).snapshots(),
+    builder:(context,snap){
+      if(snap.hasError)return _page([_error(snap.error.toString())]);
+      if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+      var docs=snap.data!.docs;
+      if(roleFilter!=null){
+        docs=docs.where((d)=>(d.data()['role']??'').toString().toLowerCase()==roleFilter).toList();
+      }
+      return _page([
+        _hero(feature,'Review '+label.toLowerCase()+' accounts and status.'),
+        _metricRow(docs.length.toString(),label),
+        ...docs.map((d){
+          final x=d.data();
+          final n=(x['businessName']??x['shopName']??x['name']??x['displayName']??x['email']??d.id).toString();
+          final status=(x['status']??x['dutyStatus']??'active').toString();
+          return Card(
+            child:ListTile(
+              title:Text(n,style:const TextStyle(fontWeight:FontWeight.w800)),
+              subtitle:Text(status+' • '+(x['email']??'').toString()),
+              trailing:PopupMenuButton<String>(
+                onSelected:(v)=>d.reference.set({'status':v},SetOptions(merge:true)),
+                itemBuilder:(_)=>const[
+                  PopupMenuItem(value:'approved',child:Text('Approve')),
+                  PopupMenuItem(value:'suspended',child:Text('Suspend')),
+                  PopupMenuItem(value:'offline',child:Text('Offline')),
+                ],
+              ),
+            ),
+          );
+        }),
+      ]);
+    },
+  );
+
   Widget _metricRow(String v,String l)=>Card(elevation:0,color:accent.withOpacity(.06),child:Padding(padding:const EdgeInsets.all(14),child:Row(children:[Icon(Icons.people_outline,color:accent),const SizedBox(width:10),Text(v,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w900)),const SizedBox(width:8),Text(l)])));
 
   Widget _users(BuildContext context)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('customers').snapshots(),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs;return _page([_hero('Users & Roles','Manage access without leaving the app.'),_metricRow(docs.length.toString(),'Accounts'),...docs.map((d){final x=d.data();final role=(x['role']??'customer').toString();return Card(child:ListTile(title:Text((x['displayName']??x['email']??d.id).toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((x['email']??'').toString()),trailing:DropdownButton<String>(value:['customer','seller','delivery_partner','carrier','admin'].contains(role)?role:'customer',items:const['customer','seller','delivery_partner','carrier','admin'].map((r)=>DropdownMenuItem(value:r,child:Text(r))).toList(),onChanged:(v)=>v==null?null:d.reference.update({'role':v}) )));})]);});
