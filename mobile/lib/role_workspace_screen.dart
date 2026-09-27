@@ -1,430 +1,217 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'admin_cms_screen.dart';
 
 class RoleFeatureScreen extends StatelessWidget {
-  final String role;
-  final String feature;
+  final String role, feature;
   final User user;
   final Color accent;
+  const RoleFeatureScreen({super.key,required this.role,required this.feature,required this.user,required this.accent});
 
-  const RoleFeatureScreen({
-    super.key,
-    required this.role,
-    required this.feature,
-    required this.user,
-    required this.accent,
-  });
+  IconData get icon => const {
+    'Manage Sellers':Icons.storefront,'Manage Carriers':Icons.two_wheeler,'Manage Delivery Partners':Icons.delivery_dining,
+    'Manage Orders':Icons.receipt_long,'Manage Banners':Icons.view_carousel,'Homepage & Content':Icons.home_work,
+    'Send Notifications':Icons.campaign,'Users & Roles':Icons.manage_accounts,'Reports & Analytics':Icons.analytics,'App Settings':Icons.settings,
+    'Products':Icons.inventory_2,'Orders':Icons.receipt_long,'Shop Profile':Icons.storefront,'Offers':Icons.local_offer,'Inventory':Icons.fact_check,'Sales Analytics':Icons.bar_chart,'Payouts':Icons.account_balance_wallet,
+    'Delivery Requests':Icons.local_shipping,'My Deliveries':Icons.assignment_turned_in,'Earnings':Icons.currency_rupee,'Incentives':Icons.card_giftcard,'Performance':Icons.bar_chart,'Documents':Icons.description,'Safety & SOS':Icons.shield,'Help & Support':Icons.support_agent,
+    'Ride Requests':Icons.two_wheeler,'My Rides':Icons.route,'Ratings':Icons.star,'Ride History':Icons.history,'Vehicle & Documents':Icons.description,'Profile & Settings':Icons.person,
+  }[feature] ?? Icons.dashboard;
 
-  IconData get featureIcon {
-    const m = <String, IconData>{
-      'Manage Sellers': Icons.storefront, 'Manage Carriers': Icons.two_wheeler,
-      'Manage Delivery Partners': Icons.delivery_dining, 'Manage Orders': Icons.receipt_long,
-      'Manage Banners': Icons.view_carousel, 'Send Notifications': Icons.campaign,
-      'Users & Roles': Icons.manage_accounts, 'Reports & Analytics': Icons.analytics,
-      'App Settings': Icons.settings, 'Products': Icons.inventory_2, 'Orders': Icons.receipt_long,
-      'Shop Profile': Icons.storefront, 'Offers': Icons.local_offer, 'Inventory': Icons.fact_check,
-      'Sales Analytics': Icons.bar_chart, 'Payouts': Icons.account_balance_wallet,
-      'Delivery Requests': Icons.local_shipping, 'My Deliveries': Icons.assignment_turned_in,
-      'Earnings': Icons.currency_rupee, 'Incentives': Icons.card_giftcard, 'Performance': Icons.bar_chart,
-      'Documents': Icons.description, 'Safety & SOS': Icons.shield, 'Help & Support': Icons.support_agent,
-      'Ride Requests': Icons.two_wheeler, 'My Rides': Icons.route, 'Ratings': Icons.star,
-      'Ride History': Icons.history, 'Vehicle & Documents': Icons.description,
-      'Profile & Settings': Icons.person,
-    };
-    return m[feature] ?? Icons.dashboard;
+  @override Widget build(BuildContext context){
+    if(feature=='Manage Banners'||feature=='Homepage & Content'||feature=='App Settings'){
+      return AdminCmsScreen(section:feature);
+    }
+    return Scaffold(
+      backgroundColor:const Color(0xFFF8F8F8),
+      appBar:AppBar(title:Text(feature),backgroundColor:Colors.white,elevation:.3),
+      body:SafeArea(child:_content(context)),
+    );
   }
 
-  String get roleLabel {
-    if (role == 'admin') return 'Platform control';
-    if (role == 'seller') return 'Shop management';
-    if (role == 'delivery_partner') return 'Delivery partner';
-    if (role == 'carrier') return 'Rider operations';
-    return 'ALLways';
+  Widget _content(BuildContext context){
+    if(feature=='Manage Orders'||feature=='Orders'||feature=='My Deliveries'||feature=='My Rides'||feature=='Ride History')return _orders(context);
+    if(feature=='Delivery Requests'||feature=='Ride Requests')return _requests(context,feature=='Delivery Requests');
+    if(feature=='Products'||feature=='Inventory')return _products(context);
+    if(feature=='Shop Profile')return _shopProfile(context);
+    if(feature=='Offers')return _offers(context);
+    if(feature=='Manage Sellers')return _people('sellers','Seller');
+    if(feature=='Manage Carriers')return _people('ridePartners','Rider');
+    if(feature=='Manage Delivery Partners')return _people('customers','Delivery Partner',roleFilter:'delivery_partner');
+    if(feature=='Users & Roles')return _users(context);
+    if(feature=='Earnings'||feature=='Payouts')return _earnings();
+    if(feature=='Sales Analytics'||feature=='Reports & Analytics'||feature=='Performance'||feature=='Ratings')return _analytics();
+    if(feature=='Documents'||feature=='Vehicle & Documents')return _documents();
+    if(feature=='Safety & SOS')return _safety(context);
+    if(feature=='Help & Support')return _support(context);
+    if(feature=='Send Notifications')return _announcement(context);
+    return _account(context);
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFFFF8FA),
-    appBar: AppBar(
-      backgroundColor: const Color(0xFFFFF8FA),
-      elevation: 0,
-      foregroundColor: Colors.black87,
-      title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(feature, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 19)),
-        Text(roleLabel, style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w700)),
-      ]),
-      actions: [
-        IconButton(
-          tooltip: 'Help',
-          onPressed: () => _info(context, feature, 'This is a dedicated ALLways section for ' + feature + '.'),
-          icon: const Icon(Icons.help_outline),
-        ),
-      ],
-    ),
-    body: SafeArea(child: _content(context)),
+  Widget _page(List<Widget> children)=>ListView(padding:const EdgeInsets.fromLTRB(16,14,16,28),children:children);
+  Widget _hero(String title,String subtitle)=>Card(elevation:0,color:accent.withOpacity(.08),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[CircleAvatar(radius:28,backgroundColor:accent.withOpacity(.14),child:Icon(icon,color:accent,size:28)),const SizedBox(width:13),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.black54))]))])));
+  Widget _metric(String value,String label,IconData i)=>Expanded(child:Card(elevation:0,child:Padding(padding:const EdgeInsets.all(13),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(i,color:accent,size:20),const SizedBox(height:7),Text(value,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(label,style:const TextStyle(fontSize:10.5,color:Colors.grey))]))));
+
+  Widget _orders(BuildContext context)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection('orders').snapshots(),
+    builder:(context,snap){
+      if(snap.hasError)return _page([_hero(feature,'Live order queue'),_error(snap.error.toString())]);
+      if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+      var docs=snap.data!.docs.where((d){
+        final o=d.data(); final status=(o['status']??'').toString().toLowerCase();
+        if(role=='seller')return (o['sellerId']??o['sellerUid']??'').toString()==user.uid;
+        if(role=='delivery_partner'||role=='carrier')return (o['carrierUid']??'').toString()==user.uid;
+        if(feature=='Ride History')return status=='completed'||status=='delivered';
+        return status!='cancelled';
+      }).toList();
+      docs.sort((a,b)=>_time(b.data()['createdAt']).compareTo(_time(a.data()['createdAt'])));
+      return _page([_hero(feature,'Tap any item for full details and available actions.'),const SizedBox(height:12),
+        Row(children:[_metric(docs.length.toString(),'Records',Icons.receipt_long),_metric(docs.where((d)=>_isDone(d.data()['status'])).length.toString(),'Completed',Icons.check_circle)]),
+        const SizedBox(height:12),
+        if(docs.isEmpty)_empty('Nothing here yet','New work will appear automatically.')
+        else ...docs.map((d){
+          final o=d.data();final id=(o['id']??d.id).toString();final status=(o['status']??'New Order').toString();
+          return Card(elevation:0,child:ListTile(
+            leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(role=='carrier'?Icons.two_wheeler:Icons.receipt_long,color:accent)),
+            title:Text('#'+id,style:const TextStyle(fontWeight:FontWeight.w800)),
+            subtitle:Text((o['name']??o['customerName']??'Customer').toString()+' • '+status),
+            trailing:Text('₹'+_num(o['total']).toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900)),
+            onTap:()=>Navigator.pushNamed(context,'/order-details',arguments:{'orderId':d.id}),
+          ));
+        }),
+      ]);
+    },
   );
 
-  Widget _content(BuildContext context) {
-    if (feature == 'Products' || feature == 'Inventory') return _sellerCatalog();
-    if (feature == 'Orders' || feature == 'Manage Orders') return _orders();
-    if (feature == 'Delivery Requests') return _requests(true);
-    if (feature == 'My Deliveries') return _assigned(true);
-    if (feature == 'Ride Requests') return _requests(false);
-    if (feature == 'My Rides' || feature == 'Ride History') return _assigned(false);
-    if (feature == 'Earnings' || feature == 'Payouts') return _earnings();
-    if (feature == 'Manage Sellers') return _collection('sellers', 'Seller');
-    if (feature == 'Manage Carriers') return _collection('ridePartners', 'Carrier');
-    if (feature == 'Manage Delivery Partners') return _collection('customers', 'Delivery Partner', roleFilter: 'delivery_partner');
-    if (feature == 'Users & Roles') return _collection('customers', 'User', showRole: true);
-    if (feature == 'Sales Analytics' || feature == 'Reports & Analytics' || feature == 'Performance' || feature == 'Ratings') return _metrics();
-    return _structuredMenu(context);
+  Widget _requests(BuildContext context,bool delivery)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection(delivery?'orders':'autoRideRequests').snapshots(),
+    builder:(context,snap){
+      if(snap.hasError)return _page([_hero(feature,'Live request queue'),_error(snap.error.toString())]);
+      if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+      final docs=snap.data!.docs.where((d){
+        final o=d.data();final s=(o['status']??'').toString().toLowerCase();
+        if(delivery)return (o['carrierUid']??'').toString().isEmpty&&s!='delivered'&&s!='cancelled';
+        return s=='searching'&&!(o['rejectedBy'] is List&&List.from(o['rejectedBy']).contains(user.uid));
+      }).toList();
+      return _page([_hero(feature,delivery?'Review nearby delivery assignments.':'Review ride requests within your operating radius.'),const SizedBox(height:12),
+        if(docs.isEmpty)_empty('No requests right now','Stay online and new requests will appear here.')
+        else ...docs.map((d){
+          final o=d.data();final id=(o['id']??d.id).toString();
+          return Card(elevation:0,child:Padding(padding:const EdgeInsets.all(13),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(children:[CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(delivery?Icons.local_shipping:Icons.two_wheeler,color:accent)),const SizedBox(width:10),Expanded(child:Text('#'+id,style:const TextStyle(fontWeight:FontWeight.w900))),Text('₹'+_num(o['total']??o['estimatedFare']).toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900))]),
+            const SizedBox(height:8),Text((o['address']??o['pickupAddress']??'Pickup location').toString(),maxLines:2,overflow:TextOverflow.ellipsis),
+            const SizedBox(height:10),Row(children:[
+              Expanded(child:OutlinedButton(onPressed:()=>_details(context,o),child:const Text('Details'))),
+              const SizedBox(width:8),
+              if(!delivery&&role=='carrier')Expanded(child:OutlinedButton(onPressed:()=>_reject(d),child:const Text('Reject'))),
+              if(!delivery&&role=='carrier')const SizedBox(width:8),
+              Expanded(child:FilledButton(onPressed:()=>_accept(d,delivery),style:FilledButton.styleFrom(backgroundColor:accent),child:const Text('Accept'))),
+            ]),
+          ])));
+        }),
+      ]);
+    },
+  );
+
+  Future<void> _accept(QueryDocumentSnapshot<Map<String,dynamic>> d,bool delivery)async{
+    try{
+      if(delivery){
+        await d.reference.update({'carrierUid':user.uid,'status':'Assigned','carrierAccepted':true,'assignedAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+      }else{
+        await d.reference.update({'driverUid':user.uid,'status':'accepted','driverName':user.displayName??'ALLways Rider','driverPhone':user.phoneNumber??'','acceptedAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+      }
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Request accepted.')));
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not accept: '+e.toString())));}
   }
+  Future<void> _reject(QueryDocumentSnapshot<Map<String,dynamic>> d)async{try{await d.reference.update({'rejectedBy':FieldValue.arrayUnion([user.uid]),'updatedAt':FieldValue.serverTimestamp()});}catch(_){}}
+  void _details(BuildContext context,Map<String,dynamic> o)=>showModalBottomSheet(context:context,showDragHandle:true,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Request details',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),Text((o['name']??o['customerName']??'Customer').toString()),Text((o['phone']??o['customerPhone']??'').toString()),Text((o['address']??o['pickupAddress']??'').toString()),Text('Fare: ₹'+_num(o['total']??o['estimatedFare']).toStringAsFixed(0))])));
 
-  Widget _page(List<Widget> children) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-    children: children,
-  );
-
-  Widget _header(String title, String text) => Card(
-    elevation: 0,
-    color: accent.withOpacity(.07),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 27,
-          backgroundColor: accent.withOpacity(.12),
-          child: Icon(featureIcon, color: accent, size: 27),
-        ),
-        const SizedBox(width: 13),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 4),
-          Text(text, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
-        ])),
-      ]),
-    ),
-  );
-
-  Widget _sellerCatalog() => StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('sellers').doc(user.uid).snapshots(),
-    builder: (context, snap) {
-      if (snap.hasError) return _page([_header(feature, 'Could not read seller data.'), _error(snap.error.toString())]);
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      final data = snap.data!.data() ?? <String, dynamic>{};
-      final raw = data['items'];
-      final items = raw is List ? raw.whereType<Map>().map((x) => Map<String, dynamic>.from(x)).toList() : <Map<String, dynamic>>[];
-      final inStock = items.where((x) => _num(x['stock']) > 0).length;
-      return _page([
-        _header(feature, items.isEmpty ? 'No catalogue items loaded yet.' : 'Your catalogue and stock are shown separately from orders.'),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _metric(items.length.toString(), 'Listed', Icons.inventory_2)),
-          const SizedBox(width: 8),
-          Expanded(child: _metric(inStock.toString(), 'In stock', Icons.check_circle_outline)),
-          const SizedBox(width: 8),
-          Expanded(child: _metric((items.length - inStock).toString(), 'Out', Icons.remove_shopping_cart_outlined)),
-        ]),
-        const SizedBox(height: 12),
-        if (items.isEmpty) _empty('No catalogue items', 'Add products in your seller catalogue and they will appear here.')
-        else ...items.map((x) {
-          final stock = _num(x['stock']);
-          return Card(
-            elevation: 0,
-            child: ListTile(
-              leading: _avatar((x['imageUrl'] ?? x['image'] ?? '').toString()),
-              title: Text((x['name'] ?? x['title'] ?? 'Product').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text('₹' + _num(x['price']).toStringAsFixed(0) + ' • ' + stock.toStringAsFixed(0) + ' in stock\n' + (x['category'] ?? 'Other').toString()),
-              isThreeLine: true,
-              trailing: Icon(stock > 0 ? Icons.check_circle : Icons.warning_amber_rounded, color: stock > 0 ? Colors.green : Colors.orange),
-            ),
+  Widget _products(BuildContext context)=>StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).snapshots(),
+    builder:(context,snap){
+      if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+      final data=snap.data!.data()??{};final raw=data['items'];final items=raw is List?raw.whereType<Map>().map((x)=>Map<String,dynamic>.from(x)).toList():<Map<String,dynamic>>[];
+      return _page([_hero(feature,'Manage products, pricing and stock in one place.'),const SizedBox(height:12),
+        Row(children:[_metric(items.length.toString(),'Products',Icons.inventory_2),_metric(items.where((x)=>_num(x['stock'])>0).length.toString(),'In stock',Icons.check_circle)]),
+        const SizedBox(height:12),
+        FilledButton.icon(onPressed:()=>_addProduct(context,data),icon:const Icon(Icons.add),label:const Text('Add product')),
+        const SizedBox(height:10),
+        if(items.isEmpty)_empty('No products','Add your first product to start selling.')
+        else ...items.asMap().entries.map((entry){
+          final i=entry.key,x=entry.value;final stock=_num(x['stock']);
+          return Card(elevation:0,child:ListTile(
+            leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(Icons.inventory_2,color:accent)),
+            title:Text((x['name']??'Product').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
+            subtitle:Text('₹'+_num(x['price']).toStringAsFixed(0)+' • Stock '+stock.toStringAsFixed(0)+' • '+(x['category']??'Other').toString()),
+            trailing:PopupMenuButton<String>(onSelected:(v)=>_productAction(v,i,data,items),itemBuilder:(_)=>const[PopupMenuItem(value:'plus',child:Text('Add stock')),PopupMenuItem(value:'minus',child:Text('Remove stock')),PopupMenuItem(value:'delete',child:Text('Delete'))]),
           );
         }),
       ]);
     },
   );
 
-  Widget _orders() => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('orders').snapshots(),
-    builder: (context, snap) {
-      if (snap.hasError) return _page([_header(feature, 'Order management'), _error(snap.error.toString())]);
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      final docs = snap.data!.docs.where((d) {
-        final o = d.data();
-        if (role == 'seller') return (o['sellerId'] ?? o['sellerUid'] ?? '').toString() == user.uid;
-        if (role == 'delivery_partner' || role == 'carrier') return (o['carrierUid'] ?? '').toString() == user.uid;
-        return true;
-      }).toList()..sort((a,b) => _time(b.data()['createdAt']).compareTo(_time(a.data()['createdAt'])));
-      return _page([
-        _header(feature, 'Every order is kept in this dedicated section.'),
-        const SizedBox(height: 12),
-        _metric(docs.length.toString(), 'Orders', Icons.receipt_long),
-        const SizedBox(height: 12),
-        if (docs.isEmpty) _empty('No orders here', 'Matching orders will appear automatically.')
-        else ...docs.map((d) => _orderTile(context, d)),
-      ]);
-    },
-  );
-
-  Widget _requests(bool delivery) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('orders').snapshots(),
-    builder: (context, snap) {
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      final docs = snap.data!.docs.where((d) {
-        final o = d.data();
-        final s = (o['status'] ?? '').toString().toLowerCase();
-        final assigned = (o['carrierUid'] ?? '').toString();
-        if (assigned == user.uid && s == 'pending_acceptance') return true;
-        if (assigned.isNotEmpty) return false;
-        return s != 'delivered' && s != 'cancelled' && (delivery || s.contains('ride'));
-      }).toList();
-      return _page([
-        _header(feature, delivery ? 'Review delivery offers before accepting.' : 'Keep ride requests separate from completed rides.'),
-        const SizedBox(height: 12),
-        if (docs.isEmpty) _empty('No requests', 'New requests will appear here when available.')
-        else ...docs.map((d) => _requestTile(context, d, delivery)),
-      ]);
-    },
-  );
-
-  Widget _assigned(bool delivery) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('orders').where('carrierUid', isEqualTo: user.uid).snapshots(),
-    builder: (context, snap) {
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      final docs = snap.data!.docs.where((d) {
-        final s = (d.data()['status'] ?? '').toString().toLowerCase();
-        return delivery ? s != 'delivered' && s != 'cancelled' : s == 'delivered';
-      }).toList();
-      return _page([
-        _header(feature, delivery ? 'Your active delivery queue.' : 'Your completed ride history.'),
-        const SizedBox(height: 12),
-        if (docs.isEmpty) _empty('Nothing here yet', 'Assigned or completed work will appear automatically.')
-        else ...docs.map((d) => _orderTile(context, d)),
-      ]);
-    },
-  );
-
-  Widget _earnings() => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('orders').where('carrierUid', isEqualTo: user.uid).snapshots(),
-    builder: (context, snap) {
-      num total = 0; int done = 0;
-      for (final d in snap.data?.docs ?? const <QueryDocumentSnapshot<Map<String,dynamic>>>[]) {
-        final o = d.data();
-        if ((o['status'] ?? '').toString().toLowerCase() == 'delivered') {
-          done++;
-          total += _num(o['deliveryFee'] ?? o['partnerEarning'] ?? o['total']);
-        }
-      }
-      return _page([
-        _header(feature, 'Completed work and earnings stay together here.'),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _metric('₹' + total.toStringAsFixed(0), 'Completed earnings', Icons.currency_rupee)),
-          const SizedBox(width: 8),
-          Expanded(child: _metric(done.toString(), 'Completed', Icons.check_circle_outline)),
-        ]),
-        const SizedBox(height: 14),
-        if (snap.hasError) _error(snap.error.toString())
-        else if (snap.data == null) const Center(child: CircularProgressIndicator())
-        else if (snap.data!.docs.isEmpty) _empty('No completed work', 'Your earnings history will appear after completed work.')
-        else ...snap.data!.docs.where((d) => (d.data()['status'] ?? '').toString().toLowerCase() == 'delivered').map((d) {
-          final o = d.data();
-          return Card(elevation: 0, child: ListTile(
-            leading: CircleAvatar(backgroundColor: accent.withOpacity(.10), child: Icon(Icons.currency_rupee, color: accent)),
-            title: Text('#' + (o['id'] ?? d.id).toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text((o['name'] ?? o['customerName'] ?? 'Customer').toString()),
-            trailing: Text('₹' + _num(o['deliveryFee'] ?? o['partnerEarning'] ?? o['total']).toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w900)),
-          ));
-        }),
-      ]);
-    },
-  );
-
-  Widget _collection(String name, String label, {String? roleFilter, bool showRole = false}) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection(name).snapshots(),
-    builder: (context, snap) {
-      if (snap.hasError) return _page([_header(feature, 'Live ' + label + ' records.'), _error(snap.error.toString())]);
-      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-      var docs = snap.data!.docs.toList();
-      if (roleFilter != null) docs = docs.where((d) => (d.data()['role'] ?? '').toString().toLowerCase() == roleFilter).toList();
-      return _page([
-        _header(feature, 'Dedicated ' + label.toLowerCase() + ' management.'),
-        const SizedBox(height: 12),
-        _metric(docs.length.toString(), label == 'User' ? 'Accounts' : label, Icons.people_outline),
-        const SizedBox(height: 12),
-        if (docs.isEmpty) _empty('No records found', 'No matching records are currently available.')
-        else ...docs.map((d) {
-          final x = d.data();
-          final n = (x['businessName'] ?? x['shopName'] ?? x['displayName'] ?? x['name'] ?? x['email'] ?? d.id).toString();
-          final s = (x['status'] ?? x['dutyStatus'] ?? 'active').toString();
-          return Card(elevation: 0, child: ListTile(
-            leading: CircleAvatar(backgroundColor: accent.withOpacity(.10), child: Icon(featureIcon, color: accent)),
-            title: Text(n, style: const TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text(showRole ? (x['role'] ?? 'customer').toString() + ' • ' + s : s),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _info(context, n, (x['email'] ?? '').toString() + '\n' + (x['mobileNumber'] ?? x['phone'] ?? '').toString() + '\n' + s),
-          ));
-        }),
-      ]);
-    },
-  );
-
-  Widget _metrics() => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance.collection('orders').snapshots(),
-    builder: (context, snap) {
-      final all = snap.data?.docs ?? const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
-      final docs = all.where((d) {
-        final o=d.data();
-        if (role == 'seller') return (o['sellerId'] ?? o['sellerUid'] ?? '').toString() == user.uid;
-        if (role == 'delivery_partner' || role == 'carrier') return (o['carrierUid'] ?? '').toString() == user.uid;
-        return true;
-      }).toList();
-      final completed = docs.where((d) => (d.data()['status'] ?? '').toString().toLowerCase() == 'delivered').length;
-      num value=0; for(final d in docs) value += _num(d.data()['total']);
-      return _page([
-        _header(feature, 'Focused metrics from live ALLways data.'),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _metric(docs.length.toString(), 'Records', Icons.receipt_long)),
-          const SizedBox(width: 8),
-          Expanded(child: _metric(completed.toString(), 'Completed', Icons.check_circle_outline)),
-          const SizedBox(width: 8),
-          Expanded(child: _metric('₹' + value.toStringAsFixed(0), 'Value', Icons.currency_rupee)),
-        ]),
-        const SizedBox(height: 16),
-        Card(elevation: 0, child: ListTile(
-          leading: Icon(featureIcon, color: accent),
-          title: Text(feature, style: const TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: const Text('This section is isolated from day-to-day operations so it stays easy to use.'),
-        )),
-      ]);
-    },
-  );
-
-  Widget _structuredMenu(BuildContext context) {
-    List<(String,IconData)> options;
-    if (feature == 'Shop Profile') {
-      options=[('Business details',Icons.storefront),('Opening hours',Icons.schedule),('Delivery settings',Icons.local_shipping),('Seller photo',Icons.image)];
-    } else if (feature == 'Offers') {
-      options=[('Active offers',Icons.local_offer),('Create offer',Icons.add_circle_outline),('Offer history',Icons.history)];
-    } else if (feature == 'Incentives') {
-      options=[('Current incentives',Icons.card_giftcard),('Daily target',Icons.flag),('Bonus history',Icons.history)];
-    } else if (feature == 'Documents' || feature == 'Vehicle & Documents') {
-      options=[('Verification status',Icons.verified_user),('Vehicle documents',Icons.description),('Update document',Icons.upload_file)];
-    } else if (feature == 'Safety & SOS') {
-      options=[('Emergency contact',Icons.contact_phone),('SOS',Icons.sos),('Trip safety',Icons.shield)];
-    } else if (feature == 'Help & Support') {
-      options=[('Order issue',Icons.receipt_long),('Account help',Icons.support_agent),('Contact support',Icons.support_agent)];
-    } else {
-      options=[('Notifications',Icons.notifications_outlined),('Location',Icons.location_on_outlined),('Language',Icons.language),('Account',Icons.person)];
-    }
-    return _page([
-      _header(feature, 'Each option is kept inside its own role section.'),
-      const SizedBox(height: 12),
-      ...options.map((x) => Card(elevation: 0, child: ListTile(
-        leading: CircleAvatar(backgroundColor: accent.withOpacity(.10), child: Icon(x.$2, color: accent)),
-        title: Text(x.$1, style: const TextStyle(fontWeight: FontWeight.w800)),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => _info(context, x.$1, x.$1 + ' is isolated from the other ' + feature + ' controls.'),
-      ))),
-    ]);
+  Future<void> _addProduct(BuildContext context,Map<String,dynamic> data)async{
+    final name=TextEditingController(),price=TextEditingController(),stock=TextEditingController(text:'10'),category=TextEditingController();
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Add product'),content:SingleChildScrollView(child:Column(children:[
+      TextField(controller:name,decoration:const InputDecoration(labelText:'Product name')),TextField(controller:category,decoration:const InputDecoration(labelText:'Category')),
+      TextField(controller:price,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Price')),TextField(controller:stock,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Stock')),
+    ])),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Add'))]));
+    if(ok!=true)return;
+    final item={'id':'seller_'+DateTime.now().millisecondsSinceEpoch.toString(),'name':name.text.trim(),'category':category.text.trim().isEmpty?'Other':category.text.trim(),'price':double.tryParse(price.text.trim())??0,'stock':double.tryParse(stock.text.trim())??0};
+    final items=(data['items'] is List)?List<Map<String,dynamic>>.from((data['items'] as List).whereType<Map>().map((x)=>Map<String,dynamic>.from(x))):<Map<String,dynamic>>[];
+    items.add(item);
+    await FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({'items':items,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+  }
+  Future<void> _productAction(String action,int index,Map<String,dynamic> data,List<Map<String,dynamic>> items)async{
+    if(index<0||index>=items.length)return;final x=Map<String,dynamic>.from(items[index]);var stock=_num(x['stock']);
+    if(action=='plus')stock+=1;else if(action=='minus')stock=stock>0?stock-1:0;else if(action=='delete'){items.removeAt(index);await FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({'items':items},SetOptions(merge:true));return;}
+    x['stock']=stock;items[index]=x;await FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({'items':items},SetOptions(merge:true));
   }
 
-  Widget _orderTile(BuildContext context, QueryDocumentSnapshot<Map<String,dynamic>> d) {
-    final o=d.data(); final status=(o['status']??'New Order').toString();
-    return Card(elevation:0, child:ListTile(
-      leading:CircleAvatar(backgroundColor:accent.withOpacity(.10),child:Icon(role=='carrier'?Icons.two_wheeler:Icons.receipt_long,color:accent)),
-      title:Text('#'+(o['id']??d.id).toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
-      subtitle:Text((o['name']??o['customerName']??'Customer').toString()+' • '+status),
-      trailing:Text('₹'+_num(o['total']).toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900)),
-      onTap:()=>_info(context,'#'+(o['id']??d.id).toString(),'Status: '+status+'\nAddress: '+(o['address']??'Not available').toString()+'\nPhone: '+(o['phone']??'').toString()),
-    ));
+  Widget _shopProfile(BuildContext context)=>StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).snapshots(),
+    builder:(context,snap){final d=snap.data?.data()??{};return _page([_hero('Shop Profile','Control the information customers see.'),const SizedBox(height:12),
+      _editable(context,'Business name',(d['businessName']??d['name']??'').toString(),'businessName'),
+      _editable(context,'Description',(d['description']??'').toString(),'description',maxLines:3),
+      _editable(context,'About',(d['about']??'').toString(),'about',maxLines:4),
+      _editable(context,'Opening hours',(d['openingHours']??'').toString(),'openingHours'),
+      Card(child:SwitchListTile(title:const Text('Shop open now'),value:d['isOpen']==true,onChanged:(v)=>FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({'isOpen':v},SetOptions(merge:true)))),
+    ]);}
+  Widget _editable(BuildContext context,String label,String value,String field,{int maxLines=1})=>Card(elevation:0,child:ListTile(title:Text(label,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(value.isEmpty?'Not set':value),trailing:const Icon(Icons.edit_outlined),onTap:()async{
+    final c=TextEditingController(text:value);final ok=await showDialog<bool>(context:context,builder:(d)=>AlertDialog(title:Text('Edit '+label),content:TextField(controller:c,maxLines:maxLines,decoration:InputDecoration(labelText:label)),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Save'))]));if(ok==true)await FirebaseFirestore.instance.collection('sellers').doc(user.uid).set({field:c.text.trim()},SetOptions(merge:true));
+  }));
+
+  Widget _offers(BuildContext context)=>_page([_hero('Offers','Create and review shop offers.'),const SizedBox(height:12),FilledButton.icon(onPressed:()=>_createOffer(context),icon:const Icon(Icons.add),label:const Text('Create offer')),const SizedBox(height:10),
+    StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').orderBy('createdAt',descending:true).snapshots(),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.docs.isEmpty)return _empty('No offers','Create an offer and it will be saved to your seller account.');return Column(children:s.data!.docs.map((d)=>Card(child:ListTile(title:Text((d.data()['title']??'Offer').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((d.data()['details']??'').toString()),trailing:Switch(value:d.data()['active']!=false,onChanged:(v)=>d.reference.update({'active':v}) ))).toList());})
+  ]);
+  Future<void> _createOffer(BuildContext context)async{
+    final t=TextEditingController(),d=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Create offer'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:t,decoration:const InputDecoration(labelText:'Offer title')),TextField(controller:d,decoration:const InputDecoration(labelText:'Details'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Create'))]));if(ok==true)await FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').add({'title':t.text.trim(),'details':d.text.trim(),'active':true,'createdAt':FieldValue.serverTimestamp()});
   }
 
-  Widget _requestTile(BuildContext context, QueryDocumentSnapshot<Map<String,dynamic>> d, bool delivery) {
-    final o=d.data();
-    final mine=(o['carrierUid']??'').toString()==user.uid;
-    return Card(elevation:0,child:Padding(
-      padding:const EdgeInsets.all(12),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[
-          CircleAvatar(backgroundColor:accent.withOpacity(.10),child:Icon(delivery?Icons.local_shipping:Icons.two_wheeler,color:accent)),
-          const SizedBox(width:10),
-          Expanded(child:Text('#'+(o['id']??d.id).toString(),style:const TextStyle(fontWeight:FontWeight.w900))),
-          Text('₹'+_num(o['total']).toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900)),
-        ]),
-        const SizedBox(height:8),
-        Text((o['address']??'Pickup location unavailable').toString()),
-        const SizedBox(height:8),
-        Row(children:[
-          Expanded(child:OutlinedButton(onPressed:()=>_info(context,'Request details','Customer: '+(o['name']??o['customerName']??'').toString()+'\nPhone: '+(o['phone']??'').toString()),child:const Text('Details'))),
-          if(mine) ...[
-            const SizedBox(width:8),
-            Expanded(child:FilledButton(onPressed:()=>_accept(context,d),child:const Text('Accept'))),
-          ],
-        ]),
-      ]),
-    ));
-  }
+  Widget _people(String collection,String label,{String? roleFilter})=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection(collection).snapshots(),builder:(context,s){if(s.hasError)return _page([_error(s.error.toString())]);if(!s.hasData)return const Center(child:CircularProgressIndicator());var docs=s.data!.docs;if(roleFilter!=null)docs=docs.where((d)=>(d.data()['role']??'').toString().toLowerCase()==roleFilter).toList();return _page([_hero(feature,'Review '+label.toLowerCase()+' accounts and status.'),_metricRow(docs.length.toString(),label),...docs.map((d){final x=d.data();final n=(x['businessName']??x['shopName']??x['name']??x['displayName']??x['email']??d.id).toString();final status=(x['status']??x['dutyStatus']??'active').toString();return Card(child:ListTile(title:Text(n,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(status+' • '+(x['email']??'').toString()),trailing:PopupMenuButton<String>(onSelected:(v)=>d.reference.set({'status':v},SetOptions(merge:true)),itemBuilder:(_)=>const[PopupMenuItem(value:'approved',child:Text('Approve')),PopupMenuItem(value:'suspended',child:Text('Suspend')),PopupMenuItem(value:'offline',child:Text('Offline'))]))});])});
+  Widget _metricRow(String v,String l)=>Card(elevation:0,color:accent.withOpacity(.06),child:Padding(padding:const EdgeInsets.all(14),child:Row(children:[Icon(Icons.people_outline,color:accent),const SizedBox(width:10),Text(v,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w900)),const SizedBox(width:8),Text(l)])));
 
-  Future<void> _accept(BuildContext context, QueryDocumentSnapshot<Map<String,dynamic>> doc) async {
-    try {
-      await doc.reference.update({
-        'status':'Assigned',
-        'carrierAccepted':true,
-        'assignmentRejected':false,
-        'statusNote':role=='carrier'?'Rider accepted the request':'Delivery partner accepted the assignment',
-        'updatedAt':FieldValue.serverTimestamp(),
-      });
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Request accepted.')));
-    } catch(e) {
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not accept request: '+e.toString())));
-    }
-  }
+  Widget _users(BuildContext context)=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('customers').snapshots(),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs;return _page([_hero('Users & Roles','Manage access without leaving the app.'),_metricRow(docs.length.toString(),'Accounts'),...docs.map((d){final x=d.data();final role=(x['role']??'customer').toString();return Card(child:ListTile(title:Text((x['displayName']??x['email']??d.id).toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((x['email']??'').toString()),trailing:DropdownButton<String>(value:['customer','seller','delivery_partner','carrier','admin'].contains(role)?role:'customer',items:const['customer','seller','delivery_partner','carrier','admin'].map((r)=>DropdownMenuItem(value:r,child:Text(r))).toList(),onChanged:(v)=>v==null?null:d.reference.update({'role':v}) )));})]);});
 
-  Widget _metric(String value,String label,IconData icon)=>Card(
-    elevation:0,
-    color:accent.withOpacity(.07),
-    child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Icon(icon,color:accent,size:20),const SizedBox(height:8),
-      Text(value,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-      Text(label,maxLines:2,style:const TextStyle(fontSize:10.5)),
-    ])),
-  );
+  Widget _earnings()=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('orders').where('carrierUid',isEqualTo:user.uid).snapshots(),builder:(context,s){num total=0;int done=0;for(final d in s.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]){if(_isDone(d.data()['status'])){done++;total+=_num(d.data()['deliveryFee']??d.data()['partnerEarning']??d.data()['total']);}}return _page([_hero(feature,'Live earnings from completed work.'),const SizedBox(height:12),Row(children:[_metric('₹'+total.toStringAsFixed(0),'Completed earnings',Icons.currency_rupee),_metric(done.toString(),'Completed',Icons.check_circle)]),const SizedBox(height:12),_empty(done==0?'No completed work':'Earnings updated','Completed deliveries and rides are counted automatically.')]);});
 
-  Widget _empty(String title,String message)=>Card(
-    elevation:0,
-    child:Padding(padding:const EdgeInsets.all(20),child:Column(children:[
-      Icon(featureIcon,color:accent,size:36),const SizedBox(height:10),
-      Text(title,style:const TextStyle(fontWeight:FontWeight.w900)),
-      const SizedBox(height:5),Text(message,textAlign:TextAlign.center,style:const TextStyle(color:Colors.black54)),
-    ])),
-  );
+  Widget _analytics()=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('orders').snapshots(),builder:(context,s){final docs=s.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];final done=docs.where((d)=>_isDone(d.data()['status'])).length;num value=0;for(final d in docs)value+=_num(d.data()['total']);return _page([_hero(feature,'Simple live performance metrics.'),const SizedBox(height:12),Row(children:[_metric(docs.length.toString(),'Orders',Icons.receipt_long),_metric(done.toString(),'Completed',Icons.check_circle),_metric('₹'+value.toStringAsFixed(0),'Order value',Icons.currency_rupee)]),const SizedBox(height:12),Card(child:ListTile(leading:Icon(Icons.insights,color:accent),title:const Text('Live data'),subtitle:const Text('Metrics update automatically from Firestore as orders change.')))]);});
 
-  Widget _error(String message)=>Card(elevation:0,child:Padding(padding:const EdgeInsets.all(14),child:Text(message,style:const TextStyle(color:Colors.red))));
+  Widget _documents()=>_page([_hero(feature,'Keep verification and vehicle information easy to review.'),_infoTile('Verification status','Your approved role remains linked to your account.'),_infoTile('Documents','Vehicle and identity documents submitted during onboarding are kept with the role profile.'),_infoTile('Update details','Use Profile & Settings or contact ALLways support when a document needs replacement.')]);
+  Widget _infoTile(String a,String b)=>Card(child:ListTile(leading:Icon(Icons.verified_user_outlined,color:accent),title:Text(a,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(b),trailing:const Icon(Icons.chevron_right)));
 
-  Widget _avatar(String url) {
-    if(url.isEmpty)return CircleAvatar(backgroundColor:accent.withOpacity(.10),child:Icon(Icons.inventory_2,color:accent));
-    return CircleAvatar(backgroundImage:NetworkImage(url),backgroundColor:accent.withOpacity(.10));
-  }
+  Widget _safety(BuildContext context)=>_page([_hero('Safety & SOS','Emergency tools stay one tap away.'),Card(child:ListTile(leading:const Icon(Icons.sos,color:Colors.red),title:const Text('SOS / Emergency alert',style:TextStyle(fontWeight:FontWeight.w800)),subtitle:const Text('Send an alert to the ALLways operations team.'),onTap:()async{final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Send SOS?'),content:const Text('Use this only for a genuine emergency.'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Send SOS'))]));if(ok==true){await FirebaseFirestore.instance.collection('sosAlerts').add({'uid':user.uid,'role':role,'createdAt':FieldValue.serverTimestamp(),'status':'open'});if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('SOS alert sent to ALLways operations.')));}})),_infoTile('Emergency contact','Keep a trusted contact ready for active trips.'),_infoTile('Trip safety','Live tracking and calling are available during active work.')]);
 
+  Widget _support(BuildContext context)=>_page([_hero('Help & Support','Create a support request and keep it attached to your account.'),FilledButton.icon(onPressed:()=>_createTicket(context),icon:const Icon(Icons.support_agent),label:const Text('Contact ALLways support')),const SizedBox(height:12),_infoTile('Order issue','Report a delivery, customer or order problem.'),_infoTile('Account help','Get help with profile, verification or access.')]);
+  Future<void> _createTicket(BuildContext context)async{final c=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(d)=>AlertDialog(title:const Text('Support request'),content:TextField(controller:c,maxLines:4,decoration:const InputDecoration(hintText:'Describe the issue')),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Send'))]));if(ok==true&&c.text.trim().isNotEmpty){await FirebaseFirestore.instance.collection('support_tickets').add({'uid':user.uid,'role':role,'message':c.text.trim(),'status':'open','createdAt':FieldValue.serverTimestamp()});if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Support request submitted.')));}}
+
+  Widget _announcement(BuildContext context){final title=TextEditingController(),body=TextEditingController();return _page([_hero('Send Notifications','Create an announcement record for ALLways users.'),TextField(controller:title,decoration:const InputDecoration(labelText:'Title')),const SizedBox(height:10),TextField(controller:body,maxLines:4,decoration:const InputDecoration(labelText:'Message')),const SizedBox(height:12),FilledButton.icon(onPressed:()async{if(title.text.trim().isEmpty||body.text.trim().isEmpty)return;await FirebaseFirestore.instance.collection('announcements').add({'title':title.text.trim(),'body':body.text.trim(),'type':'announcement','createdAt':FieldValue.serverTimestamp(),'createdBy':user.uid});if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Announcement saved.')));},icon:const Icon(Icons.campaign),label:const Text('Publish announcement'))]);}
+
+  Widget _account(BuildContext context)=>_page([_hero(feature,'Account controls for this role.'),Card(child:ListTile(leading:const Icon(Icons.email_outlined),title:const Text('Approved email'),subtitle:Text(user.email??'Not available'))),Card(child:ListTile(leading:const Icon(Icons.logout),title:const Text('Sign out'),onTap:()=>FirebaseAuth.instance.signOut()))]);
+
+  Widget _empty(String title,String message)=>Card(elevation:0,child:Padding(padding:const EdgeInsets.all(24),child:Column(children:[Icon(icon,color:accent,size:38),const SizedBox(height:10),Text(title,style:const TextStyle(fontWeight:FontWeight.w900)),const SizedBox(height:5),Text(message,textAlign:TextAlign.center,style:const TextStyle(color:Colors.grey))])));
+  Widget _error(String message)=>Card(child:Padding(padding:const EdgeInsets.all(14),child:Text(message,style:const TextStyle(color:Colors.red))));
   num _num(dynamic v)=>v is num?v:num.tryParse((v??'').toString().replaceAll(',',''))??0;
-  int _time(dynamic v) {
-    if(v is Timestamp)return v.millisecondsSinceEpoch;
-    if(v is num)return v.toInt();
-    return DateTime.tryParse((v??'').toString())?.millisecondsSinceEpoch??0;
-  }
-
-  void _info(BuildContext context,String title,String message)=>showModalBottomSheet<void>(
-    context:context,showDragHandle:true,
-    builder:(_)=>SafeArea(child:Padding(
-      padding:const EdgeInsets.fromLTRB(20,8,20,24),
-      child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text(title,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900)),
-        const SizedBox(height:10),Text(message),
-      ]),
-    )),
-  );
+  int _time(dynamic v)=>v is Timestamp?v.millisecondsSinceEpoch:v is num?v.toInt():DateTime.tryParse((v??'').toString())?.millisecondsSinceEpoch??0;
+  bool _isDone(dynamic v){final s=(v??'').toString().toLowerCase();return s=='delivered'||s=='completed'||s=='cancelled';}
 }
