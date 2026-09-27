@@ -84,20 +84,24 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
 
   void open(String feature)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>RoleFeatureScreen(role:widget.role,feature:feature,user:widget.user,accent:accent))).then((_)=>_load());
 
-  @override Widget build(BuildContext context)=>Scaffold(
-    backgroundColor:AllwaysColors.background,
-    body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),_categoryPage('Analytics'),_categoryPage('Account')])),
-    bottomNavigationBar:AllwaysBottomNav(
-      selectedIndex:tab,
-      onSelected:(v)=>setState(()=>tab=v),
-      items:[
-        (icon:Icons.home_outlined,activeIcon:Icons.home,label:'Home'),
-        (icon:admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,activeIcon:admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,label:admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),
-        (icon:admin?Icons.analytics:Icons.account_balance_wallet,activeIcon:admin?Icons.analytics:Icons.account_balance_wallet,label:admin?'Analytics':'Earnings'),
-        (icon:Icons.person_outline,activeIcon:Icons.person,label:'Account'),
-      ],
-    ),
-  );
+  @override Widget build(BuildContext context){
+    // Carrier uses its own dedicated ride-partner application shell.
+    if(carrier)return widget.child;
+    return Scaffold(
+      backgroundColor:Theme.of(context).colorScheme.surface,
+      body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(admin?'Operations':delivery?'Deliveries':'Orders'),_categoryPage('Analytics'),_categoryPage('Account')])),
+      bottomNavigationBar:AllwaysBottomNav(
+        selectedIndex:tab,
+        onSelected:(v)=>setState(()=>tab=v),
+        items:[
+          (icon:Icons.home_outlined,activeIcon:Icons.home,label:'Home'),
+          (icon:admin?Icons.tune:delivery?Icons.local_shipping:Icons.receipt_long,activeIcon:admin?Icons.tune:delivery?Icons.local_shipping:Icons.receipt_long,label:admin?'Operations':delivery?'Deliveries':'Orders'),
+          (icon:admin?Icons.analytics:Icons.account_balance_wallet,activeIcon:admin?Icons.analytics:Icons.account_balance_wallet,label:admin?'Analytics':'Earnings'),
+          (icon:Icons.person_outline,activeIcon:Icons.person,label:'Account'),
+        ],
+      ),
+    );
+  }
 
   Widget _home()=>RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,24),children:[
     Row(children:[Icon(icon,color:accent,size:30),const SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),Text(widget.user.email??'',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.grey))]))]),
