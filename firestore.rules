@@ -140,7 +140,7 @@ service cloud.firestore {
 
     match /fcmTokens/{uid} {
       allow create, update, delete: if signedIn() && request.auth.uid == uid;
-      allow read: if signedIn();
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
 
       match /tokens/{tokenId} {
         allow create, update, delete: if signedIn() && request.auth.uid == uid;
@@ -192,8 +192,10 @@ service cloud.firestore {
     }
 
     match /onboarding_requests/{requestId} {
-      allow create: if signedIn();
-      allow read, update, delete: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
     match /sellers/{uid} {
