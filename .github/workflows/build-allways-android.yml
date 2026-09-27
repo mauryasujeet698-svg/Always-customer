@@ -679,9 +679,17 @@ jobs:
             exit 1
           fi
 
-          fatal_log="$(adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
+          # Only inspect logs emitted by the ALLways process. The previous
+          # global AndroidRuntime grep falsely matched the Android Monkey
+          # launcher itself (com.android.commands.monkey), even when ALLways
+          # had launched successfully.
+          app_pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+          fatal_log=""
+          if [ -n "$app_pid" ]; then
+            fatal_log="$(adb logcat -d -t 1000 --pid="$app_pid" | grep -E 'FATAL EXCEPTION|AndroidRuntime.*FATAL|Process: com\\.allways\\.app' || true)"
+          fi
           if [ -n "$fatal_log" ]; then
-            echo "ERROR: fatal Android runtime exception detected."
+            echo "ERROR: fatal Android runtime exception detected in ALLways process."
             echo "$fatal_log"
             exit 1
           fi
