@@ -58,7 +58,7 @@ class AllwaysBottomNav extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     decoration: BoxDecoration(
                       color: selectedIndex == i
-                          ? AllwaysColors.primarySoft
+                          ? Theme.of(context).colorScheme.primaryContainer
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -117,9 +117,9 @@ class AllwaysCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: color ?? AllwaysColors.surface,
+        color: color ?? Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AllwaysColors.border),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0D000000),
