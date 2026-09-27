@@ -31,6 +31,7 @@ import 'screens/notifications_settings_screen.dart';
 import 'screens/wishlist_screen.dart';
 import 'screens/order_details_screen.dart';
 import 'role_dashboard_screen.dart';
+import 'admin_cms_screen.dart';
 
 const adminEmail='mauryasujeet698@gmail.com';
 
@@ -1197,15 +1198,33 @@ class _ShellState extends State<Shell> {
 }
 
 class ShopPage extends StatefulWidget{
-  final List<Product> products;final bool loading;final String? error;final Future<void> Function({bool silent}) onRefresh;final void Function(Product) onAdd;final Map<String,CartItem> cart;final void Function(String,int) onQty;final User? user;final Set<String> wishlistIds;final Future<void> Function(Product) onWishlist;final VoidCallback onOpenCart;final List<Map<String,dynamic>> addresses;
+  final List<Product> products;
+  final bool loading;
+  final String? error;
+  final Future<void> Function({bool silent}) onRefresh;
+  final void Function(Product) onAdd;
+  final Map<String,CartItem> cart;
+  final void Function(String,int) onQty;
+  final User? user;
+  final Set<String> wishlistIds;
+  final Future<void> Function(Product) onWishlist;
+  final VoidCallback onOpenCart;
+  final List<Map<String,dynamic>> addresses;
   const ShopPage({super.key,required this.products,required this.loading,required this.error,required this.onRefresh,required this.onAdd,required this.cart,required this.onQty,required this.user,required this.wishlistIds,required this.onWishlist,required this.onOpenCart,required this.addresses});
   @override State<ShopPage> createState()=>_ShopPageState();
 }
+
 class _ShopPageState extends State<ShopPage>{
-  final searchController=TextEditingController();final stt.SpeechToText speech=stt.SpeechToText();
-  String search='',location='Select delivery location';bool locating=false,listening=false;int bannerIndex=0;Timer? bannerTimer;
+  final searchController=TextEditingController();
+  final stt.SpeechToText speech=stt.SpeechToText();
+  String search='',location='Select delivery location';
+  bool locating=false,listening=false;
+  Timer? bannerTimer;
+  int bannerIndex=0;
+  static const green=Color(0xFF0C8A4B);
   static const preferred=['Popular Near You','Daily Needs','Fresh Fruits & Vegetables','Dairy','Grocery','Bakery','Snacks','Beverages','Breakfast Essentials','Rice & Grains','Atta & Flour','Pulses & Dal','Cooking Oil','Spices & Masala','Salt & Sugar','Dry Fruits & Nuts','Tea & Coffee','Biscuits & Cookies','Chocolates & Sweets','Instant Food','Noodles & Pasta','Sauces & Spreads','Pickles & Chutneys','Canned & Packaged Food','Frozen Food','Ice Cream','Meat & Seafood','Eggs','Personal Care','Bath & Body','Hair Care','Oral Care','Skin Care','Baby Care','Health & Wellness','Home Care','Cleaning Essentials','Laundry Care','Dishwashing','Kitchen Essentials','Paper & Tissue','Pet Care','Stationery','Electronics','Mobile Accessories','Household Essentials','Pooja Essentials','Organic & Natural','Local Specials','Seasonal Products'];
   static const icons={'All':'▦','Dairy':'🥛','Grocery':'🛒','Fruits & Vegetables':'🥬','Bakery':'🥖','Snacks':'🍟','Beverages':'🥤','Breakfast Essentials':'🍳','Rice & Grains':'🍚','Atta & Flour':'🌾','Pulses & Dal':'🫘','Cooking Oil':'🫗','Spices & Masala':'🌶️','Salt & Sugar':'🧂','Dry Fruits & Nuts':'🥜','Tea & Coffee':'☕','Biscuits & Cookies':'🍪','Chocolates & Sweets':'🍫','Instant Food':'🍜','Noodles & Pasta':'🍝','Sauces & Spreads':'🥫','Pickles & Chutneys':'🫙','Canned & Packaged Food':'📦','Frozen Food':'🧊','Ice Cream':'🍦','Meat & Seafood':'🥩','Eggs':'🥚','Personal Care':'🧴','Bath & Body':'🛁','Hair Care':'💇','Oral Care':'🪥','Skin Care':'🧖','Baby Care':'🍼','Health & Wellness':'💊','Home Care':'🏠','Cleaning Essentials':'🧹','Laundry Care':'🧺','Dishwashing':'🧽','Kitchen Essentials':'🍳','Paper & Tissue':'🧻','Pet Care':'🐾','Stationery':'📚','Electronics':'🔌','Mobile Accessories':'📱','Household Essentials':'🧰','Pooja Essentials':'🪔','Organic & Natural':'🌿','Local Specials':'⭐','Seasonal Products':'🎉'};
+
   @override void initState(){super.initState();syncLocation();bannerTimer=Timer.periodic(const Duration(seconds:4),(_){if(mounted)setState(()=>bannerIndex++);});}
   @override void dispose(){bannerTimer?.cancel();searchController.dispose();speech.stop();super.dispose();}
   @override void didUpdateWidget(covariant ShopPage old){super.didUpdateWidget(old);if(widget.addresses!=old.addresses)syncLocation();}
@@ -1216,89 +1235,81 @@ class _ShopPageState extends State<ShopPage>{
   List<String> get cats{final found=<String>{for(final p in widget.products)if(p.category.trim().isNotEmpty)p.category.trim()};final out=<String>[];for(final x in preferred)if(found.contains(x))out.add(x);out.addAll(found.where((x)=>!out.contains(x)).toList()..sort());return ['All',...out];}
   List<Product> byCat(String n)=>n=='All'?List<Product>.from(widget.products):widget.products.where((p)=>p.category.trim().toLowerCase()==n.trim().toLowerCase()).toList();
   void openCat(BuildContext c,String n)=>Navigator.push(c,MaterialPageRoute(builder:(_)=>CategoryProductsPage(category:n,products:byCat(n),onAdd:widget.onAdd,cart:widget.cart,onQty:widget.onQty,wishlistIds:widget.wishlistIds,onWishlist:widget.onWishlist)));
-  Widget chip(BuildContext c,String n)=>InkWell(onTap:()=>openCat(c,n),child:SizedBox(width:72,child:Column(children:[Container(height:60,width:60,decoration:BoxDecoration(color:n=='All'?Theme.of(c).colorScheme.primaryContainer:Theme.of(c).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),alignment:Alignment.center,child:Text(icons[n]??'🛍️',style:const TextStyle(fontSize:28))),const SizedBox(height:4),Text(n,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontSize:10,fontWeight:FontWeight.w700))])));
-  Widget card(BuildContext c,Product p){
-    final item=widget.cart[p.id]; final liked=widget.wishlistIds.contains(p.id);
-    return Card(margin:EdgeInsets.zero,clipBehavior:Clip.antiAlias,child:InkWell(
-      onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>ProductScreen(product:p,onAdd:()=>widget.onAdd(p),liked:liked,onWishlist:()=>widget.onWishlist(p)))),
-      child:Padding(padding:const EdgeInsets.all(5),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Stack(children:[Container(height:72,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:Theme.of(c).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(11)),child:Text(p.icon,style:const TextStyle(fontSize:34))),Positioned(right:0,top:0,child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,constraints:const BoxConstraints(minWidth:28,minHeight:28),onPressed:()=>widget.onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red,size:18)))]),
-        const SizedBox(height:3),Text(p.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,fontWeight:FontWeight.w900)),Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.grey,fontSize:9)),Text('₹'+p.price.toString(),style:const TextStyle(fontSize:12,fontWeight:FontWeight.w900)),const Spacer(),
-        if(item==null)SizedBox(height:27,width:double.infinity,child:FilledButton(style:FilledButton.styleFrom(padding:EdgeInsets.zero),onPressed:p.stock>0?()=>widget.onAdd(p):null,child:const Text('Add',style:TextStyle(fontSize:10))))
-        else Container(height:27,decoration:BoxDecoration(border:Border.all(color:Theme.of(c).colorScheme.primary),borderRadius:BorderRadius.circular(14)),child:Row(children:[
-          Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,constraints:const BoxConstraints(minWidth:0,minHeight:27),iconSize:16,onPressed:()=>widget.onQty(p.id,-1),icon:const Icon(Icons.remove,size:14))),
-          Expanded(child:Center(child:Text(item.qty.toString(),style:const TextStyle(fontSize:10,fontWeight:FontWeight.w900)))),
-          Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,constraints:const BoxConstraints(minWidth:0,minHeight:27),iconSize:16,onPressed:p.stock>item.qty?()=>widget.onQty(p.id,1):null,icon:const Icon(Icons.add,size:14))),
-        ])),
-      ])),
-    ));
+  Widget categoryChip(BuildContext c,String n)=>InkWell(onTap:()=>openCat(c,n),borderRadius:BorderRadius.circular(16),child:SizedBox(width:76,child:Column(children:[Container(height:60,width:60,decoration:BoxDecoration(color:n=='All'?const Color(0xFFE7F7EE):const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(18)),alignment:Alignment.center,child:Text(icons[n]??'🛍️',style:const TextStyle(fontSize:28))),const SizedBox(height:5),Text(n,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontSize:10.5,fontWeight:FontWeight.w700))])));
+  Widget productCard(BuildContext c,Product p){
+    final item=widget.cart[p.id],liked=widget.wishlistIds.contains(p.id);
+    return Card(elevation:0,margin:EdgeInsets.zero,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(14)),clipBehavior:Clip.antiAlias,child:InkWell(onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>ProductScreen(product:p,onAdd:()=>widget.onAdd(p),liked:liked,onWishlist:()=>widget.onWishlist(p))),child:Padding(padding:const EdgeInsets.all(8),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Stack(children:[Container(height:96,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:const Color(0xFFF5F5F5),borderRadius:BorderRadius.circular(12)),child:Text(p.icon,style:const TextStyle(fontSize:42))),Positioned(right:-2,top:-2,child:IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red,size:20)))]),
+      const SizedBox(height:6),Text(p.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:Colors.grey)),const Spacer(),Text('₹'+p.price.toString(),style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
+      const SizedBox(height:5),
+      if(item==null)SizedBox(height:32,width:double.infinity,child:FilledButton(style:FilledButton.styleFrom(backgroundColor:green,foregroundColor:Colors.white,padding:EdgeInsets.zero),onPressed:p.stock>0?()=>widget.onAdd(p):null,child:const Text('ADD',style:TextStyle(fontSize:11,fontWeight:FontWeight.w900))))
+      else Container(height:32,decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(16)),child:Row(children:[Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:()=>widget.onQty(p.id,-1),icon:const Icon(Icons.remove,size:16,color:green))),Expanded(child:Center(child:Text(item.qty.toString(),style:const TextStyle(fontWeight:FontWeight.w900)))),Expanded(child:IconButton(visualDensity:VisualDensity.compact,padding:EdgeInsets.zero,onPressed:p.stock>item.qty?()=>widget.onQty(p.id,1):null,icon:const Icon(Icons.add,size:16,color:green)))])),
+    ]))));
   }
-
-  Widget section(BuildContext c,String title,List<Product> items,bool all){
+  Widget productSection(BuildContext c,String title,List<Product> items,{bool seeAll=true}){
     if(items.isEmpty)return const SizedBox.shrink();
     final show=items.take(4).toList();
     return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[
-        Expanded(child:Text(title,style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900))),
-        TextButton(onPressed:()=>openCat(c,all?'All':title),child:const Text('See all ›')),
-      ]),
-      GridView.builder(
-        shrinkWrap:true,
-        physics:const NeverScrollableScrollPhysics(),
-        itemCount:show.length,
-        gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:4,crossAxisSpacing:6,mainAxisSpacing:7,childAspectRatio:.52),
-        itemBuilder:(context,i)=>card(context,show[i]),
-      ),
-      const SizedBox(height:14),
+      Row(children:[Expanded(child:Text(title,style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))),if(seeAll)TextButton(onPressed:()=>openCat(c,title=='Top offers'?'All':title),child:const Text('See all'))]),
+      GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:show.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:4,crossAxisSpacing:7,mainAxisSpacing:8,childAspectRatio:.58),itemBuilder:(c,i)=>productCard(c,show[i])),
+      const SizedBox(height:16),
     ]);
   }
 
-  @override
-  Widget build(BuildContext c){
+  @override Widget build(BuildContext c){
     final q=search.trim().toLowerCase();
     final searched=q.isEmpty?widget.products:widget.products.where((p)=>(p.name+' '+p.category+' '+p.brand+' '+p.description).toLowerCase().contains(q)).toList();
     final cs=cats;
     final sections=<String>[];
     for(final x in preferred){if(byCat(x).isNotEmpty)sections.add(x);}
     for(final x in cs.skip(1)){if(!sections.contains(x)&&byCat(x).isNotEmpty)sections.add(x);}
-    return RefreshIndicator(
-      onRefresh:()=>widget.onRefresh(),
-      child:ListView(
-        padding:const EdgeInsets.fromLTRB(12,0,12,110),
-        children:[
-          StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
-            stream:FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
-            builder:(context,s){
-              final raw=s.data?.data()?['imageUrls'];
-              final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(3).toList():<String>[];
-              final bg=urls.isEmpty?null:urls[bannerIndex%urls.length];
-              return Container(
-                padding:const EdgeInsets.fromLTRB(8,15,8,12),
-                decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,image:bg==null?null:DecorationImage(image:NetworkImage(bg),fit:BoxFit.cover,colorFilter:ColorFilter.mode(Colors.black.withOpacity(.62),BlendMode.darken)),borderRadius:const BorderRadius.vertical(bottom:Radius.circular(24))),
-                child:Column(children:[
-                  Row(children:[
-                    Expanded(child:RichText(text:const TextSpan(style:TextStyle(fontSize:31,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:Color(0xFF9B7CFF))),TextSpan(text:'ways',style:TextStyle(color:Colors.white))]))),
-                    ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>IconButton(onPressed:()=>Navigator.pushNamed(c, '/notifications-settings'),icon:Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none,color:Colors.white,size:28)))),
-                    IconButton(onPressed:()=>Navigator.pushNamed(c, '/wishlist'),icon:const Icon(Icons.favorite_border,color:Colors.white,size:28)),
-                    IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,label:Text(widget.cart.length.toString()),child:const Icon(Icons.shopping_cart_outlined,color:Colors.white,size:28))),
-                  ]),
-                  Align(alignment:Alignment.centerLeft,child:Text('Closer to You, Always',style:TextStyle(color:Colors.white.withOpacity(.82),fontSize:14))),
-                  const SizedBox(height:8),
-                  Card(color:Colors.black.withOpacity(.40),child:ListTile(leading:const Icon(Icons.location_on,color:Color(0xFFBFA6FF)),title:const Text('Deliver to',style:TextStyle(fontSize:11,color:Colors.white70)),subtitle:Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w800)),trailing:TextButton(onPressed:locating?null:changeLocation,child:const Text('Change')))),
-                  const SizedBox(height:6),
-                  TextField(controller:searchController,style:const TextStyle(color:Colors.white),decoration:InputDecoration(hintText:'Search for milk, bread, eggs…',hintStyle:const TextStyle(color:Colors.white70),prefixIcon:const Icon(Icons.search,color:Colors.white70),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:Colors.white)),filled:true,fillColor:Colors.black.withOpacity(.40),border:OutlineInputBorder(borderRadius:BorderRadius.circular(18),borderSide:BorderSide.none)),onChanged:(v)=>setState(()=>search=v)),
-                ]),
-              );
-            },
-          ),
-          const SizedBox(height:4),
-          SizedBox(height:88,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:cs.length,separatorBuilder:(_,__)=>const SizedBox(width:7),itemBuilder:(_,i)=>chip(c,cs[i]))),
-          if(widget.loading)const Padding(padding:EdgeInsets.all(40),child:Center(child:CircularProgressIndicator()))
-          else if(widget.error!=null)const InfoCard(title:'Could not load inventory',detail:'Check your connection and pull down to retry.')
-          else if(searched.isEmpty)const InfoCard(title:'No items found',detail:'Try another search or category.')
-          else ...[section(c,'Top Offers for You',searched.take(4).toList(),true),...sections.map((x)=>section(c,x,byCat(x),false))],
-        ],
-      ),
+    return StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+      stream:FirebaseFirestore.instance.collection('settings').doc('homepage').snapshots(),
+      builder:(context,homeSnap){
+        final h=homeSnap.data?.data()??<String,dynamic>{};
+        final showCategories=h['showCategories']!=false,showOffers=h['showOffers']!=false,showPopular=h['showPopular']!=false,showLocal=h['showLocalSellers']!=false,showTravel=h['showTravel']!=false;
+        final heroTitle=(h['heroTitle']??'Closer to You, Always').toString();
+        final heroSubtitle=(h['heroSubtitle']??'Everything you need, delivered locally.').toString();
+        final deliveryText=(h['deliveryText']??'Fast local delivery').toString();
+        return RefreshIndicator(
+          onRefresh:()=>widget.onRefresh(),
+          child:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,110),children:[
+            Row(children:[
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                RichText(text:const TextSpan(style:TextStyle(fontSize:28,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:green)),TextSpan(text:'ways',style:TextStyle(color:Colors.black87))])),
+                Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.grey,fontSize:12)),
+              ])),
+              IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
+              IconButton(onPressed:()=>Navigator.pushNamed(c,'/wishlist'),icon:const Icon(Icons.favorite_border)),
+              IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
+            ]),
+            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(14)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
+            const SizedBox(height:10),
+            TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:const Color(0xFFF4F4F4),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide.none)),onChanged:(v)=>setState(()=>search=v)),
+            const SizedBox(height:12),
+            StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+              stream:FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
+              builder:(context,bannerSnap){
+                final raw=bannerSnap.data?.data()?['imageUrls'];
+                final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(7).toList():<String>[];
+                if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle),const Spacer(),Text(deliveryText,style:const TextStyle(color:green,fontWeight:FontWeight.w900))]));
+                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(urls[bannerIndex%urls.length],fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
+              },
+            ),
+            const SizedBox(height:14),
+            if(showCategories) ...[const Text('Shop by category',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),SizedBox(height:92,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:cs.length,separatorBuilder:(_,__)=>const SizedBox(width:8),itemBuilder:(_,i)=>categoryChip(c,cs[i]))),const SizedBox(height:16)],
+            if(widget.loading)const Padding(padding:EdgeInsets.all(40),child:Center(child:CircularProgressIndicator()))
+            else if(widget.error!=null)const InfoCard(title:'Could not load inventory',detail:'Check your connection and pull down to retry.')
+            else if(searched.isEmpty)const InfoCard(title:'No items found',detail:'Try another search or category.')
+            else ...[
+              if(showOffers)productSection(c,'Top offers',searched),
+              if(showPopular)productSection(c,'Popular Near You',searched.skip(showOffers?4:0).take(4).toList()),
+            ],
+            if(showLocal)InkWell(onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const LocalSellersPage())),borderRadius:BorderRadius.circular(16),child:Container(margin:const EdgeInsets.only(top:4,bottom:12),padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(16)),child:Row(children:[Container(width:48,height:48,decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(14)),child:const Icon(Icons.storefront_outlined,color:green)),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Local sellers near you',style:TextStyle(fontWeight:FontWeight.w900)),Text('Discover shops and contact them directly',style:TextStyle(color:Colors.grey,fontSize:12))])),const Icon(Icons.chevron_right,color:green)]))),
+            if(showTravel)InkWell(onTap:()=>setState(()=>tab=1),borderRadius:BorderRadius.circular(16),child:Container(padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:const Color(0xFFFFF4D6),borderRadius:BorderRadius.circular(16)),child:Row(children:[const Icon(Icons.two_wheeler,size:36,color:Colors.black87),const SizedBox(width:12),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Need a ride?',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),Text('Bike, auto and vehicle booking in one place',style:TextStyle(color:Colors.black54,fontSize:12))])),const Icon(Icons.chevron_right)]))),
+          ]),
+        );
+      },
     );
   }
 }
@@ -1985,52 +1996,31 @@ class StatusView extends StatelessWidget{final String status;const StatusView({s
 
 class TravelPage extends StatelessWidget {
   const TravelPage({super.key});
-  Widget _actionCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required VoidCallback onTap})=>Card(
-    margin:const EdgeInsets.only(bottom:12),clipBehavior:Clip.antiAlias,
-    child:InkWell(onTap:onTap,child:Padding(padding:const EdgeInsets.all(18),child:Row(children:[
-      Container(width:54,height:54,decoration:BoxDecoration(color:Theme.of(context).colorScheme.primaryContainer,borderRadius:BorderRadius.circular(16)),child:Icon(icon,color:Theme.of(context).colorScheme.onPrimaryContainer)),
-      const SizedBox(width:14),
-      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:5),
-        Text(subtitle,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant,height:1.35)),
-      ])),
-      const Icon(Icons.chevron_right),
+  Widget _rideCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required Color color,required VoidCallback onTap})=>Card(
+    elevation:0,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),
+    child:InkWell(onTap:onTap,borderRadius:BorderRadius.circular(18),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
+      Container(width:58,height:58,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(16)),child:Icon(icon,color:Colors.white,size:30)),
+      const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.grey,height:1.3)),
+      ])),const Icon(Icons.chevron_right),
     ]))),
   );
-  @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.fromLTRB(16,18,16,110),children:[
-    Text(tr('Travel'),style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900)),
-    const SizedBox(height:4),
-    const Text('Book vehicles, bike rides and auto rides.',style:TextStyle(color:Colors.grey)),
-    const SizedBox(height:18),
-    Container(padding:const EdgeInsets.all(20),decoration:BoxDecoration(
-      gradient:const LinearGradient(colors:[Color(0xFF311B92),Color(0xFFE91E63)],begin:Alignment.topLeft,end:Alignment.bottomRight),
-      borderRadius:BorderRadius.circular(22)),
-      child:const Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Icon(Icons.travel_explore,color:Colors.white,size:38),SizedBox(height:12),
-        Text('ALLways Mobility',style:TextStyle(color:Colors.white,fontSize:24,fontWeight:FontWeight.w900)),
-        SizedBox(height:6),
-        Text('Local vehicle booking and on-demand bike and auto rides. No commission during the trial.',style:TextStyle(color:Colors.white70,height:1.4)),
-      ]),
-    ),
-    const SizedBox(height:18),
-    _actionCard(context,icon:Icons.directions_car_outlined,title:tr('Book vehicle'),
-      subtitle:'Choose from 25 vehicle categories. Owners set their own price, with Book or Book & negotiate.',
-      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage()))),
-    _actionCard(context,icon:Icons.login_outlined,title:'Rider login',
-      subtitle:'Go online and receive nearby bike or auto ride requests within 7 km. Accept, reject, track and complete rides.',
-      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const RiderLoginPage()))),
-    _actionCard(context,icon:Icons.two_wheeler_outlined,title:'Book Bike Ride',
-      subtitle:'On-demand bike ride with upfront estimate, rider acceptance, live tracking, calling and cancellation.',
-      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),
-    _actionCard(context,icon:Icons.local_taxi_outlined,title:'Book Auto Ride',
-      subtitle:'On-demand auto ride with upfront estimate, rider acceptance, live tracking, calling and cancellation.',
-      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),
-    Card(child:Padding(padding:const EdgeInsets.all(16),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Icon(Icons.info_outline),const SizedBox(width:10),const Expanded(child:Text(
-        'Trial service: verify the rider and vehicle before travelling. ALLways is not currently responsible for conduct, safety, vehicle condition, payment, loss, injury or disputes between ride participants.',
-        style:TextStyle(color:Colors.grey,height:1.35),
-      )),
-    ]))),
+  @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.fromLTRB(16,12,16,110),children:[
+    Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Travel',style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900)),Text('Move around your city with simple, upfront rides.',style:const TextStyle(color:Colors.grey))])),const Icon(Icons.location_on_outlined,size:30)]),
+    const SizedBox(height:14),
+    Container(padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFFFC928),borderRadius:BorderRadius.circular(22)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Row(children:[Icon(Icons.two_wheeler,size:34),SizedBox(width:10),Text('ALLways Mobility',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900))]),
+      const SizedBox(height:8),const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(height:1.35)),
+      const SizedBox(height:14),FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),style:FilledButton.styleFrom(backgroundColor:Colors.black,foregroundColor:Colors.white),child:const Text('Book a bike ride')),
+    ])),
+    const SizedBox(height:16),
+    const Text('Ride with ALLways',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),
+    const SizedBox(height:10),
+    _rideCard(context,icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride. Upfront estimate and live tracking after acceptance.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),
+    _rideCard(context,icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',color:const Color(0xFF111111),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),
+    _rideCard(context,icon:Icons.directions_car_outlined,title:'Book a vehicle',subtitle:'Choose from 25 vehicle categories. Owners set price and booking terms.',color:const Color(0xFF303030),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage()))),
+    _rideCard(context,icon:Icons.login_outlined,title:'Rider login',subtitle:'Go online, see nearby requests within 7 km, accept or reject and complete rides.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const RiderLoginPage()))),
+    Card(elevation:0,color:const Color(0xFFF6F6F6),child:const Padding(padding:EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.shield_outlined),SizedBox(width:10),Expanded(child:Text('Safety tools, calling, cancellation and live location are available during an active ride.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
   ]);
 }
 
