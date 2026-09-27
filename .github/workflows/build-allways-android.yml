@@ -679,8 +679,17 @@ jobs:
 
           echo "Launching ALLways..."
           adb shell am force-stop com.allways.app || true
-          launch_output="$(adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1 2>&1 || true)"
+          # Use Activity Manager with the explicit Flutter MainActivity instead of
+          # Monkey. Monkey can itself become ANR-blocked on the software-emulated
+          # GitHub runner and falsely prevent the app launch check from completing.
+          launch_status=0
+          launch_output="$(timeout 45s adb shell am start -S -W -n com.allways.app/.MainActivity 2>&1)" || launch_status=$?
           echo "$launch_output"
+          if [ "$launch_status" -ne 0 ]; then
+            echo "ERROR: Activity Manager could not launch ALLways (exit=$launch_status)."
+            adb logcat -d -t 800 | grep -E 'ActivityTaskManager|AndroidRuntime|FATAL EXCEPTION|com\.allways\.app' | tail -n 300 || true
+            exit 1
+          fi
 
           echo "Waiting for ALLways process..."
           running=0
