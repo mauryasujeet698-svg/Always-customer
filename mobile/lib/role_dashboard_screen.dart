@@ -162,7 +162,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
     }).toList();
     return ListView(padding:const EdgeInsets.fromLTRB(16,22,16,28),children:[
       Text(category,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:5),Text('Everything is organized by task so every option has a clear destination.',style:const TextStyle(color:Colors.grey)),const SizedBox(height:16),
-      ...items.map((a)=>Card(elevation:0,child:ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:5),leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(a.icon,color:accent)),title:Text(a.title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(a.group+' • Open dedicated workspace'),trailing:Icon(Icons.chevron_right,color:accent),onTap:()=>open(a.title))),
+      ...items.map((a)=>Card(elevation:0,child:ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:5),leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(a.icon,color:accent)),title:Text(a.title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(a.group+' • Open dedicated workspace'),trailing:Icon(Icons.chevron_right,color:accent),onTap:()=>open(a.title)))),
     ]);
   }
 
