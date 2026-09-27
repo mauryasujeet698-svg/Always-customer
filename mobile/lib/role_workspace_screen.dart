@@ -126,7 +126,7 @@ class RoleFeatureScreen extends StatelessWidget {
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not accept: '+e.toString())));}
   }
   Future<void> _reject(QueryDocumentSnapshot<Map<String,dynamic>> d)async{try{await d.reference.update({'rejectedBy':FieldValue.arrayUnion([user.uid]),'updatedAt':FieldValue.serverTimestamp()});}catch(_){}}
-  void _details(BuildContext context,Map<String,dynamic> o)=>showModalBottomSheet(context:context,showDragHandle:true,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Request details',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),Text((o['name']??o['customerName']??'Customer').toString()),Text((o['phone']??o['customerPhone']??'').toString()),Text((o['address']??o['pickupAddress']??'').toString()),Text('Fare: ₹'+_num(o['total']??o['estimatedFare']).toStringAsFixed(0))])));
+  void _details(BuildContext context,Map<String,dynamic> o)=>showModalBottomSheet(context:context,showDragHandle:true,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Request details',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),Text((o['name']??o['customerName']??'Customer').toString()),Text((o['phone']??o['customerPhone']??'').toString()),Text((o['address']??o['pickupAddress']??'').toString()),Text('Fare: ₹'+_num(o['total']??o['estimatedFare']).toStringAsFixed(0))]))));
 
   Widget _products(BuildContext context)=>StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
     stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).snapshots(),
@@ -184,7 +184,7 @@ class RoleFeatureScreen extends StatelessWidget {
   }));
 
   Widget _offers(BuildContext context)=>_page([_hero('Offers','Create and review shop offers.'),const SizedBox(height:12),FilledButton.icon(onPressed:()=>_createOffer(context),icon:const Icon(Icons.add),label:const Text('Create offer')),const SizedBox(height:10),
-    StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').orderBy('createdAt',descending:true).snapshots(),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.docs.isEmpty)return _empty('No offers','Create an offer and it will be saved to your seller account.');return Column(children:s.data!.docs.map((d)=>Card(child:ListTile(title:Text((d.data()['title']??'Offer').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((d.data()['details']??'').toString()),trailing:Switch(value:d.data()['active']!=false,onChanged:(v)=>d.reference.update({'active':v}) ))).toList());})
+    StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').orderBy('createdAt',descending:true).snapshots(),builder:(context,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.docs.isEmpty)return _empty('No offers','Create an offer and it will be saved to your seller account.');return Column(children:s.data!.docs.map((d)=>Card(child:ListTile(title:Text((d.data()['title']??'Offer').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((d.data()['details']??'').toString()),trailing:Switch(value:d.data()['active']!=false,onChanged:(v)=>d.reference.update({'active':v}) )))).toList());})
   ]);
   Future<void> _createOffer(BuildContext context)async{
     final t=TextEditingController(),d=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Create offer'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:t,decoration:const InputDecoration(labelText:'Offer title')),TextField(controller:d,decoration:const InputDecoration(labelText:'Details'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Create'))]));if(ok==true)await FirebaseFirestore.instance.collection('sellers').doc(user.uid).collection('offers').add({'title':t.text.trim(),'details':d.text.trim(),'active':true,'createdAt':FieldValue.serverTimestamp()});
@@ -278,7 +278,7 @@ class _RideRequestsScreenState extends State<RideRequestsScreen> {
       if(mounted){setState(()=>online=false);ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride accepted. Open My Rides for tracking and completion.')));}
     }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));}
   }
-  double? _num(dynamic v)=>v is num?v.toDouble():double.tryParse((v??'').toString());
+  double _num(dynamic v)=>v is num?v.toDouble():double.tryParse((v??'').toString())??0;
   @override Widget build(BuildContext context){
     return Column(children:[
       Container(padding:const EdgeInsets.fromLTRB(16,14,16,14),color:Colors.white,child:Row(children:[
