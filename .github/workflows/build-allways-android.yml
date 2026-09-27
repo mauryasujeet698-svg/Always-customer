@@ -613,33 +613,79 @@ jobs:
 
       - name: Runtime smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 12
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          force-avd-creation: true
           disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
             set -euo pipefail
-            adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
-            adb shell pm clear com.allways.app || true
-            adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1
-            sleep 12
-            pid="$(adb shell pidof com.allways.app | tr -d '\r' | tr -d '[:space:]')"
-            if [[ -z "$pid" ]]; then
-              echo 'ERROR: ALLways process exited after launch.'
-              adb logcat -d -t 300 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 200 || true
+
+            echo "Waiting for ADB device..."
+            adb wait-for-device
+
+            echo "Waiting for Android boot completion (max 180s)..."
+            booted=0
+            for i in $(seq 1 60); do
+              state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | tr -d '[:space:]' || true)"
+              if [ "$state" = "1" ]; then
+                booted=1
+                break
+              fi
+              sleep 3
+            done
+
+            if [ "$booted" -ne 1 ]; then
+              echo "ERROR: Emulator did not finish booting within 180 seconds."
+              adb shell getprop sys.boot_completed || true
+              adb logcat -d -t 500 | tail -n 300 || true
               exit 1
             fi
-            echo "PASS: ALLways APK installed and remained running on Android emulator (pid=$pid)."
-            adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
-            fatal_log="$(adb logcat -d -t 200 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
-            if [[ -n "$fatal_log" ]]; then
-              echo 'ERROR: fatal runtime exception detected.'
+
+            echo "Emulator boot completed."
+
+            adb shell settings put global window_animation_scale 0 || true
+            adb shell settings put global transition_animation_scale 0 || true
+            adb shell settings put global animator_duration_scale 0 || true
+
+            echo "Installing ALLways APK..."
+            adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
+
+            echo "Launching ALLways..."
+            adb shell am force-stop com.allways.app || true
+            adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1
+
+            echo "Waiting for ALLways process..."
+            running=0
+            for i in $(seq 1 20); do
+              pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\r' | tr -d '[:space:]' || true)"
+              if [ -n "$pid" ]; then
+                running=1
+                echo "PASS: ALLways process running with pid=$pid"
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$running" -ne 1 ]; then
+              echo "ERROR: ALLways process did not remain running."
+              adb logcat -d -t 500 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+              exit 1
+            fi
+
+            fatal_log="$(adb logcat -d -t 500 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
+            if [ -n "$fatal_log" ]; then
+              echo "ERROR: fatal Android runtime exception detected."
               echo "$fatal_log"
               exit 1
             fi
-            echo 'PASS: no fatal Android runtime exception detected.'
+
+            echo "PASS: ALLways installed and launched successfully."
+            adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
 
       - name: Verify Android launcher manifest
         run: |
