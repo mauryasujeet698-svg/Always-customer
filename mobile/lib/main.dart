@@ -2508,18 +2508,7 @@ class _NotificationsPageState extends State<NotificationsPage>{
   bool enabled=true,loading=true; List<Map<String,dynamic>> notifications=[];
   final Map<String,bool> prefs=<String,bool>{'orderUpdates':true,'deliveryUpdates':true,'travelUpdates':true,'offers':true,'announcements':true};
   String filter='All';
-  @override void initState(){super.initState();_load();_startUiLocationStream();}
-  void _startUiLocationStream(){
-    _uiPositionSub?.cancel();
-    _uiPositionSub=Geolocator.getPositionStream(
-      locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:10),
-    ).listen((p){
-      if(!mounted)return;
-      setState(()=>_position=p);
-      if(_carrierTab==0)_mapController.move(LatLng(p.latitude,p.longitude),15);
-      _listenRequests();
-    });
-  }
+  @override void initState(){super.initState();_load();}
 
   Future<void> _load() async {try{final p=await SharedPreferences.getInstance();enabled=p.getBool('notifications_enabled')??p.getBool('allways_notifications_enabled')??true;for(final key in prefs.keys){prefs[key]=p.getBool('notification_'+key)??true;}final raw=p.getStringList('allways_notifications')??<String>[];notifications=raw.map((x){try{final d=jsonDecode(x);return d is Map?Map<String,dynamic>.from(d):<String,dynamic>{};}catch(_){return <String,dynamic>{};}}).where((x)=>x.isNotEmpty).toList();}catch(_){}if(mounted)setState(()=>loading=false);}
   Future<void> _savePreference(String key,bool value) async {prefs[key]=value;final p=await SharedPreferences.getInstance();await p.setBool('notification_'+key,value);final u=FirebaseAuth.instance.currentUser;if(u!=null){try{await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'notificationPreferences':Map<String,bool>.from(prefs),'notificationsEnabled':enabled,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));}catch(_){}}if(mounted)setState((){});}
@@ -3907,6 +3896,18 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
   @override void initState(){super.initState();_load();}
   @override void dispose(){_requestsSub?.cancel();_activeSub?.cancel();_uiPositionSub?.cancel();_locationBroadcaster?.stop();_destinationController.dispose();super.dispose();}
 
+  void _startUiLocationStream(){
+    _uiPositionSub?.cancel();
+    _uiPositionSub=Geolocator.getPositionStream(
+      locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:10),
+    ).listen((p){
+      if(!mounted)return;
+      setState(()=>_position=p);
+      if(_carrierTab==0)_mapController.move(LatLng(p.latitude,p.longitude),15);
+      _listenRequests();
+    });
+  }
+
   double? _n(dynamic v)=>v is num?v.toDouble():double.tryParse(v?.toString()??'');
   String _vehicle(){final v=(_profile['vehicleType']??'bike').toString().toLowerCase();return v=='two_wheeler'?'bike':(v=='auto'?'auto':'bike');}
 
@@ -4250,7 +4251,7 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
     return Stack(children:[
       ClipRRect(
         borderRadius:const BorderRadius.only(bottomLeft:Radius.circular(28),bottomRight:Radius.circular(28)),
-        child:flutter_map.FlutterMap(
+        child:FlutterMap(
           mapController:_mapController,
           options:MapOptions(initialCenter:center,initialZoom:15,minZoom:11,maxZoom:19),
           children:[
