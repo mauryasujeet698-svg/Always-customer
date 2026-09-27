@@ -3140,9 +3140,9 @@ class _CarrierDashboardState extends State<CarrierDashboard> {
 
   Future<void> openMaps(BuildContext context, String address) async {
     if (address.trim().isEmpty) return;
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=' + Uri.encodeComponent(address));
+    final uri = Uri.parse('https://www.openstreetmap.org/search?query=' + Uri.encodeComponent(address));
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open Google Maps.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open OpenStreetMap.')));
     }
   }
 
@@ -4483,7 +4483,7 @@ class _SellerProfilePageState extends State<SellerProfilePage> {
     final address = (data['locationAddress'] ?? data['address'] ?? '').toString();
     final query = lat != null && lng != null ? '$lat,$lng' : address;
     if (query.isEmpty) return;
-    await launchUrl(Uri.parse('https://www.google.com/maps/search/?api=1&query=' + Uri.encodeComponent(query)), mode: LaunchMode.externalApplication);
+    await launchUrl(Uri.parse('https://www.openstreetmap.org/search?query=' + Uri.encodeComponent(query)), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -5338,7 +5338,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         onPressed: () {
                           final lat=(order['customerLatitude'] as num).toDouble();
                           final lng=(order['customerLongitude'] as num).toDouble();
-                          launchUrl(Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng'),mode:LaunchMode.externalApplication);
+                          launchUrl(Uri.parse('https://www.openstreetmap.org/search?query=$lat,$lng'),mode:LaunchMode.externalApplication);
                         },
                       )
                     : null,
