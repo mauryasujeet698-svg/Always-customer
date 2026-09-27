@@ -95,7 +95,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
   );
 
   Widget _home()=>RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,24),children:[
-    Row(children:[Icon(icon,color:accent,size:30),const SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),Text(widget.user.email??'',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.grey))])),IconButton(onPressed:()=>showAboutDialog(context:context,applicationName:'ALLways',applicationVersion:'1.4.8',children:[const Text('Closer to You, Always')]),icon:const Icon(Icons.info_outline))]),
+    Row(children:[Icon(icon,color:accent,size:30),const SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),Text(widget.user.email??'',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.grey))]))]),
     const SizedBox(height:14),
     _profileCard(),
     const SizedBox(height:16),
