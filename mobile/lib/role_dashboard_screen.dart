@@ -113,7 +113,7 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
     const SizedBox(width:13),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(_name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(_roleLine,style:TextStyle(color:accent,fontWeight:FontWeight.w700,fontSize:12))])),
     if(carrier||delivery)Switch(value:online,onChanged:busyStatus?null:_setOnline),
     if(admin||seller)IconButton(onPressed:()=>open(seller?'Shop Profile':'Users & Roles'),icon:const Icon(Icons.chevron_right)),
-  ]));
+  ])));
 
   String get _name{final n=(profile['businessName']??profile['shopName']??profile['name']??profile['displayName']??'').toString().trim();return n.isEmpty?(widget.user.displayName??'ALLways Account'):n;}
   String get _roleLine=>admin?'Full platform access':seller?'Store and catalogue management':delivery?'Deliveries, earnings and safety':online?'Online • accepting nearby rides':'Offline • tap the switch to go online';
