@@ -1,11 +1,6 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
 import 'role_workspace_screen.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
@@ -13,381 +8,168 @@ class RoleDashboardScreen extends StatefulWidget {
   final User user;
   final Widget child;
   final VoidCallback onSignOut;
-  const RoleDashboardScreen({super.key, required this.role, required this.user, required this.child, required this.onSignOut});
-
-  @override State<RoleDashboardScreen> createState() => _RoleDashboardScreenState();
+  const RoleDashboardScreen({super.key,required this.role,required this.user,required this.child,required this.onSignOut});
+  @override State<RoleDashboardScreen> createState()=>_RoleDashboardScreenState();
 }
 
-class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
-  int tab = 0;
-  Map<String,dynamic> profile = {};
-  bool loadingProfile = true;
+class _RoleDashboardScreenState extends State<RoleDashboardScreen>{
+  int tab=0;
+  Map<String,dynamic> profile={};
+  bool loading=true;
+  bool busyStatus=false;
 
-  Color get accent => switch(widget.role) {
-    'admin' => const Color(0xFFC2185B),
-    'seller' => const Color(0xFF119447),
-    'delivery_partner' => const Color(0xFF1565C0),
-    'carrier' => const Color(0xFF5B1ACF),
-    _ => Colors.black,
+  Color get accent=>switch(widget.role){
+    'admin'=>const Color(0xFFC2185B),'seller'=>const Color(0xFF087F43),'delivery_partner'=>const Color(0xFF1565C0),'carrier'=>const Color(0xFF5B1ACF),_=>Colors.black
   };
-  Color get soft => Color.alphaBlend(accent.withOpacity(.07), const Color(0xFFFFF8FA));
-  bool get admin => widget.role == 'admin';
-  bool get seller => widget.role == 'seller';
-  bool get delivery => widget.role == 'delivery_partner';
-  bool get carrier => widget.role == 'carrier';
-
-  String get title => switch(widget.role) {
-    'admin' => 'ALLways Admin',
-    'seller' => 'ALLways Seller',
-    'delivery_partner' => 'ALLways Delivery Partner',
-    'carrier' => 'ALLways Carrier',
-    _ => 'ALLways',
+  bool get admin=>widget.role=='admin';
+  bool get seller=>widget.role=='seller';
+  bool get delivery=>widget.role=='delivery_partner';
+  bool get carrier=>widget.role=='carrier';
+  String get title=>switch(widget.role){
+    'admin'=>'ALLways Admin','seller'=>'ALLways Seller','delivery_partner'=>'ALLways Delivery Partner','carrier'=>'ALLways Rider',_=>'ALLways'
   };
-  IconData get icon => switch(widget.role) {
-    'admin' => Icons.workspace_premium,
-    'seller' => Icons.storefront,
-    'delivery_partner' => Icons.delivery_dining,
-    'carrier' => Icons.two_wheeler,
-    _ => Icons.dashboard,
+  IconData get icon=>switch(widget.role){
+    'admin'=>Icons.workspace_premium,'seller'=>Icons.storefront,'delivery_partner'=>Icons.local_shipping,'carrier'=>Icons.two_wheeler,_=>Icons.dashboard
   };
-
-  @override void initState(){super.initState(); _loadProfile();}
-
-  Future<void> _loadProfile() async {
-    try {
-      final col = seller ? 'sellers' : carrier ? 'ridePartners' : 'customers';
-      final snap = await FirebaseFirestore.instance.collection(col).doc(widget.user.uid).get();
-      if(mounted) setState((){profile=snap.data()??{}; loadingProfile=false;});
-    } catch (_) { if(mounted) setState(()=>loadingProfile=false); }
-  }
-
-  String get name {
-    final n=(profile['businessName']??profile['shopName']??profile['name']??profile['fullName']??'').toString().trim();
-    return n.isNotEmpty ? n : ((widget.user.displayName??'').trim().isNotEmpty ? widget.user.displayName!.trim() : 'ALLways Account');
-  }
-  String get status {
+  String get status{
     if(admin)return 'Super Admin';
-    if(seller)return '✓ Verified Seller';
-    final s=(profile['status']??profile['dutyStatus']??'offline').toString().toLowerCase();
-    return s=='online'?'Online':'Offline';
+    if(seller)return 'Verified Seller';
+    return (profile['status']??profile['dutyStatus']??'offline').toString().toLowerCase()=='online'?'Online':'Offline';
+  }
+  bool get online=>status=='Online';
+
+  @override void initState(){super.initState();_load();}
+  Future<void> _load()async{
+    try{
+      final col=seller?'sellers':carrier?'ridePartners':'customers';
+      final snap=await FirebaseFirestore.instance.collection(col).doc(widget.user.uid).get();
+      if(mounted)setState(()=>profile=snap.data()??{});
+    }catch(_){}
+    if(mounted)setState(()=>loading=false);
   }
 
-  List<_Stat> get stats => switch(widget.role) {
-    'admin' => const [_Stat('23','Pending Orders',Icons.receipt_long),_Stat('12','Active Deliveries',Icons.delivery_dining),_Stat('8','Active Carriers',Icons.two_wheeler),_Stat('52','Total Sellers',Icons.storefront)],
-    'seller' => const [_Stat('12','Total Orders',Icons.receipt_long),_Stat('4','Pending',Icons.schedule),_Stat('3','Preparing',Icons.inventory_2),_Stat('5','Completed',Icons.check_circle)],
-    'delivery_partner' => const [_Stat('5',"Today's Deliveries",Icons.local_shipping),_Stat('₹620',"Today's Earnings",Icons.currency_rupee),_Stat('4.8','Rating',Icons.star),_Stat('98%','Completion',Icons.task_alt)],
-    'carrier' => const [_Stat('5',"Today's Rides",Icons.two_wheeler),_Stat('₹420',"Today's Earnings",Icons.currency_rupee),_Stat('4.8','Rating',Icons.star),_Stat('100%','Acceptance',Icons.verified)],
-    _ => const [],
+  List<_Action> get actions=>switch(widget.role){
+    'admin'=>const[
+      _Action('Manage Orders',Icons.receipt_long,'Operations'),_Action('Manage Delivery Partners',Icons.local_shipping,'Operations'),_Action('Manage Carriers',Icons.two_wheeler,'Operations'),_Action('Manage Sellers',Icons.storefront,'Operations'),
+      _Action('Manage Banners',Icons.view_carousel,'Content'),_Action('Homepage & Content',Icons.home_work,'Content'),_Action('Send Notifications',Icons.campaign,'Content'),
+      _Action('Users & Roles',Icons.manage_accounts,'People'),_Action('Reports & Analytics',Icons.analytics,'Analytics'),_Action('App Settings',Icons.settings,'Settings'),
+    ],
+    'seller'=>const[
+      _Action('Products',Icons.inventory_2,'Store'),_Action('Inventory',Icons.fact_check,'Store'),_Action('Shop Profile',Icons.storefront,'Store'),_Action('Orders',Icons.receipt_long,'Orders'),
+      _Action('Offers',Icons.local_offer,'Growth'),_Action('Sales Analytics',Icons.bar_chart,'Growth'),_Action('Payouts',Icons.account_balance_wallet,'Finance'),_Action('Help & Support',Icons.support_agent,'Account'),
+    ],
+    'delivery_partner'=>const[
+      _Action('Delivery Requests',Icons.local_shipping,'Work'),_Action('My Deliveries',Icons.assignment_turned_in,'Work'),_Action('Earnings',Icons.currency_rupee,'Finance'),_Action('Incentives',Icons.card_giftcard,'Finance'),
+      _Action('Performance',Icons.bar_chart,'Performance'),_Action('Documents',Icons.description,'Account'),_Action('Safety & SOS',Icons.shield,'Safety'),_Action('Help & Support',Icons.support_agent,'Account'),
+    ],
+    _=>const[
+      _Action('Ride Requests',Icons.two_wheeler,'Rides'),_Action('My Rides',Icons.route,'Rides'),_Action('Ride History',Icons.history,'Rides'),_Action('Earnings',Icons.currency_rupee,'Finance'),
+      _Action('Ratings',Icons.star,'Performance'),_Action('Vehicle & Documents',Icons.description,'Account'),_Action('Safety & SOS',Icons.shield,'Safety'),_Action('Help & Support',Icons.support_agent,'Account'),
+    ],
   };
 
-  List<_Action> get actions => switch(widget.role) {
-    'admin' => const [
-      _Action('Manage Sellers',Icons.storefront),_Action('Manage Carriers',Icons.two_wheeler),_Action('Manage Delivery Partners',Icons.delivery_dining),
-      _Action('Manage Orders',Icons.receipt_long),_Action('Manage Banners',Icons.view_carousel),_Action('Send Notifications',Icons.campaign),
-      _Action('Users & Roles',Icons.manage_accounts),_Action('Reports & Analytics',Icons.analytics),_Action('App Settings',Icons.settings),
-    ],
-    'seller' => const [
-      _Action('Products',Icons.inventory_2),_Action('Orders',Icons.receipt_long),_Action('Shop Profile',Icons.storefront),_Action('Offers',Icons.local_offer),
-      _Action('Inventory',Icons.fact_check),_Action('Sales Analytics',Icons.bar_chart),_Action('Payouts',Icons.account_balance_wallet),_Action('Support',Icons.support_agent),
-    ],
-    'delivery_partner' => const [
-      _Action('Delivery Requests',Icons.local_shipping),_Action('My Deliveries',Icons.assignment_turned_in),_Action('Earnings',Icons.currency_rupee),_Action('Incentives',Icons.card_giftcard),
-      _Action('Performance',Icons.bar_chart),_Action('Documents',Icons.description),_Action('Safety & SOS',Icons.shield),_Action('Help & Support',Icons.support_agent),
-    ],
-    'carrier' => const [
-      _Action('Ride Requests',Icons.two_wheeler),_Action('My Rides',Icons.route),_Action('Earnings',Icons.currency_rupee),_Action('Ratings',Icons.star),
-      _Action('Ride History',Icons.history),_Action('Vehicle & Documents',Icons.description),_Action('Safety & SOS',Icons.shield),_Action('Help & Support',Icons.support_agent),
-    ],
-    _ => const [],
-  };
-
-  Future<void> openWorkspace(String section) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RoleFeatureScreen(
-          role: widget.role,
-          feature: section,
-          user: widget.user,
-          accent: accent,
-        ),
-      ),
-    );
-    if (mounted) _loadProfile();
+  Future<void> _setOnline(bool value)async{
+    if(!carrier&&!delivery)return;
+    setState(()=>busyStatus=true);
+    try{
+      final col=carrier?'ridePartners':'customers';
+      final data=carrier?{'status':value?'online':'offline','availableForRides':value,'statusUpdatedAt':FieldValue.serverTimestamp()}:{'status':value?'online':'offline','availableForDeliveries':value,'dutyStatus':value?'online':'offline','statusUpdatedAt':FieldValue.serverTimestamp()};
+      await FirebaseFirestore.instance.collection(col).doc(widget.user.uid).set(data,SetOptions(merge:true));
+      if(mounted)setState(()=>profile={...profile,...data});
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not update status: '+e.toString())));
+    }finally{if(mounted)setState(()=>busyStatus=false);}
   }
 
-  void account() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (s) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: accent.withOpacity(.12),
-                  child: Icon(icon, color: accent),
-                ),
-                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text(widget.user.email ?? ''),
-              ),
-              const ListTile(
-                leading: Icon(Icons.person_outline),
-                title: Text('Profile & documents'),
-              ),
-              const ListTile(
-                leading: Icon(Icons.help_outline),
-                title: Text('Help & support'),
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('Sign out'),
-                onTap: () {
-                  Navigator.pop(s);
-                  widget.onSignOut();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void open(String feature)=>Navigator.push(context,MaterialPageRoute(builder:(_)=>RoleFeatureScreen(role:widget.role,feature:feature,user:widget.user,accent:accent))).then((_)=>_load());
 
   @override Widget build(BuildContext context)=>Scaffold(
-    backgroundColor:const Color(0xFFFFF8FA),
-    body:SafeArea(child:IndexedStack(index:tab,children:[
-      home(),
-      section(admin?'Live Operations':seller?'Orders':delivery?'Deliveries':'Rides'),
-      section(admin?'Reports & Analytics':seller?'Sales Analytics':'Earnings'),
-      section(admin?'Users & Roles':'Profile & Settings'),
-    ])),
-    bottomNavigationBar:navigation(),
-  );
-
-  Widget home()=>RefreshIndicator(
-    onRefresh:_loadProfile,
-    child:ListView(physics:const AlwaysScrollableScrollPhysics(),padding:const EdgeInsets.fromLTRB(18,10,18,24),children:[
-      Row(children:[Icon(icon,color:accent,size:28),const SizedBox(width:10),Expanded(child:Text(title,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w900)))]),
-      const SizedBox(height:18),
-      profileCard(),
-      const SizedBox(height:16),
-      statsRow(),
-      const SizedBox(height:18),
-      const Text('Quick Actions',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
-      const SizedBox(height:10),
-      actionGrid(),
-      if(delivery||carrier) ...[const SizedBox(height:18),liveMap()],
-      const SizedBox(height:18),
-      recent(),
-      const SizedBox(height:18),
-      performance(),
+    backgroundColor:const Color(0xFFF7F7F7),
+    body:SafeArea(child:IndexedStack(index:tab,children:[_home(),_categoryPage(tab==1?'Operations':tab==2?'Analytics':'Account')])),
+    bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(v)=>setState(()=>tab=v),destinations:[
+      NavigationDestination(icon:Icon(Icons.home_outlined),selectedIcon:Icon(icon,color:accent),label:'Home'),
+      NavigationDestination(icon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long),selectedIcon:Icon(admin?Icons.tune:carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,color:accent),label:admin?'Operations':carrier?'Rides':delivery?'Deliveries':'Orders'),
+      NavigationDestination(icon:Icon(admin?Icons.analytics:Icons.account_balance_wallet),selectedIcon:Icon(admin?Icons.analytics:Icons.account_balance_wallet,color:accent),label:admin?'Analytics':'Earnings'),
+      NavigationDestination(icon:const Icon(Icons.person_outline),selectedIcon:Icon(Icons.person,color:accent),label:'Account'),
     ]),
   );
 
-  Widget profileCard(){
-    final photo=(profile['photoUrl']??profile['profilePhoto']??'').toString().trim();
-    final online=status=='Online';
-    return Card(elevation:0,color:soft,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(24)),child:Padding(
-      padding:const EdgeInsets.fromLTRB(16,16,12,16),
-      child:Row(children:[
-        CircleAvatar(radius:30,backgroundColor:accent.withOpacity(.12),backgroundImage:photo.isEmpty?null:NetworkImage(photo),
-          child:photo.isEmpty?Text(name.substring(0,1).toUpperCase(),style:TextStyle(fontSize:22,fontWeight:FontWeight.w900,color:accent)):null),
-        const SizedBox(width:14),
-        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Text(name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-          const SizedBox(height:3),Text(status,style:TextStyle(fontSize:12,color:accent,fontWeight:FontWeight.w700)),
-          const SizedBox(height:2),Text(profileLine(),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12)),
-        ])),
-        if(delivery||carrier) Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:7),decoration:BoxDecoration(color:online?const Color(0xFFE2F7E9):Colors.black12,borderRadius:BorderRadius.circular(20)),child:Row(children:[Container(width:8,height:8,decoration:BoxDecoration(color:online?Colors.green:Colors.grey,shape:BoxShape.circle)),const SizedBox(width:5),Text(status,style:TextStyle(fontSize:11,fontWeight:FontWeight.w800,color:online?Colors.green.shade800:Colors.black54))]))
-        else IconButton(onPressed:account,icon:const Icon(Icons.chevron_right)),
-      ]),
-    ));
+  Widget _home()=>RefreshIndicator(onRefresh:_load,child:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,24),children:[
+    Row(children:[Icon(icon,color:accent,size:30),const SizedBox(width:9),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),Text(widget.user.email??'',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11,color:Colors.grey))])),IconButton(onPressed:()=>showAboutDialog(context:context,applicationName:'ALLways',applicationVersion:'1.4.8',children:[const Text('Closer to You, Always')]),icon:const Icon(Icons.info_outline))]),
+    const SizedBox(height:14),
+    _profileCard(),
+    const SizedBox(height:16),
+    _liveStats(),
+    const SizedBox(height:18),
+    Text(admin?'Platform control center':seller?'Seller workspace':delivery?'Delivery workspace':'Rider workspace',style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900)),
+    const SizedBox(height:10),
+    ..._groupedActions(),
+    const SizedBox(height:18),
+    _recent(),
+  ]));
+
+  Widget _profileCard()=>Card(elevation:0,color:accent.withOpacity(.08),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
+    CircleAvatar(radius:29,backgroundColor:accent.withOpacity(.13),child:Text(_name.substring(0,1).toUpperCase(),style:TextStyle(fontSize:23,fontWeight:FontWeight.w900,color:accent))),
+    const SizedBox(width:13),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(_name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(_roleLine,style:TextStyle(color:accent,fontWeight:FontWeight.w700,fontSize:12))])),
+    if(carrier||delivery)Switch(value:online,onChanged:busyStatus?null:_setOnline),
+    if(admin||seller)IconButton(onPressed:()=>open(seller?'Shop Profile':'Users & Roles'),icon:const Icon(Icons.chevron_right)),
+  ]));
+
+  String get _name{final n=(profile['businessName']??profile['shopName']??profile['name']??profile['displayName']??'').toString().trim();return n.isEmpty?(widget.user.displayName??'ALLways Account'):n;}
+  String get _roleLine=>admin?'Full platform access':seller?'Store and catalogue management':delivery?'Deliveries, earnings and safety':online?'Online • accepting nearby rides':'Offline • tap the switch to go online';
+
+  Widget _liveStats()=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+    stream:FirebaseFirestore.instance.collection('orders').snapshots(),
+    builder:(context,s){
+      final docs=s.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
+      final scoped=docs.where((d){
+        final o=d.data();
+        if(seller)return (o['sellerId']??o['sellerUid']??'').toString()==widget.user.uid;
+        if(carrier||delivery)return (o['carrierUid']??'').toString()==widget.user.uid;
+        return true;
+      }).toList();
+      final pending=scoped.where((d)=>(d.data()['status']??'').toString().toLowerCase().contains('pending')||(d.data()['status']??'').toString().toLowerCase()=='new order').length;
+      final done=scoped.where((d){final x=(d.data()['status']??'').toString().toLowerCase();return x=='delivered'||x=='completed';}).length;
+      num value=0;for(final d in scoped)value+=(d.data()['total'] is num?d.data()['total']:num.tryParse((d.data()['total']??0).toString())??0);
+      return Row(children:[
+        _stat(pending.toString(),admin?'Pending orders':seller?'Pending orders':carrier?'Open rides':'Open deliveries',Icons.pending_actions),
+        const SizedBox(width:8),_stat(done.toString(),'Completed',Icons.check_circle_outline),
+        const SizedBox(width:8),_stat('₹'+value.toStringAsFixed(0),'Order value',Icons.currency_rupee),
+      ]);
+    },
+  );
+  Widget _stat(String v,String l,IconData i)=>Expanded(child:Card(elevation:0,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(i,color:accent,size:20),const SizedBox(height:7),Text(v,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(l,maxLines:2,style:const TextStyle(fontSize:10,color:Colors.grey))]))));
+
+  List<Widget> _groupedActions(){
+    final groups=<String,List<_Action>>{};
+    for(final a in actions){groups.putIfAbsent(a.group,()=>[]).add(a);}
+    final out=<Widget>[];
+    groups.forEach((group,items){
+      out.add(Padding(padding:const EdgeInsets.only(top:4,bottom:8),child:Text(group.toUpperCase(),style:TextStyle(fontSize:11,fontWeight:FontWeight.w900,color:accent))));
+      out.add(GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:items.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,mainAxisSpacing:9,crossAxisSpacing:9,childAspectRatio:.96),itemBuilder:(context,i){
+        final a=items[i];return InkWell(onTap:()=>open(a.title),borderRadius:BorderRadius.circular(16),child:Container(padding:const EdgeInsets.all(8),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16),border:Border.all(color:accent.withOpacity(.08))),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(a.icon,color:accent,size:26),const SizedBox(height:7),Text(a.title,textAlign:TextAlign.center,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11.5,fontWeight:FontWeight.w700))])));
+      }));
+      out.add(const SizedBox(height:12));
+    });
+    return out;
   }
 
-  String profileLine(){
-    if(seller)return (profile['catalogueCount']??profile['catalogueItems']??0).toString()+'/50 catalogue items';
-    if(delivery)return (profile['vehicleNumber']??profile['vehicle']??'Vehicle details').toString();
-    if(carrier)return (profile['vehicleNumber']??'Vehicle').toString()+' • '+(profile['vehicleType']??'Bike').toString();
-    return 'ALLways platform management';
-  }
-
-  Widget statsRow()=>SizedBox(height:92,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:stats.length,separatorBuilder:(_,__)=>const SizedBox(width:8),itemBuilder:(_,i)=>Container(
-    width:118,padding:const EdgeInsets.all(10),decoration:BoxDecoration(color:[const Color(0xFFFFE5EA),const Color(0xFFE8F3FF),const Color(0xFFF0E8FF),const Color(0xFFE7F8EC)][i%4],borderRadius:BorderRadius.circular(16)),
-    child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(stats[i].icon,size:18,color:accent),const Spacer(),Text(stats[i].value,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900)),Text(stats[i].label,maxLines:2,style:const TextStyle(fontSize:10.5))]),
-  )));
-
-  Widget actionGrid()=>GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:actions.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,mainAxisSpacing:9,crossAxisSpacing:9,childAspectRatio:.96),itemBuilder:(_,i){
-    final a=actions[i]; return InkWell(borderRadius:BorderRadius.circular(15),onTap:()=>openWorkspace(a.title),child:Container(
-      padding:const EdgeInsets.all(8),decoration:BoxDecoration(color:soft,borderRadius:BorderRadius.circular(15),border:Border.all(color:accent.withOpacity(.06))),
-      child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(a.icon,color:accent,size:26),const SizedBox(height:7),Text(a.title,textAlign:TextAlign.center,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11.5,fontWeight:FontWeight.w700))]),
-    ));
-  });
-
-  Widget recent(){
-    final heading=admin?'Recent Orders':seller?"Today's Orders":delivery?'Recent Deliveries':'Recent Rides';
-    final states=carrier?['Ride request','Completed ride','Completed ride']:delivery?['New delivery','Preparing','Completed']:['New Order','Preparing','Confirmed'];
-    return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[Text(heading,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const Spacer(),TextButton(onPressed:()=>openWorkspace(heading),child:Text('View All',style:TextStyle(color:accent)))]),
-      ...List.generate(3,(i)=>Card(elevation:0,margin:const EdgeInsets.only(bottom:8),color:soft,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),child:ListTile(
-        leading:CircleAvatar(backgroundColor:accent.withOpacity(.10),child:Icon(carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,color:accent)),
-        title:Text(['#AW425454459','#AW425371404','#AW425336958'][i],style:const TextStyle(fontWeight:FontWeight.w800,fontSize:13)),
-        subtitle:Text(['Aastha • ₹324','Pooja Singh • ₹405','Rohan • ₹324'][i]),
-        trailing:Container(padding:const EdgeInsets.symmetric(horizontal:8,vertical:5),decoration:BoxDecoration(color:accent.withOpacity(.10),borderRadius:BorderRadius.circular(14)),child:Text(states[i],style:TextStyle(color:accent,fontSize:10,fontWeight:FontWeight.w800))),
-      ))),
+  Widget _categoryPage(String category){
+    final items=actions.where((x){
+      if(category=='Operations')return x.group=='Operations'||x.group=='Work'||x.group=='Rides'||x.group=='Store'||x.group=='Orders';
+      if(category=='Analytics')return x.group=='Analytics'||x.group=='Growth'||x.group=='Performance'||x.group=='Finance';
+      return x.group=='Account'||x.group=='Safety'||x.group=='Content'||x.group=='People'||x.group=='Settings'||x.group=='Account';
+    }).toList();
+    return ListView(padding:const EdgeInsets.fromLTRB(16,22,16,28),children:[
+      Text(category,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:5),Text('Everything is organized by task so every option has a clear destination.',style:const TextStyle(color:Colors.grey)),const SizedBox(height:16),
+      ...items.map((a)=>Card(elevation:0,child:ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:5),leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(a.icon,color:accent)),title:Text(a.title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(a.group+' • Open dedicated workspace'),trailing:Icon(Icons.chevron_right,color:accent),onTap:()=>open(a.title))),
     ]);
   }
 
-  Widget performance(){
-    final values=admin?[('52','Active Sellers'),('18','Online Partners'),('12','Online Carriers')]:seller?[('₹4,320','Total Sales'),('86','Product Views'),('12','New Customers')]:delivery?[('₹3,420','This Week'),('28','Deliveries'),('4.8','Rating')]:[('₹2,940','This Week'),('21','Rides'),('4.8','Rating')];
-    return Card(elevation:0,color:soft,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Text(admin?'Platform Overview':seller?'Shop Performance':delivery?'Delivery Performance':'Ride Performance',style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
-      const SizedBox(height:12),Row(children:values.map((x)=>Expanded(child:Column(children:[Text(x.$1,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),const SizedBox(height:3),Text(x.$2,textAlign:TextAlign.center,style:const TextStyle(fontSize:10))]))).toList()),
-    ])));
-  }
-
-  Widget liveMap()=>_RoleLiveMap(accent:accent,carrier:carrier,onOpen:()=>openWorkspace(carrier?'Ride Requests':'Delivery Requests'));
-
-  Widget section(String label) {
-    final List<_Action> sectionActions;
-    if (admin) {
-      sectionActions = label == 'Live Operations'
-          ? const [
-              _Action('Manage Orders', Icons.receipt_long),
-              _Action('Manage Delivery Partners', Icons.delivery_dining),
-              _Action('Manage Carriers', Icons.two_wheeler),
-              _Action('Manage Sellers', Icons.storefront),
-            ]
-          : label == 'Reports & Analytics'
-              ? const [
-                  _Action('Reports & Analytics', Icons.analytics),
-                  _Action('Users & Roles', Icons.manage_accounts),
-                ]
-              : const [
-                  _Action('Users & Roles', Icons.manage_accounts),
-                  _Action('App Settings', Icons.settings),
-                ];
-    } else if (seller) {
-      sectionActions = label == 'Orders'
-          ? const [_Action('Orders', Icons.receipt_long), _Action('Inventory', Icons.fact_check)]
-          : label == 'Sales Analytics'
-              ? const [_Action('Sales Analytics', Icons.bar_chart), _Action('Payouts', Icons.account_balance_wallet)]
-              : const [
-                  _Action('Shop Profile', Icons.storefront),
-                  _Action('Products', Icons.inventory_2),
-                  _Action('Offers', Icons.local_offer),
-                  _Action('Help & Support', Icons.support_agent),
-                ];
-    } else if (delivery) {
-      sectionActions = label == 'Deliveries'
-          ? const [_Action('Delivery Requests', Icons.local_shipping), _Action('My Deliveries', Icons.assignment_turned_in)]
-          : label == 'Earnings'
-              ? const [_Action('Earnings', Icons.currency_rupee), _Action('Performance', Icons.bar_chart), _Action('Incentives', Icons.card_giftcard)]
-              : const [
-                  _Action('Documents', Icons.description),
-                  _Action('Safety & SOS', Icons.shield),
-                  _Action('Help & Support', Icons.support_agent),
-                  _Action('Profile & Settings', Icons.person),
-                ];
-    } else {
-      sectionActions = label == 'Rides'
-          ? const [_Action('Ride Requests', Icons.two_wheeler), _Action('My Rides', Icons.route), _Action('Ride History', Icons.history)]
-          : label == 'Earnings'
-              ? const [_Action('Earnings', Icons.currency_rupee), _Action('Ratings', Icons.star)]
-              : const [
-                  _Action('Vehicle & Documents', Icons.description),
-                  _Action('Safety & SOS', Icons.shield),
-                  _Action('Help & Support', Icons.support_agent),
-                  _Action('Profile & Settings', Icons.person),
-                ];
-    }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 24, 18, 28),
-      children: [
-        Icon(icon, size: 54, color: accent),
-        const SizedBox(height: 12),
-        Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 6),
-        Text(
-          'Choose exactly what you want to manage.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.black54),
-        ),
-        const SizedBox(height: 20),
-        ...sectionActions.map(
-          (a) => Card(
-            elevation: 0,
-            color: soft,
-            margin: const EdgeInsets.only(bottom: 10),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-              leading: CircleAvatar(
-                backgroundColor: accent.withOpacity(.10),
-                child: Icon(a.icon, color: accent),
-              ),
-              title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: const Text('Open this section separately'),
-              trailing: Icon(Icons.chevron_right, color: accent),
-              onTap: () => openWorkspace(a.title),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget navigation(){
-    final labels=admin?const['Home','Operations','Analytics','Users']:seller?const['Home','Orders','Analytics','Profile']:delivery?const['Home','Deliveries','Earnings','Profile']:const['Home','Rides','Earnings','Profile'];
-    final icons=admin?const[Icons.home,Icons.tune,Icons.analytics,Icons.manage_accounts]:seller?const[Icons.home,Icons.receipt_long,Icons.bar_chart,Icons.person]:delivery?const[Icons.home,Icons.local_shipping,Icons.account_balance_wallet,Icons.person]:const[Icons.home,Icons.two_wheeler,Icons.account_balance_wallet,Icons.person];
-    return NavigationBar(
-      selectedIndex: tab,
-      onDestinationSelected: (v) => setState(() => tab = v),
-      destinations: List.generate(
-        4,
-        (i) => NavigationDestination(
-          icon: Icon(icons[i]),
-          selectedIcon: Icon(icons[i], color: accent),
-          label: labels[i],
-        ),
-      ),
-    );
-  }
+  Widget _recent()=>StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('orders').orderBy('createdAt',descending:true).limit(5).snapshots(),builder:(context,s){if(!s.hasData)return const SizedBox.shrink();return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Row(children:[const Text('Recent activity',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const Spacer(),TextButton(onPressed:()=>open(admin?'Manage Orders':seller?'Orders':carrier?'My Rides':'My Deliveries'),child:Text('View all',style:TextStyle(color:accent)))]),
+    ...s.data!.docs.map((d){final o=d.data();return Card(elevation:0,child:ListTile(onTap:()=>open(admin?'Manage Orders':seller?'Orders':carrier?'My Rides':'My Deliveries'),leading:CircleAvatar(backgroundColor:accent.withOpacity(.1),child:Icon(carrier?Icons.two_wheeler:delivery?Icons.local_shipping:Icons.receipt_long,color:accent)),title:Text('#'+(o['id']??d.id).toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((o['name']??o['customerName']??'Customer').toString()),trailing:Text('₹'+(o['total']??0).toString(),style:const TextStyle(fontWeight:FontWeight.w800))));}),
+  ]);});
 }
 
-class _RoleLiveMap extends StatefulWidget {
-  final Color accent; final bool carrier; final VoidCallback onOpen;
-  const _RoleLiveMap({required this.accent,required this.carrier,required this.onOpen});
-  @override State<_RoleLiveMap> createState()=>_RoleLiveMapState();
-}
-class _RoleLiveMapState extends State<_RoleLiveMap> {
-  Position? position; Timer? timer;
-  @override void initState(){super.initState();load();timer=Timer.periodic(const Duration(seconds:15),(_)=>load());}
-  @override void dispose(){timer?.cancel();super.dispose();}
-  Future<void> load() async {
-    try{
-      if(!await Geolocator.isLocationServiceEnabled())return;
-      var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
-      if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return;
-      final x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:10));
-      if(mounted)setState(()=>position=x);
-    }catch(_){}
-  }
-  @override Widget build(BuildContext context){
-    final center=LatLng(position?.latitude??25.16,position?.longitude??82.04);
-    return Card(elevation:0,clipBehavior:Clip.antiAlias,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:SizedBox(height:250,child:Stack(children:[
-      FlutterMap(options:MapOptions(initialCenter:center,initialZoom:13.2),children:[
-        TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',userAgentPackageName:'in.allways.app'),
-        MarkerLayer(markers:[Marker(point:center,width:58,height:58,child:Container(decoration:BoxDecoration(color:widget.accent,shape:BoxShape.circle,border:Border.all(color:Colors.white,width:4)),child:Icon(widget.carrier?Icons.two_wheeler:Icons.delivery_dining,color:Colors.white,size:28)))])
-      ]),
-      Positioned(top:12,left:12,right:12,child:Container(padding:const EdgeInsets.symmetric(horizontal:14,vertical:11),decoration:BoxDecoration(color:Colors.white.withOpacity(.94),borderRadius:BorderRadius.circular(15)),child:Row(children:[Icon(Icons.location_on,color:widget.accent),const SizedBox(width:8),Expanded(child:Text(position==null?'Getting your live location…':'Live location • GPS updating',style:const TextStyle(fontWeight:FontWeight.w800)))]))),
-      Positioned(bottom:12,left:12,right:12,child:FilledButton.icon(onPressed:widget.onOpen,icon:const Icon(Icons.near_me),label:Text(widget.carrier?'View ride requests':'View delivery requests'))),
-    ])));
-  }
-}
-
-class _Stat { final String value,label; final IconData icon; const _Stat(this.value,this.label,this.icon); }
-class _Action { final String title; final IconData icon; const _Action(this.title,this.icon); }
+class _Action{final String title;final IconData icon;final String group;const _Action(this.title,this.icon,this.group);}
