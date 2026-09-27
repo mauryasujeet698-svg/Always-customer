@@ -1436,7 +1436,15 @@ class _ShopPageState extends State<ShopPage>{
           child:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,110),children:[
             Row(children:[
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                RichText(text:TextSpan(style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900),children:[const TextSpan(text:'ALL',style:TextStyle(color:AllwaysColors.purple)),TextSpan(text:'ways',style:TextStyle(color:Theme.of(c).colorScheme.onSurface)])),
+                RichText(
+                  text:TextSpan(
+                    style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900),
+                    children:[
+                      const TextSpan(text:'ALL',style:TextStyle(color:AllwaysColors.purple)),
+                      TextSpan(text:'ways',style:TextStyle(color:Theme.of(c).colorScheme.onSurface)),
+                    ],
+                  ),
+                ),
                 Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant,fontSize:12,fontWeight:FontWeight.w500)),
               ])),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
@@ -4388,7 +4396,7 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
         const Text('Complete your carrier profile first. The account must be approved before it can receive public ride requests.',textAlign:TextAlign.center),
         const SizedBox(height:18),
         FilledButton.icon(onPressed:_editProfile,icon:const Icon(Icons.person_add_alt_1_outlined),label:const Text('Set up carrier profile')),
-      ]))),
+      ])))),
     );
     final views=<Widget>[
       Stack(children:[
