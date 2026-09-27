@@ -3893,7 +3893,7 @@ class _RiderLoginPageState extends State<RiderLoginPage> {
   StreamSubscription<Position>? _uiPositionSub;
   static const double maxRadiusKm=7.0;
 
-  @override void initState(){super.initState();_load();}
+  @override void initState(){super.initState();_load();_startUiLocationStream();}
   @override void dispose(){_requestsSub?.cancel();_activeSub?.cancel();_uiPositionSub?.cancel();_locationBroadcaster?.stop();_destinationController.dispose();super.dispose();}
 
   void _startUiLocationStream(){
