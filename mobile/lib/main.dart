@@ -730,7 +730,7 @@ class _ShellState extends State<Shell> {
   Future<void> setupNotifications() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool('allways_notifications_enabled') == false) return;
+      if (prefs.getBool('notifications_enabled') == false) return;
 
       final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
@@ -748,12 +748,9 @@ class _ShellState extends State<Shell> {
             .invokeMethod('createNotificationChannel');
       } catch (_) {}
 
-      final announcementsEnabled = prefs.getBool('notification_announcements') ?? true;
-      if (announcementsEnabled) {
-        await FirebaseMessaging.instance.subscribeToTopic('all_users');
-      } else {
-        await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
-      }
+      final notificationsEnabled = prefs.getBool('notifications_enabled') ?? prefs.getBool('allways_notifications_enabled') ?? true;
+      if (!notificationsEnabled) return;
+      await FirebaseMessaging.instance.subscribeToTopic('all_users');
 
       final t = await FirebaseMessaging.instance.getToken();
 
@@ -769,7 +766,7 @@ class _ShellState extends State<Shell> {
         await p.setString('allways_fcm_token', token);
         if (user != null) {
           try {
-            final enabled = p.getBool('notifications_enabled') ?? p.getBool('allways_notifications_enabled') ?? true;
+            final enabled = p.getBool('notifications_enabled') ?? true;
             final tokenRef = FirebaseFirestore.instance
                 .collection('fcmTokens')
                 .doc(user!.uid)
