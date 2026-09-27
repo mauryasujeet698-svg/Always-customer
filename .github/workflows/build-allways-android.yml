@@ -614,6 +614,80 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare emulator smoke test script
+        run: |
+          cat > /tmp/allways_emulator_smoke_test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          echo "Waiting for ADB device..."
+          adb wait-for-device
+
+          echo "Waiting for Android boot completion (max 180s)..."
+          booted=0
+          for i in $(seq 1 60); do
+            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$booted" -ne 1 ]; then
+            echo "ERROR: Emulator did not finish booting within 180 seconds."
+            adb shell getprop sys.boot_completed || true
+            adb logcat -d -t 500 | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Emulator boot completed."
+
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+
+          echo "Installing ALLways APK..."
+          adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
+
+          echo "Launching ALLways..."
+          adb shell am force-stop com.allways.app || true
+          launch_output="$(adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1 2>&1 || true)"
+          echo "$launch_output"
+
+          echo "Waiting for ALLways process..."
+          running=0
+          for i in $(seq 1 20); do
+            pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ -n "$pid" ]; then
+              running=1
+              echo "PASS: ALLways process running with pid=$pid"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$running" -ne 1 ]; then
+            echo "ERROR: ALLways process did not remain running."
+            echo "Installed package:"
+            adb shell dumpsys package com.allways.app | head -n 120 || true
+            echo "Recent ALLways/Android runtime log:"
+            adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          fatal_log="$(adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
+          if [ -n "$fatal_log" ]; then
+            echo "ERROR: fatal Android runtime exception detected."
+            echo "$fatal_log"
+            exit 1
+          fi
+
+          echo "PASS: ALLways installed and launched successfully."
+          adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
+          EOF
+          chmod +x /tmp/allways_emulator_smoke_test.sh
+
       - name: Runtime smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         timeout-minutes: 12
@@ -625,76 +699,7 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          script: |
-            # Keep this script POSIX-compatible because the emulator action may
-            # execute the supplied script through /bin/sh on the runner.
-            set -eu
-
-            echo "Waiting for ADB device..."
-            adb wait-for-device
-
-            echo "Waiting for Android boot completion (max 180s)..."
-            booted=0
-            for i in $(seq 1 60); do
-              state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | tr -d '[:space:]' || true)"
-              if [ "$state" = "1" ]; then
-                booted=1
-                break
-              fi
-              sleep 3
-            done
-
-            if [ "$booted" -ne 1 ]; then
-              echo "ERROR: Emulator did not finish booting within 180 seconds."
-              adb shell getprop sys.boot_completed || true
-              adb logcat -d -t 500 | tail -n 300 || true
-              exit 1
-            fi
-
-            echo "Emulator boot completed."
-
-            adb shell settings put global window_animation_scale 0 || true
-            adb shell settings put global transition_animation_scale 0 || true
-            adb shell settings put global animator_duration_scale 0 || true
-
-            echo "Installing ALLways APK..."
-            adb install -r mobile/build/app/outputs/flutter-apk/app-release.apk
-
-            echo "Launching ALLways..."
-            adb shell am force-stop com.allways.app || true
-            launch_output="$(adb shell monkey -p com.allways.app -c android.intent.category.LAUNCHER 1 2>&1 || true)"
-            echo "$launch_output"
-
-            echo "Waiting for ALLways process..."
-            running=0
-            for i in $(seq 1 20); do
-              pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\r' | tr -d '[:space:]' || true)"
-              if [ -n "$pid" ]; then
-                running=1
-                echo "PASS: ALLways process running with pid=$pid"
-                break
-              fi
-              sleep 2
-            done
-
-            if [ "$running" -ne 1 ]; then
-              echo "ERROR: ALLways process did not remain running."
-              echo "Installed package:"
-              adb shell dumpsys package com.allways.app | head -n 120 || true
-              echo "Recent ALLways/Android runtime log:"
-              adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
-              exit 1
-            fi
-
-            fatal_log="$(adb logcat -d -t 1000 | grep -E 'FATAL EXCEPTION|AndroidRuntime' || true)"
-            if [ -n "$fatal_log" ]; then
-              echo "ERROR: fatal Android runtime exception detected."
-              echo "$fatal_log"
-              exit 1
-            fi
-
-            echo "PASS: ALLways installed and launched successfully."
-            adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
+          script: bash /tmp/allways_emulator_smoke_test.sh
 
       - name: Verify Android launcher manifest
         run: |
