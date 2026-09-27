@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
@@ -31,7 +32,7 @@ class _NotificationsSettingsScreenState
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _allwaysNotifications = prefs.getBool('allways_notifications_enabled') ?? true;
+      _allwaysNotifications = prefs.getBool('notifications_enabled') ?? prefs.getBool('allways_notifications_enabled') ?? true;
       _orderUpdates = prefs.getBool('notification_orderUpdates') ?? true;
       _deliveryUpdates = prefs.getBool('notification_deliveryUpdates') ?? true;
       _travelUpdates = prefs.getBool('notification_travelUpdates') ?? true;
@@ -46,6 +47,12 @@ class _NotificationsSettingsScreenState
     // Keep master flag in sync with main.dart FCM logic
     if (key == 'allways_notifications_enabled') {
       await prefs.setBool('notifications_enabled', value);
+      if (value) {
+        await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true, provisional: false);
+        await FirebaseMessaging.instance.subscribeToTopic('all_users');
+      } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
+      }
     }
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -64,7 +71,7 @@ class _NotificationsSettingsScreenState
             'offers': prefs.getBool('notification_offers') ?? false,
             'announcements': prefs.getBool('notification_announcements') ?? false,
           },
-          'notificationsEnabled': prefs.getBool('allways_notifications_enabled') ?? true,
+          'notificationsEnabled': prefs.getBool('notifications_enabled') ?? true,
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
