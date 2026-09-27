@@ -32,6 +32,7 @@ import 'screens/wishlist_screen.dart';
 import 'screens/order_details_screen.dart';
 import 'role_dashboard_screen.dart';
 import 'admin_cms_screen.dart';
+import 'allways_design.dart';
 
 const adminEmail='mauryasujeet698@gmail.com';
 
@@ -187,14 +188,61 @@ class AllwaysApp extends StatelessWidget {
         title:'ALLways',
         theme:ThemeData(
           useMaterial3:true,
-          colorScheme:ColorScheme.fromSeed(seedColor:Colors.black),
-          textTheme:GoogleFonts.interTextTheme(),
-          inputDecorationTheme:const InputDecorationTheme(
-            border:OutlineInputBorder(),
+          scaffoldBackgroundColor:AllwaysColors.background,
+          colorScheme:ColorScheme.fromSeed(
+            seedColor:AllwaysColors.primary,
+            brightness:Brightness.light,
+          ),
+          textTheme:GoogleFonts.poppinsTextTheme().apply(
+            bodyColor:AllwaysColors.text,
+            displayColor:AllwaysColors.text,
+          ),
+          appBarTheme:const AppBarTheme(
+            backgroundColor:AllwaysColors.background,
+            foregroundColor:AllwaysColors.text,
+            elevation:0,
+            centerTitle:false,
+          ),
+          cardTheme:const CardThemeData(
+            color:AllwaysColors.surface,
+            elevation:0,
+            margin:EdgeInsets.zero,
+          ),
+          inputDecorationTheme:InputDecorationTheme(
+            filled:true,
+            fillColor:Colors.white,
+            border:OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:AllwaysColors.border),
+            ),
+            enabledBorder:OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:AllwaysColors.border),
+            ),
+            focusedBorder:const OutlineInputBorder(
+              borderRadius:BorderRadius.all(Radius.circular(16)),
+              borderSide:BorderSide(color:AllwaysColors.primary,width:1.5),
+            ),
           ),
         ),
-        darkTheme:ThemeData.dark(useMaterial3:true).copyWith(
-          textTheme:GoogleFonts.interTextTheme(ThemeData.dark(useMaterial3:true).textTheme),
+        darkTheme:ThemeData(
+          useMaterial3:true,
+          scaffoldBackgroundColor:const Color(0xFF121014),
+          colorScheme:ColorScheme.fromSeed(
+            seedColor:AllwaysColors.primary,
+            brightness:Brightness.dark,
+          ),
+          textTheme:GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
+          appBarTheme:const AppBarTheme(
+            backgroundColor:Color(0xFF121014),
+            foregroundColor:Colors.white,
+            elevation:0,
+          ),
+          cardTheme:const CardThemeData(
+            color:Color(0xFF1C191D),
+            elevation:0,
+            margin:EdgeInsets.zero,
+          ),
         ),
         themeMode:mode,
         home:const Shell(),
@@ -1182,11 +1230,16 @@ class _ShellState extends State<Shell> {
           ),
         Expanded(child:pages[tab]),
       ])),
-      bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(i)=>setState(()=>tab=i),destinations:[
-        NavigationDestination(icon:const Icon(Icons.shopping_bag_outlined),label:tr('Shop')),
-        NavigationDestination(icon:const Icon(Icons.directions_car_outlined),label:tr('Travel')),
-        NavigationDestination(icon:const Icon(Icons.storefront_outlined),label:tr('Local sellers')),
-        NavigationDestination(icon:const Icon(Icons.person_outline),label:tr('Profile'))]),
+      bottomNavigationBar:AllwaysBottomNav(
+        selectedIndex:tab,
+        onSelected:(i)=>setState(()=>tab=i),
+        items:[
+          (icon:Icons.shopping_bag_outlined,activeIcon:Icons.shopping_bag,label:tr('Shop')),
+          (icon:Icons.directions_car_outlined,activeIcon:Icons.directions_car,label:tr('Travel')),
+          (icon:Icons.storefront_outlined,activeIcon:Icons.storefront,label:tr('Local sellers')),
+          (icon:Icons.person_outline,activeIcon:Icons.person,label:tr('Profile')),
+        ],
+      ),
       floatingActionButton:count==0?null:FloatingActionButton.extended(
         onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),
         icon:const Icon(Icons.shopping_cart),label:Text(count.toString()+' • ₹'+total.toStringAsFixed(0))),
@@ -1218,7 +1271,7 @@ class _ShopPageState extends State<ShopPage>{
   bool locating=false,listening=false;
   Timer? bannerTimer;
   int bannerIndex=0;
-  static const green=Color(0xFF0C8A4B);
+  static const green=AllwaysColors.primary;
   static const preferred=['Popular Near You','Daily Needs','Fresh Fruits & Vegetables','Dairy','Grocery','Bakery','Snacks','Beverages','Breakfast Essentials','Rice & Grains','Atta & Flour','Pulses & Dal','Cooking Oil','Spices & Masala','Salt & Sugar','Dry Fruits & Nuts','Tea & Coffee','Biscuits & Cookies','Chocolates & Sweets','Instant Food','Noodles & Pasta','Sauces & Spreads','Pickles & Chutneys','Canned & Packaged Food','Frozen Food','Ice Cream','Meat & Seafood','Eggs','Personal Care','Bath & Body','Hair Care','Oral Care','Skin Care','Baby Care','Health & Wellness','Home Care','Cleaning Essentials','Laundry Care','Dishwashing','Kitchen Essentials','Paper & Tissue','Pet Care','Stationery','Electronics','Mobile Accessories','Household Essentials','Pooja Essentials','Organic & Natural','Local Specials','Seasonal Products'];
   static const icons={'All':'▦','Dairy':'🥛','Grocery':'🛒','Fruits & Vegetables':'🥬','Bakery':'🥖','Snacks':'🍟','Beverages':'🥤','Breakfast Essentials':'🍳','Rice & Grains':'🍚','Atta & Flour':'🌾','Pulses & Dal':'🫘','Cooking Oil':'🫗','Spices & Masala':'🌶️','Salt & Sugar':'🧂','Dry Fruits & Nuts':'🥜','Tea & Coffee':'☕','Biscuits & Cookies':'🍪','Chocolates & Sweets':'🍫','Instant Food':'🍜','Noodles & Pasta':'🍝','Sauces & Spreads':'🥫','Pickles & Chutneys':'🫙','Canned & Packaged Food':'📦','Frozen Food':'🧊','Ice Cream':'🍦','Meat & Seafood':'🥩','Eggs':'🥚','Personal Care':'🧴','Bath & Body':'🛁','Hair Care':'💇','Oral Care':'🪥','Skin Care':'🧖','Baby Care':'🍼','Health & Wellness':'💊','Home Care':'🏠','Cleaning Essentials':'🧹','Laundry Care':'🧺','Dishwashing':'🧽','Kitchen Essentials':'🍳','Paper & Tissue':'🧻','Pet Care':'🐾','Stationery':'📚','Electronics':'🔌','Mobile Accessories':'📱','Household Essentials':'🧰','Pooja Essentials':'🪔','Organic & Natural':'🌿','Local Specials':'⭐','Seasonal Products':'🎉'};
 
@@ -1320,7 +1373,7 @@ class _ShopPageState extends State<ShopPage>{
     final show=items.take(4).toList();
     return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       Row(children:[Expanded(child:Text(title,style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))),if(seeAll)TextButton(onPressed:()=>openCat(c,title=='Top offers'?'All':title),child:const Text('See all'))]),
-      GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:show.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:4,crossAxisSpacing:7,mainAxisSpacing:8,childAspectRatio:.58),itemBuilder:(c,i)=>productCard(c,show[i])),
+      GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:show.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:8,mainAxisSpacing:10,childAspectRatio:.60),itemBuilder:(c,i)=>productCard(c,show[i])),
       const SizedBox(height:16),
     ]);
   }
@@ -1345,16 +1398,16 @@ class _ShopPageState extends State<ShopPage>{
           child:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,110),children:[
             Row(children:[
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                RichText(text:const TextSpan(style:TextStyle(fontSize:28,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:green)),TextSpan(text:'ways',style:TextStyle(color:Colors.black87))])),
-                Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.grey,fontSize:12)),
+                RichText(text:const TextSpan(style:TextStyle(fontSize:30,fontWeight:FontWeight.w900),children:[TextSpan(text:'ALL',style:TextStyle(color:AllwaysColors.purple)),TextSpan(text:'ways',style:TextStyle(color:AllwaysColors.text))])),
+                Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12,fontWeight:FontWeight.w500)),
               ])),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/wishlist'),icon:const Icon(Icons.favorite_border)),
               IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
             ]),
-            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(14)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
+            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16),border:Border.all(color:AllwaysColors.border)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
             const SizedBox(height:10),
-            TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:const Color(0xFFF4F4F4),border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide.none)),onChanged:(v)=>setState(()=>search=v)),
+            TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Colors.white,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide.none)),onChanged:(v)=>setState(()=>search=v)),
             const SizedBox(height:12),
             StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
               stream:FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
