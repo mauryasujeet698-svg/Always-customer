@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'admin_cms_screen.dart';
 
 class RoleFeatureScreen extends StatelessWidget {
@@ -31,7 +32,8 @@ class RoleFeatureScreen extends StatelessWidget {
 
   Widget _content(BuildContext context){
     if(feature=='Manage Orders'||feature=='Orders'||feature=='My Deliveries'||feature=='My Rides'||feature=='Ride History')return _orders(context);
-    if(feature=='Delivery Requests'||feature=='Ride Requests')return _requests(context,feature=='Delivery Requests');
+    if(feature=='Ride Requests')return RideRequestsScreen(user:user,accent:accent);
+    if(feature=='Delivery Requests')return _requests(context,true);
     if(feature=='Products'||feature=='Inventory')return _products(context);
     if(feature=='Shop Profile')return _shopProfile(context);
     if(feature=='Offers')return _offers(context);
@@ -214,4 +216,98 @@ class RoleFeatureScreen extends StatelessWidget {
   num _num(dynamic v)=>v is num?v:num.tryParse((v??'').toString().replaceAll(',',''))??0;
   int _time(dynamic v)=>v is Timestamp?v.millisecondsSinceEpoch:v is num?v.toInt():DateTime.tryParse((v??'').toString())?.millisecondsSinceEpoch??0;
   bool _isDone(dynamic v){final s=(v??'').toString().toLowerCase();return s=='delivered'||s=='completed'||s=='cancelled';}
+}
+
+
+class RideRequestsScreen extends StatefulWidget {
+  final User user;
+  final Color accent;
+  const RideRequestsScreen({super.key,required this.user,required this.accent});
+  @override State<RideRequestsScreen> createState()=>_RideRequestsScreenState();
+}
+
+class _RideRequestsScreenState extends State<RideRequestsScreen> {
+  static const radiusKm=7.0;
+  Position? position;
+  Map<String,double> distances={};
+  bool online=false,loading=true;
+  Stream<QuerySnapshot<Map<String,dynamic>>> get stream=>FirebaseFirestore.instance.collection('autoRideRequests').where('status',isEqualTo:'searching').snapshots();
+
+  @override void initState(){super.initState();_load();}
+  Future<void> _load()async{
+    final snap=await FirebaseFirestore.instance.collection('ridePartners').doc(widget.user.uid).get();
+    online=(snap.data()?['status']??'offline').toString().toLowerCase()=='online';
+    await _locate();
+    if(mounted)setState(()=>loading=false);
+  }
+  Future<void> _locate()async{
+    try{
+      if(!await Geolocator.isLocationServiceEnabled())return;
+      var p=await Geolocator.checkPermission();
+      if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
+      if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return;
+      position=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,distanceFilter:10));
+    }catch(_){}
+  }
+  Future<void> _toggle(bool value)async{
+    try{
+      if(value)await _locate();
+      if(value&&position==null){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Turn on location permission before going online.')));return;}
+      await FirebaseFirestore.instance.collection('ridePartners').doc(widget.user.uid).set({'status':value?'online':'offline','availableForRides':value,'carrierLat':position?.latitude,'carrierLng':position?.longitude,'statusUpdatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+      if(mounted)setState(()=>online=value);
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not change duty status: '+e.toString())));}
+  }
+  Future<void> _reject(QueryDocumentSnapshot<Map<String,dynamic>> d)async{await d.reference.update({'rejectedBy':FieldValue.arrayUnion([widget.user.uid]),'updatedAt':FieldValue.serverTimestamp()});}
+  Future<void> _accept(QueryDocumentSnapshot<Map<String,dynamic>> d)async{
+    try{
+      await FirebaseFirestore.instance.runTransaction((tx)async{
+        final latest=await tx.get(d.reference);
+        final p=await tx.get(FirebaseFirestore.instance.collection('ridePartners').doc(widget.user.uid));
+        final o=latest.data()??{},profile=p.data()??{};
+        if((o['status']??'').toString().toLowerCase()!='searching')throw Exception('Ride already accepted by another rider.');
+        final type=(o['rideType']??'bike').toString().toLowerCase();
+        final vehicle=(profile['vehicleType']??'bike').toString().toLowerCase();
+        final normalized=vehicle=='two_wheeler'?'bike':vehicle;
+        if(type!=normalized)throw Exception('This request is for a different vehicle type.');
+        tx.update(d.reference,{'status':'accepted','driverUid':widget.user.uid,'driverName':profile['name']??widget.user.displayName??'ALLways Rider','driverPhone':profile['mobileNumber']??widget.user.phoneNumber??'','driverVehicleType':normalized,'acceptedAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+        tx.set(p.reference,{'status':'offline','availableForRides':false,'activeRideId':d.id,'statusUpdatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+      });
+      if(mounted){setState(()=>online=false);ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride accepted. Open My Rides for tracking and completion.')));}
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));}
+  }
+  double? _num(dynamic v)=>v is num?v.toDouble():double.tryParse((v??'').toString());
+  @override Widget build(BuildContext context){
+    return Column(children:[
+      Container(padding:const EdgeInsets.fromLTRB(16,14,16,14),color:Colors.white,child:Row(children:[
+        Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Uber-style rider queue',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),Text(online?'Online • accepting requests within 7 km':'Offline • go online to receive rides',style:TextStyle(color:widget.accent,fontWeight:FontWeight.w700))])),
+        Switch(value:online,onChanged:loading?null:_toggle),
+      ])),
+      Expanded(child:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:stream,builder:(context,snap){
+        if(loading)return const Center(child:CircularProgressIndicator());
+        if(!online)return const Center(child:Padding(padding:EdgeInsets.all(28),child:Text('You are offline. Turn on duty status to receive nearby ride requests.',textAlign:TextAlign.center)));
+        if(position==null)return const Center(child:Padding(padding:EdgeInsets.all(28),child:Text('Live location is required to show the 7 km request radius.',textAlign:TextAlign.center)));
+        final list=<QueryDocumentSnapshot<Map<String,dynamic>>>[];distances={};
+        for(final d in snap.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]){
+          final o=d.data();final rejected=o['rejectedBy'] is List?List.from(o['rejectedBy']):<dynamic>[];
+          if(rejected.contains(widget.user.uid))continue;
+          final type=(o['rideType']??'bike').toString().toLowerCase();
+          final lat=_num(o['pickupLatitude']),lng=_num(o['pickupLongitude']);
+          if(lat==null||lng==null)continue;
+          final km=Geolocator.distanceBetween(position!.latitude,position!.longitude,lat,lng)/1000;
+          if(km<=radiusKm){distances[d.id]=km;list.add(d);}
+          if(type!='bike'&&type!='auto'){}
+        }
+        list.sort((a,b)=>(distances[a.id]??99).compareTo(distances[b.id]??99));
+        if(list.isEmpty)return const Center(child:Padding(padding:EdgeInsets.all(28),child:Text('No ride requests within 7 km right now.',textAlign:TextAlign.center)));
+        return ListView(padding:const EdgeInsets.fromLTRB(16,14,16,28),children:list.map((d){
+          final o=d.data();final type=(o['rideType']??'bike').toString();final km=distances[d.id]??0;
+          return Card(elevation:0,margin:const EdgeInsets.only(bottom:12),child:Padding(padding:const EdgeInsets.all(15),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(children:[CircleAvatar(backgroundColor:widget.accent.withOpacity(.1),child:Icon(type=='auto'?Icons.local_taxi_outlined:Icons.two_wheeler,color:widget.accent)),const SizedBox(width:10),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(type.toUpperCase()+' RIDE',style:const TextStyle(fontWeight:FontWeight.w900)),Text(km.toStringAsFixed(1)+' km away',style:TextStyle(color:widget.accent,fontWeight:FontWeight.w700))])),Text('₹'+_num(o['estimatedFare']??o['fare']??o['total']).toStringAsFixed(0),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
+            const SizedBox(height:10),Text((o['pickupAddress']??o['address']??'Pickup location').toString(),maxLines:2,overflow:TextOverflow.ellipsis),Text((o['destinationAddress']??o['destination']??'Destination').toString(),maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:Colors.grey)),
+            const SizedBox(height:12),Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_reject(d),child:const Text('Reject'))),const SizedBox(width:10),Expanded(child:FilledButton(onPressed:()=>_accept(d),style:FilledButton.styleFrom(backgroundColor:widget.accent),child:const Text('Accept')))]),
+          ])));
+        }).toList());
+      })),
+    ]);
+  }
 }
