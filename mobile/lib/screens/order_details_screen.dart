@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../allways_design.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -217,9 +218,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness==Brightness.dark?const Color(0xFF101114):const Color(0xFFFCFBFC),
+      backgroundColor: Theme.of(context).brightness==Brightness.dark?const Color(0xFF121014):AllwaysColors.background,
       appBar: AppBar(
-        backgroundColor: Theme.of(context).brightness==Brightness.dark?const Color(0xFF101114):const Color(0xFFFCFBFC),
+        backgroundColor: Theme.of(context).brightness==Brightness.dark?const Color(0xFF121014):AllwaysColors.background,
         elevation: 0,
         leading: IconButton(
           tooltip: 'Back',
@@ -233,8 +234,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               final s = await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).get();
               if (s.exists && s.data() != null) _help(s.data()!);
             },
-            icon: const Icon(Icons.headset_mic_outlined, size: 18, color: Color(0xFFB3134A)),
-            label: const Text('Help', style: TextStyle(color: Color(0xFFB3134A), fontWeight: FontWeight.w800)),
+            icon: const Icon(Icons.headset_mic_outlined, size: 18, color: AllwaysColors.primary),
+            label: const Text('Help', style: TextStyle(color: AllwaysColors.primary, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(width: 8),
         ],
