@@ -5,6 +5,19 @@ service cloud.firestore {
     function isAdmin() {
       return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
     }
+
+    // Customer catalog is intentionally readable without login so the shop
+    // can display products before authentication.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /inventory/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /orders/{orderId} {
       allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
       allow read: if signedIn() && (resource.data.customerId == request.auth.uid || isAdmin());
