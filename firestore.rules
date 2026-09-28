@@ -158,7 +158,13 @@ service cloud.firestore {
 
     match /ridePartners/{uid} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.role != 'admin'
+          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
       allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
 
@@ -191,6 +197,52 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Public catalog data. Product writes remain Admin-only.
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/homepage {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /deliveryPartners/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid
+        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.role != 'admin'
+          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /support_tickets/{ticketId} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /sosAlerts/{alertId} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin();
+    }
+
     match /onboarding_requests/{requestId} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
@@ -205,7 +257,12 @@ service cloud.firestore {
 
     match /customers/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create, update: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.role != 'admin');
     }
   }
 }
