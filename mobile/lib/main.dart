@@ -512,6 +512,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   bool _cameraFitted=false;
   bool _mapReady=false;
   List<LatLng> _routePoints=const[];
+  DateTime? _lastRouteUpdate;
+  bool _routeLoading=false;
+  double? _liveDistanceMeters;
+  double? _routeDistanceMeters;
+  double? _routeDurationSeconds;
 
   @override void initState(){
     super.initState();
@@ -542,22 +547,18 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   }
 
   Future<void> _loadOSRMRoute(LatLng start,LatLng end) async {
-    final url=Uri.parse('https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson');
+    if(_routeLoading)return;
+    _routeLoading=true;
     try{
-      final res=await http.get(url);
-      if(res.statusCode!=200)return;
-      final decoded=jsonDecode(res.body);
-      final routes=decoded['routes'];
-      if(routes is! List||routes.isEmpty)return;
-      final coordinates=routes.first['geometry']?['coordinates'];
-      if(coordinates is! List)return;
-      final points=coordinates.whereType<List>().where((c)=>c.length>=2).map((c)=>LatLng((c[1] as num).toDouble(),(c[0] as num).toDouble())).toList();
+      final url=Uri.parse('https://router.project-osrm.org/route/v1/driving/\${start.longitude},\${start.latitude};\${end.longitude},\${end.latitude}?overview=full&geometries=geojson&steps=true');
+      final res=await http.get(url);if(res.statusCode!=200)return;
+      final decoded=jsonDecode(res.body),routes=decoded['routes'];if(routes is! List||routes.isEmpty)return;
+      final r=routes.first,coords=r['geometry']?['coordinates'];if(coords is! List)return;
+      final points=coords.whereType<List>().where((x)=>x.length>=2).map((x)=>LatLng((x[1] as num).toDouble(),(x[0] as num).toDouble())).toList();
       if(!mounted)return;
-      setState(()=>_routePoints=points);
-      _fitCamera(const[]);
-    }catch(_){}
+      setState(()=>{_routePoints=points,_routeDistanceMeters=r['distance'] is num?(r['distance'] as num).toDouble():null,_routeDurationSeconds=r['duration'] is num?(r['duration'] as num).toDouble():null,_lastRouteUpdate=DateTime.now()});
+    }catch(_){}finally{_routeLoading=false;}
   }
-
   void _fitCamera(List<LatLng> points) {
     if(!_mapReady)return;
     final all=<LatLng>[...points,..._routePoints];
@@ -657,14 +658,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         final pickup=_point(d,'pickup');
         final destination=_point(d,'destination');
         final points=<LatLng>[if(customer!=null)customer,if(partner!=null)partner,if(pickup!=null)pickup,if(destination!=null)destination];
-        final routeTarget=(widget.mode=='order'||widget.mode=='ride') ? (destination??pickup) : destination;
-        if(partner!=null&&routeTarget!=null&&(_routePoints.isEmpty||_lastRouteUpdate==null||DateTime.now().difference(_lastRouteUpdate!)>const Duration(seconds:20)))_loadOSRMRoute(partner,routeTarget);
-        if(partner!=null&&isCustomer){final base=customer??pickup;if(base!=null){_liveDistanceMeters=Geolocator.distanceBetween(base.latitude,base.longitude,partner.latitude,partner.longitude);}}
-        if(points.isEmpty)return const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('Waiting for live location. Keep location enabled during the active trip.',textAlign:TextAlign.center)));
-        final activeLabel=widget.mode=='order'?'Live delivery tracking':widget.mode=='vehicle'?'Live vehicle tracking':'Live ride tracking';
         final currentUser=FirebaseAuth.instance.currentUser;
         final isCustomer=currentUser!=null&&d['customerUid']==currentUser.uid;
-        final callPhone=(isCustomer?(d['partnerPhone']??d['driverPhone']??d['carrierPhone']??''):(d['customerPhone']??'')).toString();
+        final routeTarget=(widget.mode=='order'||widget.mode=='ride') ? (destination??pickup) : destination;
+        if(partner!=null&&routeTarget!=null&&(!_routeLoading&&(_routePoints.isEmpty||_lastRouteUpdate==null||DateTime.now().difference(_lastRouteUpdate!)>const Duration(seconds:20))))_loadOSRMRoute(partner,routeTarget);
+        if(partner!=null&&isCustomer){final base=customer??pickup;if(base!=null)_liveDistanceMeters=Geolocator.distanceBetween(base.latitude,base.longitude,partner.latitude,partner.longitude);}
+        if(points.isEmpty)return const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('Waiting for live location. Keep location enabled during the active trip.',textAlign:TextAlign.center)));
+        final activeLabel=widget.mode=='order'?'Live delivery tracking':widget.mode=='vehicle'?'Live vehicle tracking':'Live ride tracking';
+          final callPhone=(isCustomer?(d['partnerPhone']??d['driverPhone']??d['carrierPhone']??''):(d['customerPhone']??'')).toString();
         return Stack(children:[
           FlutterMap(
             mapController:_mapController,
