@@ -111,7 +111,7 @@ Future<String> uploadImageToCloudinary(XFile image, {String? folder}) async {
 }
 const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-v1.5.0.apk';
 
-const inventoryEndpoint='https://script.google.com/macros/s/AKfycbyuAdL6eEIlGiYhoTPFtE70VhyiMLnKgzO1ytctdSCWMtTdw4zIVQvEVwkbYJyJF2Wd/exec';
+const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://raw.githubusercontent.com/mauryasujeet698-svg/Always-website/allways-android-app/mobile/update.json';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -728,7 +728,7 @@ class Product {
   const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    return Product(id:(j['id']??'').toString(),name:(j['name']??j['title']??'Item').toString(),category:(j['category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??'🛍️').toString(),description:(j['description']??'').toString(),brand:(j['brand']??'').toString(),price:n(j['price']),stock:n(j['stock']));
+    return Product(id:(j['id']??'').toString(),name:(j['name']??j['title']??'Item').toString(),category:(j['category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??'🛍️').toString(),description:(j['description']??'').toString(),brand:(j['brand']??'').toString(),price:n(j['price']),stock:n(j['stock']));
   }
 }
 class CartItem { final Product product; int qty; CartItem(this.product,this.qty); }
@@ -964,30 +964,57 @@ class _ShellState extends State<Shell> {
 
   Future<void> loadInventory({bool silent=false}) async {
     if(!silent&&mounted)setState(()=>loading=true);
-    Object? primaryError;
+    Object? firestoreError;
+    try{
+      // Firestore is the authoritative customer catalog. The Admin app syncs
+      // Google Sheets into products/{id} and inventory/{id}.
+      final snap=await FirebaseFirestore.instance.collection('products').limit(1000).get();
+      if(snap.docs.isNotEmpty){
+        final list=snap.docs.map((d){
+          final data=Map<String,dynamic>.from(d.data());
+          data['id']=(data['id']??d.id).toString();
+          if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
+          if(data['available']==false)data['stock']=0;
+          return Product.fromJson(data);
+        }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
+        if(list.isNotEmpty){
+          if(mounted)setState((){products=list;loading=false;error=null;});
+          return;
+        }
+      }
+    }catch(e){
+      firestoreError=e;
+    }
+
+    // If Firestore has not been synced yet, use the live Google Apps Script
+    // catalog as a safe fallback.
     try{
       final r=await http.get(
         Uri.parse(inventoryEndpoint+'?_='+DateTime.now().millisecondsSinceEpoch.toString()),
       ).timeout(const Duration(seconds:25));
       if(r.statusCode<200||r.statusCode>=300)throw Exception('Inventory server error: HTTP '+r.statusCode.toString());
-      dynamic decoded=jsonDecode(r.body.trim().replaceFirst('\uFEFF',''));
-      if(decoded is String) decoded=jsonDecode(decoded);
+      dynamic decoded=jsonDecode(r.body.trim().replaceFirst('﻿',''));
+      if(decoded is String)decoded=jsonDecode(decoded);
       final raw=decoded is Map ? (decoded['products']??decoded['data']??decoded['items']??decoded) : decoded;
       if(raw is! List)throw Exception('Invalid inventory response');
-      final list=raw.whereType<Map>().map((x)=>Product.fromJson(Map<String,dynamic>.from(x))).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
+      final list=raw.whereType<Map>().map((x){
+        final data=Map<String,dynamic>.from(x);
+        if(data['icon']==null&&data['Emoji']!=null)data['icon']=data['Emoji'];
+        if(data['emoji']!=null&&data['icon']==null)data['icon']=data['emoji'];
+        return Product.fromJson(data);
+      }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
       if(list.isEmpty)throw Exception('Inventory response contained no products');
       if(mounted)setState((){products=list;loading=false;error=null;});
       return;
     }catch(e){
-      primaryError=e;
+      final fallbackError=e;
+      if(mounted&&!silent){
+        setState((){
+          loading=false;
+          error='Inventory unavailable. Firestore: '+(firestoreError?.toString()??'not synced')+' | Catalog: '+fallbackError.toString();
+        });
+      }
     }
-
-    final fallback=await _loadInventoryFallback();
-    if(fallback.isNotEmpty){
-      if(mounted)setState((){products=fallback;loading=false;error=null;});
-      return;
-    }
-    if(mounted&&!silent)setState((){loading=false;error='Inventory unavailable. Primary source: '+primaryError.toString();});
   }
   int get count=>cart.values.fold(0,(s,x)=>s+x.qty);
   num get total=>cart.values.fold(0,(s,x)=>s+x.product.price*x.qty);
