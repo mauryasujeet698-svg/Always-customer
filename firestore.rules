@@ -159,11 +159,11 @@ service cloud.firestore {
     match /ridePartners/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+        && (request.resource.data.get('role', 'customer') != 'admin');
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.role != 'admin'
+          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
+          && request.resource.data.get('role', 'customer') != 'admin'
           && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
       allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
@@ -216,11 +216,11 @@ service cloud.firestore {
     match /deliveryPartners/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+        && (request.resource.data.get('role', 'customer') != 'admin');
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.role != 'admin'
+          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
+          && request.resource.data.get('role', 'customer') != 'admin'
           && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
@@ -258,11 +258,11 @@ service cloud.firestore {
     match /customers/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.role == null || request.resource.data.role != 'admin');
+        && (request.resource.data.get('role', 'customer') != 'admin');
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.role != 'admin');
+          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
+          && request.resource.data.get('role', 'customer') != 'admin');
     }
   }
 }
