@@ -2734,6 +2734,11 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
         final places=await locationFromAddress(destination.text.trim());
         if(places.isNotEmpty){dLat=places.first.latitude;dLng=places.first.longitude;}
       }catch(_){}
+      String pickupAddress='Current location';
+      try {
+        final marks=await placemarkFromCoordinates(pickup.latitude,pickup.longitude);
+        if(marks.isNotEmpty){final m=marks.first;pickupAddress=[m.name,m.street,m.locality,m.subLocality].where((x)=>x!=null&&x!.trim().isNotEmpty).map((x)=>x!.trim()).toSet().join(', ');}
+      }catch(_){}
       final distance=dLat==null||dLng==null?0.0:Geolocator.distanceBetween(pickup.latitude,pickup.longitude,dLat,dLng)/1000.0;
       final base=rideType=='bike'?20.0:30.0;
       final perKm=rideType=='bike'?8.0:12.0;
@@ -2774,8 +2779,9 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
         'status':'searching',
         'pickupLatitude':pickup.latitude,
         'pickupLongitude':pickup.longitude,
-        'pickupAddress': 'Current location',
+        'pickupAddress': pickupAddress,
         'destination':destination.text.trim(),
+        'destinationAddress':destination.text.trim(),
         'destinationLatitude':dLat,
         'destinationLongitude':dLng,
         'distanceKm':distance,
