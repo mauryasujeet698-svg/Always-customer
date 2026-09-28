@@ -30,7 +30,6 @@ import 'screens/live_ride_tracking_screen.dart';
 import 'screens/notifications_settings_screen.dart';
 import 'screens/wishlist_screen.dart';
 import 'screens/order_details_screen.dart';
-import 'role_dashboard_screen.dart';
 import 'admin_cms_screen.dart';
 import 'allways_design.dart';
 
@@ -750,17 +749,15 @@ class _ShellState extends State<Shell> {
   String? updateVersion;
   String? updateUrl;
   String? updateNotes;
-  String? workspaceRole;
-  bool workspaceLoading = false;
 
   @override void initState(){
     super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); checkForUpdate();
     timer=Timer.periodic(const Duration(seconds:30),(_)=>loadInventory(silent:true));
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
-      setState(() { user=u; workspaceRole=null; workspaceLoading=u!=null; });
-      if(u!=null){ setupNotifications(); loadAddresses(); loadWishlist(); _loadWorkspaceRole(u); }
-      else{ addresses=[]; wishlistIds.clear(); workspaceLoading=false; }
+      setState(() { user=u; });
+      if(u!=null){ setupNotifications(); loadAddresses(); loadWishlist(); }
+      else{ addresses=[]; wishlistIds.clear(); }
     });
     FirebaseMessaging.onMessageOpenedApp.listen((m){
       final title=m.notification?.title??m.data['title']??'ALLways';
@@ -774,46 +771,9 @@ class _ShellState extends State<Shell> {
       saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString());
     });
     messages=FirebaseMessaging.onMessage.listen((m)async{final title=m.notification?.title??m.data['title']??'ALLways';final body=m.notification?.body??m.data['body']??m.data['message']??'New update';await saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString());if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(title+': '+body)));});
-    if(user!=null){setupNotifications();loadAddresses();loadWishlist();workspaceLoading=true;_loadWorkspaceRole(user!);}
+    if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
   @override void dispose(){timer?.cancel();auth?.cancel();messages?.cancel();super.dispose();}
-
-  Future<void> _loadWorkspaceRole(User u) async {
-    try {
-      String? role;
-      if ((u.email ?? '').trim().toLowerCase() == adminEmail.toLowerCase()) {
-        role = 'admin';
-      } else {
-        final customerSnap = await FirebaseFirestore.instance.collection('customers').doc(u.uid).get();
-        final data = customerSnap.data() ?? <String,dynamic>{};
-        final raw = (data['role'] ?? '').toString().trim().toLowerCase();
-        if (raw == 'admin' || raw == 'seller' || raw == 'delivery_partner' || raw == 'carrier' || raw == 'rider') {
-          if (raw == 'rider') {
-            role = 'carrier';
-          } else if (raw == 'carrier') {
-            final rideProfile = await FirebaseFirestore.instance.collection('ridePartners').doc(u.uid).get();
-            role = rideProfile.exists ? 'carrier' : 'delivery_partner';
-          } else {
-            role = raw;
-          }
-        }
-        if (role == null) {
-          final sellerSnap = await FirebaseFirestore.instance.collection('sellers').doc(u.uid).get();
-          if (sellerSnap.exists && (sellerSnap.data()?['status'] ?? 'approved').toString().toLowerCase() == 'approved') {
-            role = 'seller';
-          }
-        }
-        if (role == null) {
-          final carrierSnap = await FirebaseFirestore.instance.collection('ridePartners').doc(u.uid).get();
-          if (carrierSnap.exists && carrierSnap.data()?['name'] != null) role = 'carrier';
-        }
-      }
-      if (!mounted || FirebaseAuth.instance.currentUser?.uid != u.uid) return;
-      setState(() { workspaceRole=role; workspaceLoading=false; });
-    } catch (_) {
-      if (mounted) setState(() { workspaceRole=null; workspaceLoading=false; });
-    }
-  }
 
   Future<void> setupNotifications() async {
     try {
@@ -1235,25 +1195,6 @@ class _ShellState extends State<Shell> {
   }
 
   Widget build(BuildContext c){
-    if (user != null && workspaceLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (user != null && workspaceRole != null) {
-      final role = workspaceRole!;
-      final Widget workspace = switch (role) {
-        'admin' => AdminScreen(authenticated: true),
-        'seller' => SellerDashboard(user: user!),
-        'delivery_partner' => CarrierDashboard(user: user!),
-        'carrier' => const RiderLoginPage(),
-        _ => const SizedBox.shrink(),
-      };
-      return RoleDashboardScreen(
-        role: role,
-        user: user!,
-        child: workspace,
-        onSignOut: () => FirebaseAuth.instance.signOut(),
-      );
-    }
     final pages=[
       ShopPage(products:products,loading:loading,error:error,onRefresh:loadInventory,onAdd:add,cart:cart,onQty:qty,user:user,wishlistIds:wishlistIds,onWishlist:toggleWishlist,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),addresses:addresses),
       const TravelPage(),
@@ -2421,28 +2362,6 @@ class _ProfilePageState extends State<ProfilePage>{
               Text(u.email??'',style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant)),
             ])),
           ])),
-        ),
-        FutureBuilder<DocumentSnapshot<Map<String,dynamic>>>(
-          future:FirebaseFirestore.instance.collection('customers').doc(u.uid).get(),
-          builder:(context,snapshot){
-            final role=(snapshot.data?.data()?['role']??'customer').toString();
-            return Column(children:[
-              if(role=='admin')Card(
-                margin:const EdgeInsets.symmetric(horizontal:16,vertical:6),
-                color:Theme.of(c).colorScheme.primaryContainer,
-                shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),
-                child:ListTile(
-                  leading:Icon(Icons.admin_panel_settings_outlined,color:Theme.of(c).colorScheme.onPrimaryContainer),
-                  title:const Text('Admin Dashboard',style:TextStyle(fontWeight:FontWeight.w800)),
-                  subtitle:const Text('Manage orders, roles and banners'),
-                  trailing:const Icon(Icons.chevron_right),
-                  onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const AdminScreen())),
-                ),
-              ),
-              if(role=='seller')SellerDashboard(user:u),
-              if(role=='carrier' || role=='rider')CarrierDashboard(user:u),
-            ]);
-          },
         ),
         _menuCard(c,icon:Icons.receipt_long_outlined,title:'Orders',subtitle:'View and track your ALLways orders',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OrdersPage(user:u,onCancel:widget.onCancel,onReorder:widget.onReorder)))),
         _menuCard(c,icon:Icons.location_on_outlined,title:'Saved Addresses',subtitle:'Add, edit or manage your delivery addresses',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>SavedAddressesPage(userId:u.uid,addresses:widget.addresses,onReload:widget.onReload,onDelete:widget.onDelete)))),
