@@ -224,6 +224,11 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     }
 
     if (oldStatus === "pending_acceptance" && newStatus === "unassigned" && oldPartner) {
+      await notifyAdmins(
+        "Delivery Offer Rejected",
+        "Delivery partner rejected order #" + orderId + ". It is ready for reassignment.",
+        { type: "delivery_rejected", orderId, partnerId: oldPartner }
+      );
       await db.collection("deliveryPartners").doc(oldPartner).set({
         pendingOrderId: null,
         currentOrderId: null,
@@ -336,6 +341,13 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
         "Ride Cancelled",
         "Your ALLways ride request has been cancelled.",
         { type: "ride_update", rideId: event.params.requestId, status: "cancelled" }
+      );
+    } else if (newStatus === "completed") {
+      await sendToUser(
+        customerUid,
+        "Ride Completed",
+        "Your ALLways ride has been completed.",
+        { type: "ride_update", rideId: event.params.requestId, status: "completed" }
       );
     }
   }
