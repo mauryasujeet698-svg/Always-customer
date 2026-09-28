@@ -987,7 +987,7 @@ class _ShellState extends State<Shell> {
       if(mounted)setState((){products=fallback;loading=false;error=null;});
       return;
     }
-    if(mounted&&!silent)setState((){loading=false;error:'Inventory unavailable. Primary source: '+primaryError.toString();});
+    if(mounted&&!silent)setState((){loading=false;error='Inventory unavailable. Primary source: '+primaryError.toString();});
   }
   int get count=>cart.values.fold(0,(s,x)=>s+x.qty);
   num get total=>cart.values.fold(0,(s,x)=>s+x.product.price*x.qty);
