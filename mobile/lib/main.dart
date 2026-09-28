@@ -1119,7 +1119,7 @@ class _ShellState extends State<Shell> {
     final sub=total;final delivery=sub>=499?0:30;final grand=sub+delivery;final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
     final order={'id':id,'customerId':user!.uid,'email':user!.email??'','name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),'customerLatitude':latitude,'customerLongitude':longitude,'locationSource':latitude!=null&&longitude!=null?'gps':'address',
       'items':cart.values.map((x)=>{'id':x.product.id,'name':x.product.name,'qty':x.qty,'price':x.product.price}).toList(),
-      'subtotal':sub,'delivery':delivery,'total':grand,'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
+      'subtotal':sub,'delivery':delivery,'total':grand,'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'','carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
       'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,'time':DateTime.now().toLocal().toString()};
     try{
       await FirebaseFirestore.instance.collection('orders').doc(id).set(order);
