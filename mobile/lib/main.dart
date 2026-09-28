@@ -2768,6 +2768,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
         'status':'searching',
         'pickupLatitude':pickup.latitude,
         'pickupLongitude':pickup.longitude,
+        'pickupAddress': 'Current location',
         'destination':destination.text.trim(),
         'destinationLatitude':dLat,
         'destinationLongitude':dLng,
