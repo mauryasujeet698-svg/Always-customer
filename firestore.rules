@@ -97,7 +97,7 @@ service cloud.firestore {
             'driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','updatedAt',
             'cancelledBy','cancellationReason','cancelledAt'
           ])
-          && request.resource.data.status in ['accepted','started','cancelled'])
+          && request.resource.data.status in ['accepted','started','completed','cancelled'])
         || (onlineRidePartner()
           && resource.data.status == 'searching'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejectedBy','updatedAt'])
