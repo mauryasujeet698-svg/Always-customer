@@ -1,5 +1,6 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getMessaging } = require("firebase-admin/messaging");
+const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 
@@ -7,6 +8,7 @@ initializeApp();
 
 const db = getFirestore();
 const messaging = getMessaging();
+const auth = getAuth();
 
 function stringData(data = {}) {
   return Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? "")]));
@@ -158,12 +160,13 @@ function distanceKm(lat1, lon1, lat2, lon2) {
 }
 
 async function notifyAdmins(title, body, data = {}) {
-  return sendToUser(
-    "mauryasujeet698-admin",
-    title,
-    body,
-    data
-  );
+  try {
+    const admin = await auth.getUserByEmail("mauryasujeet@gmail.com");
+    return sendToUser(admin.uid, title, body, data);
+  } catch (error) {
+    console.error("Could not resolve Admin account:", error);
+    return false;
+  }
 }
 
 // Order creation: notify the real Admin account. Delivery assignment is manual in Admin.
@@ -173,8 +176,7 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
     const order = event.data?.data();
     if (!order) return;
 
-    await sendToUser(
-      "ADMIN_UID_PLACEHOLDER",
+    await notifyAdmins(
       "New ALLways Order",
       "A new order #" + event.params.orderId + " is waiting for Admin processing.",
       { type: "order_created", orderId: event.params.orderId, status: String(order.status || "New Order") }
@@ -344,8 +346,7 @@ exports.onRidePartnerCreated = onDocumentCreated(
   "ridePartners/{uid}",
   async (event) => {
     const data = event.data?.data() || {};
-    await sendToUser(
-      "ADMIN_UID_PLACEHOLDER",
+    await notifyAdmins(
       "New Rider Registration",
       "A new rider registration is waiting for approval.",
       { type: "partner_registration", role: "carrier", uid: event.params.uid }
@@ -356,8 +357,7 @@ exports.onRidePartnerCreated = onDocumentCreated(
 exports.onDeliveryPartnerCreated = onDocumentCreated(
   "deliveryPartners/{uid}",
   async (event) => {
-    await sendToUser(
-      "ADMIN_UID_PLACEHOLDER",
+    await notifyAdmins(
       "New Delivery Partner",
       "A new delivery partner registration is waiting for approval.",
       { type: "partner_registration", role: "delivery_partner", uid: event.params.uid }
