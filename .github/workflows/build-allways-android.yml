@@ -582,6 +582,22 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Verify live ALLways inventory source
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request, time
+          url = "https://script.google.com/macros/s/AKfycbyuAdL6eEIlGiYhoTPFtE70VhyiMLnKgzO1ytctdSCWMtTdw4zIVQvEVwkbYJyJF2Wd/exec?_=" + str(int(time.time()))
+          with urllib.request.urlopen(url, timeout=30) as r:
+              raw = r.read().decode("utf-8-sig").strip()
+          data = json.loads(raw)
+          if isinstance(data, dict):
+              data = data.get("products", data.get("data", data.get("items", data)))
+          if not isinstance(data, list) or not data:
+              raise SystemExit("FAIL: live inventory endpoint returned no products")
+          print("PASS: live inventory endpoint returned", len(data), "items")
+          print("First item keys:", sorted(data[0].keys()) if isinstance(data[0], dict) else type(data[0]).__name__)
+          PY
+
       - name: Get packages
         run: |
           cd mobile
