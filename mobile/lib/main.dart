@@ -2453,6 +2453,12 @@ class _NotificationsPageState extends State<NotificationsPage>{
   ]));}
 }
 
+const vehicleCategories = <String>[
+  'Motorcycle','Scooter','E-bike','Auto Rickshaw','E-Rickshaw','Hatchback','Sedan','SUV','MUV',
+  'Luxury Car','Taxi / Cab','Tempo Traveller','Van','Mini Bus','Bus','Pickup Truck','Mini Truck (Tata Ace)',
+  'Bolero Pickup','Goods Auto','Cargo Van','Tractor','Tractor Trolley','Trailer','Ambulance','Other / Enter manually',
+];
+
 class VehicleBookingPage extends StatefulWidget {
   const VehicleBookingPage({super.key});
   @override State<VehicleBookingPage> createState()=>_VehicleBookingPageState();
