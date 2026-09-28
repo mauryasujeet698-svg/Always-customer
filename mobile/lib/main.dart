@@ -2254,6 +2254,64 @@ class _ProfilePageState extends State<ProfilePage>{
     }
   }
 
+  Future<void> _deleteAccount(BuildContext c) async {
+    final confirmation=TextEditingController();
+    final confirmed=await showDialog<bool>(
+      context:c,
+      builder:(dialogContext)=>AlertDialog(
+        title:const Text('Delete Account'),
+        content:Column(mainAxisSize:MainAxisSize.min,children:[
+          const Text('This permanently deletes your ALLways account and customer profile data. This action cannot be undone.'),
+          const SizedBox(height:12),
+          TextField(controller:confirmation,decoration:const InputDecoration(labelText:'Type DELETE to confirm')),
+        ]),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),
+          FilledButton(onPressed:()=>Navigator.pop(dialogContext,confirmation.text.trim()=='DELETE'),child:const Text('Delete')),
+        ],
+      ),
+    )??false;
+    confirmation.dispose();
+    if(!confirmed)return;
+    try{
+      final u=FirebaseAuth.instance.currentUser;
+      if(u==null)return;
+      try{
+        await u.delete();
+      }on FirebaseAuthException catch(e){
+        if(e.code!='requires-recent-login')rethrow;
+        final providers=u.providerData.map((p)=>p.providerId).toList();
+        if(providers.contains('google.com')){
+          final gs=GoogleSignIn.instance;
+          if(!gs.supportsAuthenticate())throw Exception('Please sign in again before deleting your account.');
+          final gu=await gs.authenticate();
+          final token=gu.authentication.idToken;
+          if(token==null||token.isEmpty)throw Exception('Google re-authentication failed.');
+          await u.reauthenticateWithCredential(GoogleAuthProvider.credential(idToken:token));
+        }else{
+          final password=await showDialog<String>(context:c,builder:(d){
+            final controller=TextEditingController();
+            return AlertDialog(
+              title:const Text('Confirm password'),
+              content:TextField(controller:controller,obscureText:true,decoration:const InputDecoration(labelText:'Password')),
+              actions:[
+                TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
+                FilledButton(onPressed:()=>Navigator.pop(d,controller.text),child:const Text('Continue')),
+              ],
+            );
+          });
+          if(password==null||password.isEmpty)throw Exception('Account deletion cancelled.');
+          await u.reauthenticateWithCredential(EmailAuthProvider.credential(email:u.email??'',password:password));
+        }
+        await u.delete();
+      }
+      await FirebaseFirestore.instance.collection('customers').doc(u.uid).delete().catchError((_){});
+      await FirebaseAuth.instance.signOut();
+    }catch(e){
+      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));
+    }
+  }
+
   Future<void> _chooseAppearance(BuildContext c) async {
     await showDialog<void>(
       context:c,
@@ -2366,7 +2424,7 @@ class _ProfilePageState extends State<ProfilePage>{
         _menuCard(c,icon:Icons.receipt_long_outlined,title:'Orders',subtitle:'View and track your ALLways orders',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OrdersPage(user:u,onCancel:widget.onCancel,onReorder:widget.onReorder)))),
         _menuCard(c,icon:Icons.location_on_outlined,title:'Saved Addresses',subtitle:'Add, edit or manage your delivery addresses',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>SavedAddressesPage(userId:u.uid,addresses:widget.addresses,onReload:widget.onReload,onDelete:widget.onDelete)))),
         _menuCard(c,icon:Icons.favorite_border,title:'Wishlist',subtitle:'Your saved products and favourites',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const WishlistPage()))),
-        _menuCard(c,icon:Icons.local_shipping_outlined,title:'ALLways Carrier',subtitle:'Become a Seller or Delivery Partner',onTap:()=>_openCarrier(c,u)),
+        _menuCard(c,icon:Icons.local_shipping_outlined,title:'ALLways Partners',subtitle:'Apply as a Delivery Partner or Carrier',onTap:()=>_openCarrier(c,u)),
         ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,unread,__)=>_menuCard(c,icon:Icons.notifications_outlined,title:tr('Notifications'),subtitle:'Alerts, order updates and push settings',showDot:unread,onTap:()=>_openNotifications(c))),
         _menuCard(c,icon:Icons.brightness_6_outlined,title:tr('Appearance'),subtitle:'Light, Dark or System theme',onTap:()=>_chooseAppearance(c)),
         _menuCard(c,icon:Icons.language_outlined,title:tr('Language'),subtitle:'Choose your preferred app language',onTap:()=>_chooseLanguage(c)),
@@ -2374,6 +2432,7 @@ class _ProfilePageState extends State<ProfilePage>{
         _menuCard(c,icon:Icons.system_update_outlined,title:tr('Check for Updates'),subtitle:'Check for the latest ALLways version',onTap:()=>_checkForUpdate(c)),
         _menuCard(c,icon:Icons.privacy_tip_outlined,title:'Privacy Policy',subtitle:'How ALLways handles your information',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const PrivacyPolicyPage()))),
         _menuCard(c,icon:Icons.logout_outlined,title:tr('Log Out'),subtitle:'Sign out of your ALLways account',danger:true,onTap:()=>FirebaseAuth.instance.signOut()),
+        _menuCard(c,icon:Icons.delete_outline,title:'Delete Account',subtitle:'Permanently delete your ALLways account',danger:true,onTap:()=>_deleteAccount(c)),
         const SizedBox(height:12),
         const Text('ALLways • Closer to You, Always',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey)),
       ],
@@ -2384,12 +2443,6 @@ class _ProfilePageState extends State<ProfilePage>{
     showModalBottomSheet<void>(
       context:c,
       builder:(sheet)=>SafeArea(child:Wrap(children:[
-        ListTile(
-          leading:const Icon(Icons.storefront_outlined),
-          title:const Text('Become a Seller'),
-          subtitle:const Text('Create your ALLways seller profile'),
-          onTap:(){Navigator.pop(sheet);showDialog(context:c,builder:(_)=>CarrierApplicationDialog(user:u,type:'seller'));},
-        ),
         ListTile(
           leading:const Icon(Icons.delivery_dining_outlined),
           title:const Text('Become a Delivery Partner'),
