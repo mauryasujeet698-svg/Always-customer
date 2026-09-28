@@ -9,9 +9,7 @@ const db = getFirestore();
 const messaging = getMessaging();
 
 function stringData(data = {}) {
-  return Object.fromEntries(
-    Object.entries(data).map(([key, value]) => [key, String(value ?? "")])
-  );
+  return Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? "")]));
 }
 
 function notificationMessage(title, body, data = {}, target) {
@@ -21,596 +19,243 @@ function notificationMessage(title, body, data = {}, target) {
     data: stringData(data),
     android: {
       priority: "high",
-      notification: {
-        channelId: "allways_updates",
-      },
+      notification: { channelId: "allways_updates" },
     },
   };
 }
 
-async function sendToToken(token, title, body, data = {}) {
-  const clean = String(token || "").trim();
-  if (!clean) return false;
-
-  try {
-    await messaging.send(
-      notificationMessage(title, body, data, { token: clean })
-    );
-    return true;
-  } catch (error) {
-    console.error("FCM token send failed:", error);
-    if (
-      error?.code === "messaging/registration-token-not-registered" ||
-      error?.code === "messaging/invalid-registration-token"
-    ) {
-      const tokenSnap = await db
-        .collection("fcmTokens")
-        .where("token", "==", clean)
-        .limit(10)
-        .get();
-
-      const batch = db.batch();
-      for (const doc of tokenSnap.docs) batch.delete(doc.ref);
-      if (!tokenSnap.empty) await batch.commit();
-    }
-    return false;
-  }
-}
-
-async function getUserTokens(uid) {
-  if (!uid) return [];
-  const tokens = new Map();
-
-  const parent = await db.collection("fcmTokens").doc(String(uid)).get();
-  const parentData = parent.exists ? (parent.data() || {}) : {};
-  if (parentData.notificationsEnabled !== false && parentData.token) {
-    tokens.set(String(parentData.token).trim(), {
-      notificationsEnabled: true,
-      notificationPreferences: parentData.notificationPreferences || {},
-    });
-  }
-
-  const snap = await db
-    .collection("fcmTokens")
-    .doc(String(uid))
-    .collection("tokens")
-    .get();
-
-  for (const doc of snap.docs) {
-    const data = doc.data() || {};
-    const token = String(data.token || doc.id).trim();
-    if (!token) continue;
-    tokens.set(token, {
-      notificationsEnabled: data.notificationsEnabled !== false,
-      notificationPreferences: data.notificationPreferences || parentData.notificationPreferences || {},
-    });
-  }
-
-  if (parentData.notificationsEnabled === false) return [];
-  return [...tokens.entries()].map(([token, meta]) => ({ token, ...meta }));
+function preferenceKeyForType(type = "") {
+  const t = String(type).toLowerCase();
+  if (t.includes("order") || t.includes("delivery")) return "orderUpdates";
+  if (t.includes("ride") || t.includes("travel") || t.includes("vehicle")) return "travelUpdates";
+  if (t.includes("offer")) return "offers";
+  return "announcements";
 }
 
 function notificationAllowedFromData(data = {}, type = "") {
   if (data.notificationsEnabled === false) return false;
   const preferences = data.notificationPreferences || {};
-  const key = preferenceKeyForType(type);
-  return preferences[key] !== false;
+  return preferences[preferenceKeyForType(type)] !== false;
 }
 
-async function notificationAllowed(uid, type = "") {
-  if (!uid) return false;
-  const parent = await db.collection("fcmTokens").doc(String(uid)).get();
-  if (!parent.exists) return false;
-  return notificationAllowedFromData(parent.data() || {}, type);
+async function getUserTokens(uid) {
+  if (!uid) return [];
+  const id = String(uid);
+  const parent = await db.collection("fcmTokens").doc(id).get();
+  const parentData = parent.exists ? (parent.data() || {}) : {};
+  const result = new Map();
+
+  if (parentData.token && parentData.notificationsEnabled !== false) {
+    const token = String(parentData.token).trim();
+    if (token) {
+      result.set(token, {
+        token,
+        notificationsEnabled: true,
+        notificationPreferences: parentData.notificationPreferences || {},
+      });
+    }
+  }
+
+  const snap = await db.collection("fcmTokens").doc(id).collection("tokens").get();
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    if (data.notificationsEnabled === false) continue;
+    const token = String(data.token || doc.id).trim();
+    if (!token) continue;
+    result.set(token, {
+      token,
+      notificationsEnabled: data.notificationsEnabled !== false,
+      notificationPreferences: data.notificationPreferences || parentData.notificationPreferences || {},
+    });
+  }
+
+  return [...result.values()];
 }
 
 async function sendToUser(uid, title, body, data = {}, fallbackToken = "") {
   if (!uid) return false;
-  if (!(await notificationAllowed(uid, data.type || ""))) {
-    console.log("Notification category disabled for user:", uid, data.type || "");
-    return false;
-  }
+  let recipients = await getUserTokens(uid);
 
-  const recipients = await getUserTokens(uid);
   if (!recipients.length && fallbackToken) {
-    recipients.push({
+    recipients = [{
       token: String(fallbackToken).trim(),
       notificationsEnabled: true,
       notificationPreferences: {},
-    });
+    }];
   }
+
+  recipients = recipients.filter(r =>
+    notificationAllowedFromData(r, data.type || "")
+  );
+
   if (!recipients.length) {
-    console.log("No FCM tokens for user:", uid);
+    console.log("No enabled FCM recipients for:", uid);
     return false;
   }
 
-  const messages = recipients
-    .filter((recipient) => notificationAllowedFromData(recipient, data.type || ""))
-    .map((recipient) =>
-      notificationMessage(title, body, data, { token: recipient.token })
-    );
+  const messages = recipients.map(r =>
+    notificationMessage(title, body, data, { token: r.token })
+  );
 
   let sent = false;
   for (let i = 0; i < messages.length; i += 500) {
-    const batch = messages.slice(i, i + 500);
-    if (!batch.length) continue;
-    const response = await messaging.sendEach(batch);
+    const response = await messaging.sendEach(messages.slice(i, i + 500));
     response.responses.forEach((result, index) => {
       if (result.success) {
         sent = true;
         return;
       }
-      const code = result.error?.code;
-      if (
-        code === "messaging/registration-token-not-registered" ||
-        code === "messaging/invalid-registration-token"
-      ) {
-        const token = recipients[i + index]?.token;
-        if (token) {
-          db.collection("fcmTokens")
-            .doc(String(uid))
-            .collection("tokens")
-            .doc(token)
-            .delete()
-            .catch(() => {});
-          db.collection("fcmTokens")
-            .doc(String(uid))
-            .get()
-            .then((snap) => {
-              if (snap.exists && snap.data()?.token === token) {
-                return db.collection("fcmTokens").doc(String(uid)).set(
-                  { token: "", updatedAt: FieldValue.serverTimestamp() },
-                  { merge: true }
-                );
-              }
-              return null;
-            })
-            .catch(() => {});
+      const code = result.error?.code || "";
+      if (code.includes("registration-token-not-registered") ||
+          code.includes("invalid-registration-token")) {
+        const recipient = recipients[i + index];
+        if (recipient?.token) {
+          db.collection("fcmTokens").doc(String(uid))
+            .collection("tokens").doc(recipient.token).delete().catch(() => {});
         }
       }
     });
   }
-
   return sent;
 }
 
-async function getSellerAssignmentMode(order) {
-  const sellerId = String(
-    order?.sellerId || order?.sellerUid || order?.vendorId || ""
-  ).trim();
-
-  if (sellerId) {
-    const seller = await db.collection("sellers").doc(sellerId).get();
-    if (seller.exists) {
-      return String(seller.data()?.assignment_mode || "manual").toLowerCase();
-    }
-  }
-
-  // Backward-compatible fallback for existing ALLways managed orders.
-  const global = await db.collection("settings").doc("deliveryAssignment").get();
-  if (global.exists && String(global.data()?.mode || "").toLowerCase() === "automatic") {
-    return "auto";
-  }
-
-  return "manual";
-}
-
-async function getAvailablePartners() {
-  const result = new Map();
-
-  // Current ALLways schema: customers/{uid}, role=carrier.
-  const customers = await db
-    .collection("customers")
-    .where("role", "==", "carrier")
-    .get();
-
-  for (const doc of customers.docs) {
-    const data = doc.data() || {};
-    const duty = String(data.dutyStatus || "offline").toLowerCase();
-    if (
-      duty === "online" &&
-      data.deliveryAvailable === true &&
-      !data.activeOrderId &&
-      !data.pendingOrderId
-    ) {
-      result.set(doc.id, { ref: doc.ref, data, collection: "customers" });
-    }
-  }
-
-  // Also support the requested delivery_partners schema if it exists.
-  const deliveryPartners = await db
-    .collection("delivery_partners")
-    .where("isAvailable", "==", true)
-    .get();
-
-  for (const doc of deliveryPartners.docs) {
-    const data = doc.data() || {};
-    if (!data.currentOrderId && !data.pendingOrderId && !result.has(doc.id)) {
-      result.set(doc.id, {
-        ref: doc.ref,
-        data,
-        collection: "delivery_partners",
-      });
-    }
-  }
-
-  return [...result.entries()].map(([id, value]) => ({ id, ...value }));
-}
-
-async function assignAvailablePartner(orderId) {
-  const orderRef = db.collection("orders").doc(orderId);
-  const initial = await orderRef.get();
-  if (!initial.exists) return false;
-
-  const order = initial.data() || {};
-  if (order.carrierUid || order.assignedPartnerId) return false;
-
-  const mode = await getSellerAssignmentMode(order);
-  if (mode !== "auto") {
-    console.log("Order " + orderId + ": assignment mode is " + mode);
-    return false;
-  }
-
-  const candidates = await getAvailablePartners();
-
-  for (const partner of candidates) {
-    try {
-      let assigned = false;
-
-      await db.runTransaction(async (tx) => {
-        const latestOrder = await tx.get(orderRef);
-        const latestPartner = await tx.get(partner.ref);
-
-        if (!latestOrder.exists || !latestPartner.exists) return;
-
-        const currentOrder = latestOrder.data() || {};
-        const currentPartner = latestPartner.data() || {};
-
-        if (currentOrder.carrierUid || currentOrder.assignedPartnerId) return;
-
-        const available =
-          partner.collection === "delivery_partners"
-            ? currentPartner.isAvailable === true && !currentPartner.currentOrderId
-            : String(currentPartner.dutyStatus || "offline").toLowerCase() === "online" &&
-              currentPartner.deliveryAvailable === true &&
-              !currentPartner.activeOrderId;
-
-        if (!available) return;
-
-        const name = String(
-          currentPartner.displayName ||
-          currentPartner.name ||
-          currentPartner.email ||
-          partner.id
-        );
-
-        const phone = String(
-          currentPartner.phone ||
-          currentPartner.mobileNumber ||
-          ""
-        );
-
-        tx.update(orderRef, {
-          carrierUid: partner.id,
-          assignedPartnerId: partner.id,
-          carrierName: name,
-          carrierPhone: phone,
-          carrierEmail: String(currentPartner.email || ""),
-          carrierAccepted: false,
-          assignmentRejected: false,
-          assignmentMode: "auto",
-          pendingAcceptanceAt: FieldValue.serverTimestamp(),
-          assignedAt: FieldValue.serverTimestamp(),
-          status: "pending_acceptance",
-          statusNote: "Pending delivery partner acceptance",
-          customerMessage: "A delivery partner has been offered this order. Waiting for acceptance.",
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-
-        if (partner.collection === "delivery_partners") {
-          tx.set(
-            partner.ref,
-            {
-              pendingOrderId: orderId,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-        } else {
-          tx.set(
-            partner.ref,
-            {
-              pendingOrderId: orderId,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-
-        assigned = true;
-      });
-
-      if (assigned) {
-        return true;
+async function sendToAllUsers(title, body, data = {}) {
+  const snap = await db.collection("fcmTokens").get();
+  const recipients = [];
+  for (const doc of snap.docs) {
+    const uid = doc.id;
+    const tokens = await getUserTokens(uid);
+    for (const token of tokens) {
+      if (notificationAllowedFromData(token, data.type || "")) {
+        recipients.push(token.token);
       }
-    } catch (error) {
-      console.error("Partner assignment attempt failed:", partner.id, error);
     }
   }
 
-  console.log("No available partner could be assigned:", orderId);
-  return false;
+  const unique = [...new Set(recipients)].filter(Boolean);
+  let sent = false;
+  for (let i = 0; i < unique.length; i += 500) {
+    const messages = unique.slice(i, i + 500).map(token =>
+      notificationMessage(title, body, data, { token })
+    );
+    if (!messages.length) continue;
+    const response = await messaging.sendEach(messages);
+    if (response.responses.some(r => r.success)) sent = true;
+  }
+  return sent;
 }
 
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function notifyAdmins(title, body, data = {}) {
+  return sendToUser(
+    "mauryasujeet698-admin",
+    title,
+    body,
+    data
+  );
+}
+
+// Order creation: notify the real Admin account. Delivery assignment is manual in Admin.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
   async (event) => {
-    if (!event.data) return;
-    await assignAvailablePartner(event.params.orderId);
+    const order = event.data?.data();
+    if (!order) return;
+
+    await sendToUser(
+      "ADMIN_UID_PLACEHOLDER",
+      "New ALLways Order",
+      "A new order #" + event.params.orderId + " is waiting for Admin processing.",
+      { type: "order_created", orderId: event.params.orderId, status: String(order.status || "New Order") }
+    );
   }
 );
 
+// Order updates: partner assignment/acceptance and Customer status notifications.
 exports.onAllwaysOrderUpdated = onDocumentUpdated(
   "orders/{orderId}",
   async (event) => {
     const before = event.data.before.data() || {};
     const after = event.data.after.data() || {};
     const orderId = event.params.orderId;
-
     const oldStatus = String(before.status || "");
     const newStatus = String(after.status || "");
-    const oldCarrier = String(before.carrierUid || "");
-    const newCarrier = String(after.carrierUid || after.assignedPartnerId || "");
+    const oldPartner = String(before.carrierUid || before.assignedPartnerId || "");
+    const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
 
-    if (
-      !newCarrier &&
-      oldCarrier &&
-      newStatus !== "Cancelled" &&
-      newStatus !== "Delivered"
-    ) {
-      await assignAvailablePartner(orderId);
-    }
-
-    if (newCarrier && newCarrier !== oldCarrier) {
+    if (newPartner && newPartner !== oldPartner) {
       await sendToUser(
-        newCarrier,
+        newPartner,
         "New Delivery Offer",
-        "You have a new ALLways delivery offer for order #" + orderId + ". Accept or reject it in the app.",
-        {
-          type: "delivery_offer",
-          orderId,
-          partnerId: newCarrier,
-          status: newStatus,
-        },
+        "Order #" + orderId + " has been assigned to you. Please accept or reject it.",
+        { type: "delivery_offer", orderId, status: newStatus },
         after.carrier_fcm_token || after.partner_fcm_token
       );
     }
 
-    if (oldStatus === "pending_acceptance" && newStatus === "Assigned" && newCarrier) {
-      const partnerRef = db.collection("customers").doc(newCarrier);
-      const partner = await partnerRef.get();
-      if (partner.exists) {
-        await partnerRef.set({
-          pendingOrderId: null,
-          activeOrderId: orderId,
-          deliveryAvailable: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-
-      const requestedPartner = await db.collection("delivery_partners").doc(newCarrier).get();
-      if (requestedPartner.exists) {
-        await requestedPartner.ref.set({
-          pendingOrderId: null,
-          currentOrderId: orderId,
-          isAvailable: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
+    if (oldStatus === "pending_acceptance" && newStatus === "Assigned" && newPartner) {
+      await db.collection("deliveryPartners").doc(newPartner).set({
+        pendingOrderId: null,
+        currentOrderId: orderId,
+        availableForDeliveries: false,
+        dutyStatus: "on_delivery",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
 
       await sendToUser(
-        newCarrier,
-        "Delivery Accepted",
-        "Your ALLways delivery assignment is confirmed.",
-        { type: "delivery_assignment", orderId, partnerId: newCarrier, status: "Assigned" }
+        newPartner,
+        "Delivery Assigned",
+        "Order #" + orderId + " is now assigned to you.",
+        { type: "delivery_assignment", orderId, status: "Assigned" }
       );
     }
 
-    if (oldStatus === "pending_acceptance" && newStatus === "unassigned" && oldCarrier) {
-      const partnerRef = db.collection("customers").doc(oldCarrier);
-      const partner = await partnerRef.get();
-      if (partner.exists) {
-        const data = partner.data() || {};
-        const duty = String(data.dutyStatus || "offline").toLowerCase();
-        await partnerRef.set({
-          pendingOrderId: null,
-          activeOrderId: null,
-          deliveryAvailable: duty === "online",
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-
-      const requestedPartner = await db.collection("delivery_partners").doc(oldCarrier).get();
-      if (requestedPartner.exists) {
-        const data = requestedPartner.data() || {};
-        await requestedPartner.ref.set({
-          pendingOrderId: null,
-          currentOrderId: null,
-          isAvailable: String(data.status || "offline") === "online",
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
+    if (oldStatus === "pending_acceptance" && newStatus === "unassigned" && oldPartner) {
+      await db.collection("deliveryPartners").doc(oldPartner).set({
+        pendingOrderId: null,
+        currentOrderId: null,
+        availableForDeliveries: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
     }
 
-    if (oldCarrier && (newStatus === "Delivered" || newStatus === "Cancelled")) {
-      const partnerRef = db.collection("customers").doc(oldCarrier);
-      const partner = await partnerRef.get();
-
-      if (partner.exists) {
-        const data = partner.data() || {};
-        const duty = String(data.dutyStatus || "offline").toLowerCase();
-
-        await partnerRef.set(
-          {
-            pendingOrderId: null,
-            activeOrderId: null,
-            deliveryAvailable: duty === "online",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      const requestedPartner = await db
-        .collection("delivery_partners")
-        .doc(oldCarrier)
-        .get();
-
-      if (requestedPartner.exists) {
-        const data = requestedPartner.data() || {};
-        await requestedPartner.ref.set(
-          {
-            pendingOrderId: null,
-            currentOrderId: null,
-            isAvailable: String(data.status || "offline") === "online",
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
+    if (oldPartner && (newStatus === "Delivered" || newStatus === "Cancelled")) {
+      await db.collection("deliveryPartners").doc(oldPartner).set({
+        pendingOrderId: null,
+        currentOrderId: null,
+        availableForDeliveries: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
     }
 
     if (oldStatus !== newStatus) {
-      const customerUid = String(
-        after.customerUid || after.customerId || ""
-      ).trim();
-
-      const fallbackToken =
-        after.customer_fcm_token ||
-        after.fcmToken ||
-        "";
-
-      let title = "Order Update";
-      let body = "Your ALLways order #" + orderId + " is now " + newStatus + ".";
-
-      const normalized = newStatus.toLowerCase().replace(/\s+/g, "_");
-      if (normalized === "out_for_delivery") {
-        title = "Out for delivery";
-        body = "Your ALLways order #" + orderId + " is on the way.";
-      } else if (normalized === "delivered") {
-        title = "Order delivered";
-        body = "Your ALLways order #" + orderId + " has been delivered.";
-      }
-
+      const customerUid = String(after.customerId || after.customerUid || "").trim();
       if (customerUid) {
+        const normalized = newStatus.toLowerCase().replace(/\s+/g, "_");
         await sendToUser(
           customerUid,
-          title,
-          body,
-          {
-            type: normalized === "out_for_delivery" ? "delivery_update" : "order_update",
-            orderId,
-            status: newStatus,
-          },
-          fallbackToken
+          "Order Update",
+          "Your ALLways order #" + orderId + " is now " + newStatus + ".",
+          { type: "order_update", orderId, status: newStatus, normalizedStatus: normalized },
+          after.customer_fcm_token || after.fcmToken || ""
         );
       }
     }
   }
 );
 
-exports.onRideBookingCreated = onDocumentCreated(
-  "rideBookings/{bookingId}",
-  async (event) => {
-    const booking = event.data?.data();
-    if (!booking) return;
-
-    const partnerUid = String(
-      booking.partnerUid || booking.ridePartnerUid || ""
-    ).trim();
-
-    if (!partnerUid) return;
-
-    await sendToUser(
-      partnerUid,
-      "New Ride Booking",
-      "A customer has booked a ride with you.",
-      {
-        type: "ride_booking",
-        bookingId: event.params.bookingId,
-      },
-      booking.partner_fcm_token
-    );
-  }
-);
-
-
-exports.onRideBookingUpdated = onDocumentUpdated(
-  "rideBookings/{bookingId}",
-  async (event) => {
-    const before = event.data.before.data() || {};
-    const after = event.data.after.data() || {};
-    const oldStatus = String(before.status || "").toLowerCase();
-    const newStatus = String(after.status || "").toLowerCase();
-    if (oldStatus === newStatus) return;
-
-    const customerUid = String(after.customerUid || "").trim();
-    if (!customerUid) return;
-
-    if (newStatus === "accepted") {
-      await sendToUser(
-        customerUid,
-        "Ride Accepted",
-        "Your ALLways ride partner accepted the booking. Live tracking is available.",
-        { type: "ride_update", bookingId: event.params.bookingId, status: "Accepted" },
-        after.customer_fcm_token
-      );
-    } else if (newStatus === "rejected") {
-      await sendToUser(
-        customerUid,
-        "Ride Request Rejected",
-        "The selected ride partner rejected the request.",
-        { type: "ride_update", bookingId: event.params.bookingId, status: "Rejected" },
-        after.customer_fcm_token
-      );
-    }
-  }
-);
-
-exports.onVehicleBookingCreated = onDocumentCreated(
-  "vehicleBookings/{bookingId}",
-  async (event) => {
-    const booking = event.data?.data();
-    if (!booking) return;
-
-    const ownerUid = String(
-      booking.ownerUid || booking.vehicleOwnerUid || ""
-    ).trim();
-
-    if (!ownerUid) return;
-
-    await sendToUser(
-      ownerUid,
-      "New Vehicle Booking",
-      "A customer has booked your vehicle on ALLways.",
-      {
-        type: "vehicle_booking",
-        bookingId: event.params.bookingId,
-      },
-      booking.owner_fcm_token
-    );
-  }
-);
-
-async function getAvailableRidePartners(rideType) {
-  const snap = await db.collection("ridePartners").where("status", "==", "online").get();
-  return snap.docs.filter((doc) => {
-    const data = doc.data() || {};
-    const type = String(data.vehicleType || "").toLowerCase();
-    return (type === rideType || (rideType === "bike" && type === "two_wheeler"));
-  });
-}
-
+// New ride request -> all eligible online ride partners within 7 km.
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -618,127 +263,160 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
 
     const rideType = String(ride.rideType || "bike").toLowerCase();
-    const partners = await getAvailableRidePartners(rideType);
     const pickupLat = Number(ride.pickupLatitude);
     const pickupLng = Number(ride.pickupLongitude);
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
 
-    for (const partner of partners) {
-      const data = partner.data() || {};
-      const pLat = Number(data.latitude);
-      const pLng = Number(data.longitude);
-      if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng) ||
-          !Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+    const snap = await db.collection("ridePartners")
+      .where("status", "==", "online")
+      .get();
+
+    for (const partner of snap.docs) {
+      const p = partner.data() || {};
+      const type = String(p.vehicleType || "bike").toLowerCase();
+      const normalizedType = type === "two_wheeler" || type === "motorcycle" || type === "scooter"
+        ? "bike"
+        : type;
+      if (normalizedType !== rideType) continue;
+
+      const pLat = Number(p.carrierLat ?? p.latitude);
+      const pLng = Number(p.carrierLng ?? p.longitude);
+      if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
 
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
-      if (distance > 10) continue;
+      if (distance > 7) continue;
 
       await sendToUser(
         partner.id,
-        "New " + (rideType === "auto" ? "Auto" : "Bike") + " Ride",
-        "A nearby ALLways ride request is waiting for acceptance.",
+        "New Ride Request",
+        "A customer nearby is requesting a " + rideType + " ride.",
         {
           type: "ride_request",
           rideId: event.params.requestId,
           rideType,
           distanceKm: distance.toFixed(1),
-        },
-        data.fcmToken || data.fcm_token || ""
+        }
       );
     }
   }
 );
 
-exports.notifyNearbyRidePartners = onDocumentCreated(
-  "rides/{rideId}",
+// Ride state changes -> Customer.
+exports.onAutoRideRequestUpdated = onDocumentUpdated(
+  "autoRideRequests/{requestId}",
   async (event) => {
-    const ride = event.data?.data();
-    if (!ride) return;
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    const oldStatus = String(before.status || "").toLowerCase();
+    const newStatus = String(after.status || "").toLowerCase();
+    if (oldStatus === newStatus) return;
 
-    const lat = Number(ride.pickupLatitude);
-    const lng = Number(ride.pickupLongitude);
+    const customerUid = String(after.customerUid || after.customerId || "").trim();
+    if (!customerUid) return;
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      console.log("Ride has no pickup coordinates:", event.params.rideId);
-      return;
-    }
-
-    const partners = await getAvailablePartners();
-    const recipients = [];
-
-    for (const partner of partners) {
-      const p = partner.data || {};
-      const pLat = Number(p.latitude);
-      const pLng = Number(p.longitude);
-      if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
-
-      const distance = distanceKm(lat, lng, pLat, pLng);
-      if (distance > 10) continue;
-
-      const token =
-        String(p.fcmToken || p.fcm_token || "").trim() ||
-        (await getUserToken(partner.id));
-
-      if (token) recipients.push({ partner, token, distance });
-    }
-
-    const messages = recipients.map(({ partner, token, distance }) =>
-      notificationMessage(
-        "New Ride Available",
-        "A new ride request is available near you.",
-        {
-          type: "new_ride",
-          rideId: event.params.rideId,
-          distanceKm: distance.toFixed(1),
-        },
-        { token }
-      )
-    );
-
-    for (let i = 0; i < messages.length; i += 500) {
-      const batch = messages.slice(i, i + 500);
-      if (batch.length) await messaging.sendEach(batch);
+    if (newStatus === "accepted") {
+      await sendToUser(
+        customerUid,
+        "Ride Accepted",
+        "Your ALLways ride request has been accepted.",
+        { type: "ride_update", rideId: event.params.requestId, status: "accepted" }
+      );
+    } else if (newStatus === "rejected") {
+      await sendToUser(
+        customerUid,
+        "Ride Update",
+        "Your ALLways ride request was rejected.",
+        { type: "ride_update", rideId: event.params.requestId, status: "rejected" }
+      );
+    } else if (newStatus === "cancelled") {
+      await sendToUser(
+        customerUid,
+        "Ride Cancelled",
+        "Your ALLways ride request has been cancelled.",
+        { type: "ride_update", rideId: event.params.requestId, status: "cancelled" }
+      );
     }
   }
 );
 
-function distanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+// Partner registration/approval notifications.
+exports.onRidePartnerCreated = onDocumentCreated(
+  "ridePartners/{uid}",
+  async (event) => {
+    const data = event.data?.data() || {};
+    await sendToUser(
+      "ADMIN_UID_PLACEHOLDER",
+      "New Rider Registration",
+      "A new rider registration is waiting for approval.",
+      { type: "partner_registration", role: "carrier", uid: event.params.uid }
+    );
+  }
+);
 
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+exports.onDeliveryPartnerCreated = onDocumentCreated(
+  "deliveryPartners/{uid}",
+  async (event) => {
+    await sendToUser(
+      "ADMIN_UID_PLACEHOLDER",
+      "New Delivery Partner",
+      "A new delivery partner registration is waiting for approval.",
+      { type: "partner_registration", role: "delivery_partner", uid: event.params.uid }
+    );
+  }
+);
 
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+exports.onRidePartnerUpdated = onDocumentUpdated(
+  "ridePartners/{uid}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
+    const status = String(after.approvalStatus || "");
+    if (!status) return;
+    await sendToUser(
+      event.params.uid,
+      "Rider Approval Update",
+      "Your ALLways rider account is now " + status + ".",
+      { type: "partner_approval", role: "carrier", status }
+    );
+  }
+);
+
+exports.onDeliveryPartnerUpdated = onDocumentUpdated(
+  "deliveryPartners/{uid}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
+    const status = String(after.approvalStatus || "");
+    if (!status) return;
+    await sendToUser(
+      event.params.uid,
+      "Delivery Partner Approval Update",
+      "Your ALLways delivery partner account is now " + status + ".",
+      { type: "partner_approval", role: "delivery_partner", status }
+    );
+  }
+);
 
 exports.onNotificationBroadcastCreated = onDocumentCreated(
   "notificationBroadcasts/{notificationId}",
   async (event) => {
     const ref = event.data?.ref;
     const notification = event.data?.data();
-
     if (!ref || !notification) return;
 
     const title = String(notification.title || "ALLways");
     const body = String(notification.body || "New ALLways update.");
     const data = notification.data || {};
-
     const sent = await sendToAllUsers(title, body, data);
 
-    await ref.set(
-      {
-        status: sent ? "sent" : "failed",
-        sentAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await ref.set({
+      status: sent ? "sent" : "failed",
+      sentAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
   }
 );
-
 
 exports.onAllwaysAnnouncementCreated = onDocumentCreated(
   "announcements/{announcementId}",
@@ -748,20 +426,13 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
     const title = String(announcement.title || "ALLways");
     const body = String(announcement.body || "");
     if (!body) return;
-    try {
-      await messaging.send(
-        notificationMessage(
-          title,
-          body,
-          {
-            type: "announcement",
-            announcementId: event.params.announcementId,
-          },
-          { topic: "all_users" }
-        )
-      );
-    } catch (error) {
-      console.error("ALLways announcement notification failed:", error);
-    }
+    await messaging.send(
+      notificationMessage(
+        title,
+        body,
+        { type: "announcement", announcementId: event.params.announcementId },
+        { topic: "all_users" }
+      )
+    );
   }
 );
