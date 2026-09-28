@@ -41,6 +41,14 @@ class MainActivity : FlutterActivity() {
                         result.success("created")
                     }
                     "installApk" -> installApk(call.argument<String>("path"), result)
+                    "openInstallSettings" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                        } else {
+                            startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+                        }
+                        result.success("opened")
+                    }
                     else -> result.notImplemented()
                 }
             }
