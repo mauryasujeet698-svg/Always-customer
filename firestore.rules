@@ -9,6 +9,10 @@ service cloud.firestore {
       allow read: if signedIn() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.carrierUid == request.auth.uid ||
+        (exists(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid))
+          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.approvalStatus == 'approved'
+          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.status == 'online'
+          && resource.data.carrierUid == null) ||
         isAdmin()
       );
 
@@ -33,6 +37,19 @@ service cloud.firestore {
         || (signedIn() && resource.data.customerId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
+          ]))
+        || (signedIn()
+          && exists(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid))
+          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.approvalStatus == 'approved'
+          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.status == 'online'
+          && resource.data.carrierUid == null
+          && request.resource.data.carrierUid == request.auth.uid
+          && request.resource.data.deliveryPartnerUid == request.auth.uid
+          && request.resource.data.status == 'Assigned'
+          && request.resource.data.carrierAccepted == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'carrierUid','deliveryPartnerUid','carrierName','carrierPhone','carrierVehicleType',
+            'carrierAccepted','assignedAt','status','updatedAt'
           ]));
 
       allow delete: if false;
