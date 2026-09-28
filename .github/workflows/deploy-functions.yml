@@ -1,6 +1,16 @@
 name: Deploy ALLways Firebase Functions
 
 on:
+  push:
+    branches:
+      - allways-android-app
+      - main
+    paths:
+      - "firestore.rules"
+      - "functions/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-functions.yml"
   workflow_dispatch:
 
 permissions:
