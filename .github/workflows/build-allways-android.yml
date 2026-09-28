@@ -8,6 +8,10 @@ on:
       - main
     paths:
       - "mobile/**"
+      - "functions/**"
+      - "firestore.rules"
+      - "firebase.json"
+      - ".firebaserc"
       - ".github/workflows/build-allways-android.yml"
   workflow_dispatch:
 
