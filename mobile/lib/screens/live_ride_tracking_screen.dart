@@ -10,13 +10,21 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-import '../controllers/carrier_and_admin_controller.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LiveRideTrackingScreen extends StatefulWidget {
   final String rideId;
   final bool isRider;
   const LiveRideTrackingScreen({super.key, required this.rideId, this.isRider = false});
   @override State<LiveRideTrackingScreen> createState() => _LiveRideTrackingScreenState();
+}
+
+Future<void> _triggerPhoneCall(String phoneNumber) async {
+  if (phoneNumber.trim().isEmpty) return;
+  final uri = Uri(scheme: 'tel', path: phoneNumber.trim());
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri);
+  }
 }
 
 class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
@@ -297,7 +305,7 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
                     if (_distanceToOtherKm != null)
                       Text((widget.isRider ? 'Customer' : 'Partner') + ' • ' + (_distanceToOtherKm! < 1 ? (_distanceToOtherKm! * 1000).round().toString() + ' m' : _distanceToOtherKm!.toStringAsFixed(1) + ' km') + ' away • ETA ' + _etaText, style: const TextStyle(color: Colors.black54, fontSize: 13)),
                   ])),
-                  TextButton(onPressed: () => CarrierAndAdminController.triggerPhoneCall(_contactPhone), child: const Text('Call', style: TextStyle(color: Color(0xFF8E5A73)))),
+                  TextButton(onPressed: () => _triggerPhoneCall(_contactPhone), child: const Text('Call', style: TextStyle(color: Color(0xFF8E5A73)))),
                 ],
               ),
             ),
