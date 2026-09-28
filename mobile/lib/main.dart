@@ -657,7 +657,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         final pickup=_point(d,'pickup');
         final destination=_point(d,'destination');
         final points=<LatLng>[if(customer!=null)customer,if(partner!=null)partner,if(pickup!=null)pickup,if(destination!=null)destination];
-        if(pickup!=null&&destination!=null&&_routePoints.isEmpty)_loadOSRMRoute(pickup,destination);
+        final routeTarget=(widget.mode=='order'||widget.mode=='ride') ? (destination??pickup) : destination;
+        if(partner!=null&&routeTarget!=null&&(_routePoints.isEmpty||_lastRouteUpdate==null||DateTime.now().difference(_lastRouteUpdate!)>const Duration(seconds:20)))_loadOSRMRoute(partner,routeTarget);
+        if(partner!=null&&isCustomer){final base=customer??pickup;if(base!=null){_liveDistanceMeters=Geolocator.distanceBetween(base.latitude,base.longitude,partner.latitude,partner.longitude);}}
         if(points.isEmpty)return const Center(child:Padding(padding:EdgeInsets.all(24),child:Text('Waiting for live location. Keep location enabled during the active trip.',textAlign:TextAlign.center)));
         final activeLabel=widget.mode=='order'?'Live delivery tracking':widget.mode=='vehicle'?'Live vehicle tracking':'Live ride tracking';
         final currentUser=FirebaseAuth.instance.currentUser;
@@ -692,7 +694,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 Container(width:10,height:10,decoration:const BoxDecoration(color:Colors.green,shape:BoxShape.circle)),const SizedBox(width:9),
                 Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   Text(activeLabel,style:const TextStyle(fontWeight:FontWeight.w900)),
-                  Text(partner==null?'Waiting for partner location':'Partner location is updating live',style:const TextStyle(color:Colors.grey,fontSize:12)),
+                  Text(partner==null?'Waiting for partner location':(_liveDistanceMeters==null?'Partner location is updating live':(_liveDistanceMeters!<1000?_liveDistanceMeters!.round().toString()+' m away':(_liveDistanceMeters!/1000).toStringAsFixed(1)+' km away')),style:const TextStyle(color:Colors.grey,fontSize:12)),
                 ])),
                 if(callPhone.isNotEmpty)IconButton(onPressed:()=>_call(context,callPhone),icon:const Icon(Icons.call),tooltip:'Call'),
                 const Icon(Icons.gps_fixed,size:20),
@@ -706,7 +708,10 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
               padding:const EdgeInsets.symmetric(horizontal:14,vertical:10),
               child:Row(children:[
                 const Icon(Icons.two_wheeler,size:24),const SizedBox(width:8),
-                Expanded(child:Text(widget.mode=='ride'?'Green pickup • Red destination • Purple moving bike':'Blue customer • Purple moving partner',style:const TextStyle(fontSize:13))),
+                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Text(widget.mode=='ride'?'Green pickup • Red destination • Purple moving bike':'Blue customer • Purple moving partner',style:const TextStyle(fontSize:13)),
+                  if(_routeDistanceMeters!=null)Text((_routeDistanceMeters!<1000?_routeDistanceMeters!.round().toString()+' m':(_routeDistanceMeters!/1000).toStringAsFixed(1)+' km')+' route • ETA '+((_routeDurationSeconds??0)/60).ceil().toString()+' min',style:const TextStyle(fontSize:12,color:Colors.grey)),
+                ])),
                 if(widget.allowCancel)TextButton(onPressed:_cancelActiveTrip,child:const Text('Cancel',style:TextStyle(color:Color(0xFF8E5A73)))),
               ]),
             ),
