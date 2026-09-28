@@ -298,7 +298,7 @@ class AllwaysApp extends StatelessWidget {
               );
             case '/wishlist':
               return MaterialPageRoute(
-                builder: (_) => const WishlistScreen(),
+                builder: (_) => const WishlistPage(),
               );
             case '/order-details':
               final args = settings.arguments;
