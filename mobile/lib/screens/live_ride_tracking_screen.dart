@@ -43,6 +43,11 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   bool _customerLocationStarted = false;
   double? _distanceToOtherKm;
   String _etaText = 'Updating…';
+  List<Map<String,dynamic>> _navSteps = const [];
+  double? _routeDistanceMeters;
+  double? _routeDurationSeconds;
+  DateTime? _lastRouteUpdate;
+  bool _routeLoading = false;
 
   @override
   void initState() {
@@ -110,8 +115,11 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
       });
       if (!widget.isRider && !_customerLocationStarted) _startCustomerLocationBroadcast();
 
-      if (newPickup != null && newDestination != null && (_routePoints.isEmpty || routeChanged)) {
-        _loadOSRMRoute(newPickup, newDestination);
+      if (newPickup != null && newDestination != null) {
+        final status=(data['status']??'searching').toString().toLowerCase();
+        final target=(status=='accepted'||status=='searching') ? newPickup : newDestination;
+        final startPoint=widget.isRider ? newDriver : newCustomer;
+        if(startPoint!=null && (_routePoints.isEmpty || routeChanged || _lastRouteUpdate==null || DateTime.now().difference(_lastRouteUpdate!)>const Duration(seconds:20))) _loadOSRMRoute(startPoint,target);
       }
       _fitCameraIfReady();
     });
@@ -149,26 +157,45 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   }
 
   Future<void> _loadOSRMRoute(LatLng start, LatLng end) async {
-    final url = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/'
-      '${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson',
-    );
+    if (_routeLoading) return;
+    if (_lastRouteUpdate != null && DateTime.now().difference(_lastRouteUpdate!) < const Duration(seconds: 8)) return;
+    _routeLoading = true;
     try {
+      final url = Uri.parse("https://router.project-osrm.org/route/v1/driving/\${start.longitude},\${start.latitude};\${end.longitude},\${end.latitude}?overview=full&geometries=geojson&steps=true&annotations=true");
       final res = await http.get(url);
       if (!mounted || res.statusCode != 200) return;
-      final decoded = jsonDecode(res.body);
-      final routes = decoded['routes'];
+      final body = jsonDecode(res.body);
+      final routes = body['routes'];
       if (routes is! List || routes.isEmpty) return;
-      final geometry = routes.first['geometry'];
-      final coordinates = geometry is Map ? geometry['coordinates'] : null;
-      if (coordinates is! List) return;
-      final points = coordinates.whereType<List>().where((c) => c.length >= 2).map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble())).toList();
-      if (!mounted) return;
-      setState(() => _routePoints = points);
-      _fitCameraIfReady();
-    } catch (_) {}
+      final r = routes.first;
+      final geometry = r['geometry'];
+      final coords = geometry is Map ? geometry['coordinates'] : null;
+      if (coords is! List) return;
+      final points = coords.whereType<List>().where((x) => x.length >= 2).map((x) => LatLng((x[1] as num).toDouble(), (x[0] as num).toDouble())).toList();
+      final steps = <Map<String,dynamic>>[];
+      final legs = r['legs'];
+      if (legs is List) for (final leg in legs) {
+        final raw = leg['steps'];
+        if (raw is! List) continue;
+        for (final step in raw) {
+          final m = step['maneuver'] is Map ? Map<String,dynamic>.from(step['maneuver']) : <String,dynamic>{};
+          final type = (m['type'] ?? '').toString();
+          final modifier = (m['modifier'] ?? '').toString();
+          final distance = step['distance'] is num ? (step['distance'] as num).toDouble() : 0;
+          if (distance < 2 && steps.isNotEmpty) continue;
+          final instruction = type == 'arrive' ? 'You have arrived' : type == 'depart' ? 'Start on the current road' : type == 'roundabout' ? 'Enter the roundabout' : modifier.isEmpty ? 'Continue straight' : modifier.replaceAll('_', ' ');
+          steps.add({'instruction':instruction,'road':(step['name'] ?? '').toString(),'distance':distance,'modifier':modifier});
+        }
+      }
+      setState(() {
+        _routePoints = points;
+        _navSteps = steps;
+        _routeDistanceMeters = r['distance'] is num ? (r['distance'] as num).toDouble() : null;
+        _routeDurationSeconds = r['duration'] is num ? (r['duration'] as num).toDouble() : null;
+        _lastRouteUpdate = DateTime.now();
+      });
+    } catch (_) {} finally { _routeLoading = false; }
   }
-
   void _fitCameraIfReady() {
     if (!_mapReady) return;
     final points = <LatLng>[
@@ -287,6 +314,18 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
               ),
             ),
           ),
+          if (_navSteps.isNotEmpty)
+            Positioned(
+              top: 84, left: 16, right: 16,
+              child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+                Container(width:48,height:48,alignment:Alignment.center,decoration:BoxDecoration(color:const Color(0xFF673AB7),borderRadius:BorderRadius.circular(14)),child:Text((_navSteps.first['modifier']??'').toString().contains('left')?'←':(_navSteps.first['modifier']??'').toString().contains('right')?'→':'↑',style:const TextStyle(color:Colors.white,fontSize:28,fontWeight:FontWeight.w900))),
+                const SizedBox(width:12),
+                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Text((_navSteps.first['instruction']??'Continue').toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                  Text(((_navSteps.first['distance'] as num) < 1000 ? (_navSteps.first['distance'] as num).round().toString()+' m' : ((_navSteps.first['distance'] as num)/1000).toStringAsFixed(1)+' km') + ((_navSteps.first['road']??'').toString().isEmpty?'':' • '+(_navSteps.first['road']).toString()),style:const TextStyle(color:Colors.grey),maxLines:1,overflow:TextOverflow.ellipsis),
+                ])),
+              ]))),
+            ),
           Positioned(
             bottom: 20, left: 16, right: 16,
             child: Container(
