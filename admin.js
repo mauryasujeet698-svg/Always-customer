@@ -8,6 +8,7 @@ appId:"1:869987297351:web:fde91fb46194a141976962",
 measurementId:"G-1N2DFFC7BT"};
 const ADMIN_EMAIL="mauryasujeet698@gmail.com";
 let db=null,allOrders=[],unsubscribe=null,initial=true;
+const INVENTORY_ENDPOINT="https://script.google.com/macros/s/AKfycbyuAdL6eEIlGiYhoTPFtE70VhyiMLnKgzO1ytctdSCWMtTdw4zIVQvEVwkbYJyJF2Wd/exec";
 
 function esc(v){
   return String(v==null?"":v).replace(/[&<>'"]/g,function(c){
@@ -190,7 +191,53 @@ async function updateOrderNote(id){
     alert("Message update failed: "+(e.code||e.message));
   }
 }
-async function enableNotifications(){
+async async function syncCatalog(){
+  const msg=document.getElementById("catalogSyncMsg");
+  if(msg)msg.textContent="Syncing catalog…";
+  try{
+    const r=await fetch(INVENTORY_ENDPOINT+"?_="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw new Error("Catalog server returned HTTP "+r.status);
+    let data=await r.json();
+    if(typeof data==="string")data=JSON.parse(data);
+    const raw=Array.isArray(data)?data:(data.products||data.data||data.items||[]);
+    if(!Array.isArray(raw)||raw.length===0)throw new Error("Catalog response contains no products.");
+    let batch=db.batch(),count=0,batches=0;
+    async function flush(){
+      if(count===0)return;
+      await batch.commit();
+      batch=db.batch();count=0;batches++;
+    }
+    for(const item of raw){
+      const id=String(item.id||item.sku||item.productId||"").trim();
+      const name=String(item.name||item.title||"").trim();
+      if(!id||!name)continue;
+      const normalized={
+        id:id,
+        name:name,
+        title:name,
+        category:String(item.category||item.cat||"Other"),
+        icon:String(item.icon||"🛍️"),
+        description:String(item.description||""),
+        brand:String(item.brand||""),
+        price:Number(item.price||0),
+        stock:Number(item.stock??item.quantity??item.qty??0),
+        imageUrl:String(item.imageUrl||item.image||item.imageURL||"")
+      };
+      batch.set(db.collection("products").doc(id),normalized,{merge:true});
+      batch.set(db.collection("inventory").doc(id),normalized,{merge:true});
+      count++;
+      if(count>=450)await flush();
+    }
+    await flush();
+    if(batches===0)throw new Error("No valid product rows were found in the catalog response.");
+    if(msg)msg.textContent="Catalog synced successfully: "+raw.length+" rows processed.";
+  }catch(e){
+    console.error("Catalog sync:",e);
+    if(msg)msg.textContent="Catalog sync failed: "+(e.code||e.message||e);
+  }
+}
+
+function enableNotifications(){
   if(!("Notification" in window)){alert("Notifications are not supported.");return;}
   var p=await Notification.requestPermission();
   if(p==="granted")notify("ALLways alerts enabled","New orders will alert you while this admin page is open.");
@@ -203,4 +250,5 @@ document.addEventListener("DOMContentLoaded",function(){
   init();
   document.getElementById("notifyBtn").onclick=enableNotifications;
   document.getElementById("refreshBtn").onclick=listen;
+  document.getElementById("syncCatalogBtn").onclick=syncCatalog;
 });
