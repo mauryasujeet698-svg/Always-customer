@@ -62,34 +62,107 @@ try {
    ========================================================= */
 
 async function loadInventory(){
+  inventoryLoaded = false;
+  renderProducts();
+
+  function normalizeProduct(raw, fallbackId){
+    const p = raw || {};
+    const id = String(p.id ?? p.ID ?? fallbackId ?? "").trim();
+    const name = String(p.name ?? p.title ?? p["Product Name"] ?? "").trim();
+    const category = String(p.category ?? p.cat ?? p.Category ?? "Other").trim() || "Other";
+    const emoji = String(p.emoji ?? p.icon ?? p.Emoji ?? "🛒").trim() || "🛒";
+    const imageUrl = String(p.imageUrl ?? p.imageURL ?? p["Image URL"] ?? "").trim();
+    const price = Number(p.price ?? p.Price ?? 0) || 0;
+    const stock = Math.max(0, Number(p.stock ?? p.Stock ?? 0) || 0);
+    const maxQty = Math.max(1, Number(p.maxQty ?? p["Max Qty"] ?? 10) || 10);
+    const availableRaw = p.available ?? p.Available;
+    const available = typeof availableRaw === "boolean"
+      ? availableRaw
+      : !["no", "false", "0", "unavailable"].includes(
+          String(availableRaw ?? "yes").trim().toLowerCase()
+        );
+
+    return {
+      id: id || name,
+      name,
+      title: name,
+      category,
+      cat: category,
+      emoji,
+      icon: emoji,
+      imageUrl,
+      price,
+      stock: available ? stock : 0,
+      available,
+      maxQty
+    };
+  }
+
   try {
-    // cache: "no-store" + a cache-busting query param prevents the browser
-    // (and some intermediate caches) from serving a stale response after
-    // you edit the Google Sheet.
+    // Primary source: Firestore products/{id}. The Admin app syncs the
+    // Google Sheet into the same Firebase project.
+    if(db){
+      const snapshot = await db.collection("products").get();
+      const firestoreProducts = snapshot.docs
+        .map(function(doc){
+          return normalizeProduct(doc.data(), doc.id);
+        })
+        .filter(function(p){ return p.name; });
+
+      if(firestoreProducts.length){
+        products = firestoreProducts;
+        cats = ["All"].concat(
+          Array.from(new Set(products.map(function(p){ return p.cat; })))
+        );
+        inventoryLoaded = true;
+        renderCats();
+        renderProducts();
+        console.log(
+          "ALLways: loaded " + products.length + " products from Firestore."
+        );
+        return;
+      }
+    }
+
+    // Fallback: the same live Google Apps Script endpoint used by Admin.
+    const endpoint =
+      "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7pPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
     const response = await fetch(
-      CONFIG.orderEndpoint + (CONFIG.orderEndpoint.includes("?") ? "&" : "?") + "_=" + Date.now(),
+      endpoint + "?_=" + Date.now(),
       { cache: "no-store" }
     );
+    if(!response.ok){
+      throw new Error("Catalog endpoint returned HTTP " + response.status + ".");
+    }
+
     const data = await response.json();
+    const fetchedProducts = Array.isArray(data.products)
+      ? data.products
+      : (Array.isArray(data) ? data : []);
 
-    // Extract products from your JSON format
-    let fetchedProducts = data.products || data;
+    products = fetchedProducts
+      .map(function(p){ return normalizeProduct(p, p.ID); })
+      .filter(function(p){ return p.name; });
 
-    // Ensure the app reads 'category' as 'cat'
-    products = fetchedProducts.map(function(p){
-      return Object.assign({}, p, { cat: p.category || p.cat });
-    });
-
-    cats = ["All"].concat(Array.from(new Set(products.map(function(p){ return p.cat; }))));
-    inventoryLoaded = true;
-
+    cats = ["All"].concat(
+      Array.from(new Set(products.map(function(p){ return p.cat; })))
+    );
+    inventoryLoaded = products.length > 0;
     renderCats();
     renderProducts();
+
+    console.log(
+      "ALLways: loaded " + products.length + " products from catalog fallback."
+    );
   } catch (error) {
-    console.error("Error loading inventory from Google Sheets:", error);
+    products = [];
+    cats = ["All"];
+    inventoryLoaded = false;
+    renderCats();
+    renderProducts();
+    console.error("ALLways inventory load failed:", error);
   }
 }
-
 
 /* =========================================================
    SAFE HTML
@@ -1068,10 +1141,11 @@ function startALLways(){
   updateCart();
   renderOrders();
 
-  // FETCH LIVE DATA FROM GOOGLE SHEETS
+  // Firebase is initialized before loading the catalog so Firestore is available.
   loadInventory();
 
   initAuth();
+  loadInventory();
 }
 
 
