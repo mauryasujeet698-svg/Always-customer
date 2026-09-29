@@ -989,11 +989,30 @@ class _ShellState extends State<Shell> {
     // If Firestore has not been synced yet, use the live Google Apps Script
     // catalog as a safe fallback.
     try{
-      final r=await http.get(
-        Uri.parse(inventoryEndpoint+'?_='+DateTime.now().millisecondsSinceEpoch.toString()),
-      ).timeout(const Duration(seconds:25));
-      if(r.statusCode<200||r.statusCode>=300)throw Exception('Inventory server error: HTTP '+r.statusCode.toString());
-      dynamic decoded=jsonDecode(r.body.trim().replaceFirst('﻿',''));
+      // Google Apps Script may respond through a redirect. Dio is already
+      // used by ALLways and gives us explicit redirect handling plus a clearer
+      // network error than the basic http client.
+      final response=await Dio(
+        BaseOptions(
+          followRedirects:true,
+          maxRedirects:8,
+          connectTimeout:const Duration(seconds:12),
+          receiveTimeout:const Duration(seconds:25),
+          headers:const {
+            'Accept':'application/json',
+            'Cache-Control':'no-cache',
+          },
+          validateStatus:(status)=>status!=null&&status>=200&&status<400,
+        ),
+      ).get(
+        inventoryEndpoint+'?_='+DateTime.now().millisecondsSinceEpoch.toString(),
+        options:Options(responseType:ResponseType.plain),
+      );
+      final status=response.statusCode??0;
+      if(status<200||status>=300)throw Exception('Inventory server error: HTTP '+status.toString());
+      final body=response.data?.toString()??'';
+      if(body.trim().isEmpty)throw Exception('Inventory server returned an empty response');
+      dynamic decoded=jsonDecode(body.trim().replaceFirst('﻿',''));
       if(decoded is String)decoded=jsonDecode(decoded);
       final raw=decoded is Map ? (decoded['products']??decoded['data']??decoded['items']??decoded) : decoded;
       if(raw is! List)throw Exception('Invalid inventory response');
