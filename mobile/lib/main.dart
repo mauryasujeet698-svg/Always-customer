@@ -2238,7 +2238,7 @@ class _TravelPageState extends State<TravelPage> {
         final type=(x['vehicleType']??'bike').toString().toLowerCase();
         if(type=='auto')a++;else if(type=='car')car++;else b++;
       }
-      if(mounted)setState(()=>{bikeCount=b,autoCount=a,carCount=car,loadingAvailability=false});
+      if(mounted){setState((){bikeCount=b;autoCount=a;carCount=car;loadingAvailability=false;});}
     }catch(_){if(mounted)setState(()=>loadingAvailability=false);}
   }
 
