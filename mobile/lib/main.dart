@@ -728,7 +728,7 @@ class Product {
   const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    return Product(id:(j['id']??'').toString(),name:(j['name']??j['title']??'Item').toString(),category:(j['category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??'🛍️').toString(),description:(j['description']??'').toString(),brand:(j['brand']??'').toString(),price:n(j['price']),stock:n(j['stock']));
+    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
 class CartItem { final Product product; int qty; CartItem(this.product,this.qty); }
@@ -2203,35 +2203,72 @@ class StatusView extends StatelessWidget{final String status;const StatusView({s
 }}
 
 
-class TravelPage extends StatelessWidget {
+class TravelPage extends StatefulWidget {
   const TravelPage({super.key});
+  @override State<TravelPage> createState()=>_TravelPageState();
+}
+
+class _TravelPageState extends State<TravelPage> {
+  bool loadingAvailability=true;
+  int bikeCount=0,autoCount=0,carCount=0;
+
+  @override void initState(){super.initState();_loadAvailability();}
+
+  Future<void> _loadAvailability() async {
+    try {
+      if(!await Geolocator.isLocationServiceEnabled()){if(mounted)setState(()=>loadingAvailability=false);return;}
+      var permission=await Geolocator.checkPermission();
+      if(permission==LocationPermission.denied)permission=await Geolocator.requestPermission();
+      if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever){if(mounted)setState(()=>loadingAvailability=false);return;}
+      final me=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.medium));
+      final snap=await FirebaseFirestore.instance.collection('ridePartners').where('status',isEqualTo:'online').get();
+      int b=0,a=0,car=0;
+      final now=DateTime.now();
+      for(final d in snap.docs){
+        final x=d.data();
+        if((x['approvalStatus']??'').toString().toLowerCase()!='approved'||x['availableForRides']!=true)continue;
+        final lat=x['carrierLat']??x['driverLat']; final lng=x['carrierLng']??x['driverLng'];
+        final la=lat is num?lat.toDouble():double.tryParse((lat??'').toString());
+        final ln=lng is num?lng.toDouble():double.tryParse((lng??'').toString());
+        if(la==null||ln==null||la==0||ln==0)continue;
+        final ts=x['carrierLocationUpdatedAt']??x['lastLocationAt'];
+        final updated=ts is Timestamp?ts.toDate():null;
+        if(updated!=null&&now.difference(updated).inMinutes>3)continue;
+        if(Geolocator.distanceBetween(me.latitude,me.longitude,la,ln)>7000)continue;
+        final type=(x['vehicleType']??'bike').toString().toLowerCase();
+        if(type=='auto')a++;else if(type=='car')car++;else b++;
+      }
+      if(mounted)setState(()=>{bikeCount=b,autoCount=a,carCount=car,loadingAvailability=false});
+    }catch(_){if(mounted)setState(()=>loadingAvailability=false);}
+  }
+
+  Widget _availabilityCard(BuildContext context)=>Card(elevation:0,margin:const EdgeInsets.only(bottom:16),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Row(children:[const Expanded(child:Text('Nearby availability',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),IconButton(onPressed:loadingAvailability?null:_loadAvailability,icon:const Icon(Icons.refresh))]),
+    Text(loadingAvailability?'Checking nearby approved partners…':(bikeCount+autoCount+carCount==0?'No approved partners nearby right now':'Partners available within 7 km'),style:const TextStyle(color:Colors.grey,fontSize:12)),
+    const SizedBox(height:10),
+    Row(children:[Expanded(child:_vehicleAvailability('Bike',bikeCount,Icons.two_wheeler,Colors.deepPurple)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Auto',autoCount,Icons.local_taxi_outlined,Colors.black)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Car',carCount,Icons.directions_car_outlined,Colors.blueGrey))]),
+  ]));
+  Widget _vehicleAvailability(String label,int count,IconData icon,Color color)=>Container(padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),decoration:BoxDecoration(color:color.withOpacity(.07),borderRadius:BorderRadius.circular(14)),child:Column(children:[Icon(icon,size:21,color:color),const SizedBox(height:4),Text(count.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(label,style:const TextStyle(fontSize:11,color:Colors.grey))]));
   Widget _rideCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required Color color,required VoidCallback onTap})=>Card(
     elevation:0,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),
     child:InkWell(onTap:onTap,borderRadius:BorderRadius.circular(18),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
       Container(width:58,height:58,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(16)),child:Icon(icon,color:Colors.white,size:30)),
-      const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.grey,height:1.3)),
-      ])),const Icon(Icons.chevron_right),
-    ]))),
-  );
+      const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.grey,height:1.3))])),const Icon(Icons.chevron_right),
+    ]))));
   @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.fromLTRB(16,12,16,110),children:[
     Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Travel',style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900)),Text('Move around your city with simple, upfront rides.',style:const TextStyle(color:Colors.grey))])),const Icon(Icons.location_on_outlined,size:30)]),
-    const SizedBox(height:14),
+    const SizedBox(height:14),_availabilityCard(context),
     Container(padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFFFC928),borderRadius:BorderRadius.circular(22)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Row(children:[Icon(Icons.two_wheeler,size:34),SizedBox(width:10),Text('ALLways Mobility',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900))]),
-      const SizedBox(height:8),const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(height:1.35)),
+      const Row(children:[Icon(Icons.two_wheeler,size:34),SizedBox(width:10),Text('ALLways Mobility',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900))]),const SizedBox(height:8),const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(height:1.35)),
       const SizedBox(height:14),FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),style:FilledButton.styleFrom(backgroundColor:Colors.black,foregroundColor:Colors.white),child:const Text('Book a bike ride')),
     ])),
-    const SizedBox(height:16),
-    const Text('Ride with ALLways',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),
-    const SizedBox(height:10),
+    const SizedBox(height:16),const Text('Ride with ALLways',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:10),
     _rideCard(context,icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride. Upfront estimate and live tracking after acceptance.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),
     _rideCard(context,icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',color:const Color(0xFF111111),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),
     _rideCard(context,icon:Icons.directions_car_outlined,title:'Book a vehicle',subtitle:'Choose from 25 vehicle categories. Owners set price and booking terms.',color:const Color(0xFF303030),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage()))),
     Card(elevation:0,color:const Color(0xFFF6F6F6),child:const Padding(padding:EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.shield_outlined),SizedBox(width:10),Expanded(child:Text('Safety tools, calling, cancellation and live location are available during an active ride.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
   ]);
 }
-
 class ProfilePage extends StatefulWidget{
   final User? user; final List<Map<String,dynamic>> addresses; final VoidCallback onLogin;
   final Future<void> Function() onReload; final Future<void> Function(String) onDelete; final Future<void> Function(String) onCancel; final Future<void> Function(List<Map<String,dynamic>>) onReorder; final void Function(Product) onAdd;
