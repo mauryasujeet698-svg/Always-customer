@@ -1117,7 +1117,7 @@ class _ShellState extends State<Shell> {
     if(name.trim().isEmpty||!RegExp(r'^\d{10}$').hasMatch(ph)||address.trim().isEmpty){msg('Enter name, valid 10-digit phone and address.');return;}
     for(final x in cart.values){final p=products.where((z)=>z.id==x.product.id).firstOrNull;if(p==null||p.stock<x.qty){msg(x.product.name+' is no longer available.');await loadInventory();return;}}
     final sub=total;final delivery=sub>=499?0:30;final grand=sub+delivery;final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
-    final order={'id':id,'customerId':user!.uid,'email':user!.email??'','name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),'customerLatitude':latitude,'customerLongitude':longitude,'locationSource':latitude!=null&&longitude!=null?'gps':'address',
+    final order={'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'','name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),'customerLatitude':latitude,'customerLongitude':longitude,'locationSource':latitude!=null&&longitude!=null?'gps':'address',
       'items':cart.values.map((x)=>{'id':x.product.id,'name':x.product.name,'qty':x.qty,'price':x.product.price}).toList(),
       'subtotal':sub,'delivery':delivery,'total':grand,'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'','carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
       'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,'time':DateTime.now().toLocal().toString()};
@@ -2030,15 +2030,28 @@ class _OrdersPageState extends State<OrdersPage> {
                   .collection('orders')
                   .where('customerId', isEqualTo: widget.user!.uid)
                   .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
+              builder: (context, primarySnapshot) {
+                if (primarySnapshot.hasError) {
                   return Center(child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('Could not load orders.\n${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : Colors.black54)),
+                    child: Text('Could not load orders.\\n'+primarySnapshot.error.toString(), textAlign: TextAlign.center, style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : Colors.black54)),
                   ));
                 }
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                return _buildList(snapshot.data!.docs);
+                if (!primarySnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('orders')
+                      .where('customerUid', isEqualTo: widget.user!.uid)
+                      .snapshots(),
+                  builder: (context, legacySnapshot) {
+                    final merged = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+                    for (final d in primarySnapshot.data!.docs) merged[d.id] = d;
+                    for (final d in (legacySnapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])) {
+                      merged[d.id] = d;
+                    }
+                    return _buildList(merged.values.toList());
+                  },
+                );
               },
             ),
           ),
