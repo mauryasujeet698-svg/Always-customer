@@ -2247,7 +2247,7 @@ class _TravelPageState extends State<TravelPage> {
     Text(loadingAvailability?'Checking nearby approved partners…':(bikeCount+autoCount+carCount==0?'No approved partners nearby right now':'Partners available within 7 km'),style:const TextStyle(color:Colors.grey,fontSize:12)),
     const SizedBox(height:10),
     Row(children:[Expanded(child:_vehicleAvailability('Bike',bikeCount,Icons.two_wheeler,Colors.deepPurple)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Auto',autoCount,Icons.local_taxi_outlined,Colors.black)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Car',carCount,Icons.directions_car_outlined,Colors.blueGrey))]),
-  ]));
+  ])));
   Widget _vehicleAvailability(String label,int count,IconData icon,Color color)=>Container(padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),decoration:BoxDecoration(color:color.withOpacity(.07),borderRadius:BorderRadius.circular(14)),child:Column(children:[Icon(icon,size:21,color:color),const SizedBox(height:4),Text(count.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(label,style:const TextStyle(fontSize:11,color:Colors.grey))]));
   Widget _rideCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required Color color,required VoidCallback onTap})=>Card(
     elevation:0,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),
