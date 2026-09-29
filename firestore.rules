@@ -8,6 +8,7 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
       allow read: if signedIn() && (
         resource.data.customerId == request.auth.uid ||
+        resource.data.customerUid == request.auth.uid ||
         resource.data.carrierUid == request.auth.uid ||
         (exists(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid))
           && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.approvalStatus == 'approved'
