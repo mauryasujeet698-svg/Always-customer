@@ -1403,11 +1403,14 @@ class _ShopPageState extends State<ShopPage>{
             const SizedBox(height:14),
             if(showCategories) ...[const Text('Shop by category',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:10),SizedBox(height:92,child:ListView.separated(scrollDirection:Axis.horizontal,itemCount:cs.length,separatorBuilder:(_,__)=>const SizedBox(width:8),itemBuilder:(_,i)=>categoryChip(c,cs[i]))),const SizedBox(height:16)],
             if(widget.loading)const Padding(padding:EdgeInsets.all(40),child:Center(child:CircularProgressIndicator()))
-            else if(widget.error!=null)const InfoCard(title:'Could not load inventory',detail:'Check your connection and pull down to retry.')
-            else if(searched.isEmpty)const InfoCard(title:'No items found',detail:'Try another search or category.')
+            else if(widget.error!=null)InfoCard(title:'Could not load inventory',detail:'Pull down to retry. Details: '+widget.error!)
+            else if(searched.isEmpty)InfoCard(title:'No items found',detail:widget.products.isEmpty?'No products were returned by the catalog. Pull down to retry.':'Try another search or category. ('+widget.products.length.toString()+' products loaded)')
             else ...[
               if(showOffers)productSection(c,'Top offers',searched),
               if(showPopular)productSection(c,'Popular Near You',searched.skip(showOffers?4:0).take(4).toList()),
+              for(final s in sections)
+                if(s!='Popular Near You')
+                  productSection(c,s,searched.where((p)=>p.category.trim().toLowerCase()==s.trim().toLowerCase()).toList()),
             ],
           ]),
         );
