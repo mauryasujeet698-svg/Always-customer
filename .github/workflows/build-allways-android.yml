@@ -1,4 +1,5 @@
 # ALLways Android build workflow - signing verification
+# Catalog fixes are built automatically on the allways-android-app branch.
 name: Build ALLways Android APK
 
 on:
