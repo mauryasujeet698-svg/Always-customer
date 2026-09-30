@@ -986,8 +986,38 @@ class _ShellState extends State<Shell> {
       firestoreError=e;
     }
 
-    // If Firestore has not been synced yet, use the live Google Apps Script
-    // catalog as a safe fallback.
+    // Try the legacy inventory collection before going to the external
+    // catalog endpoint. Older Admin syncs may have inventory documents even
+    // when products/{id} is empty.
+    try{
+      final inventorySnap=await FirebaseFirestore.instance.collection('inventory').limit(1000).get();
+      if(inventorySnap.docs.isNotEmpty){
+        final list=inventorySnap.docs.map((d){
+          final data=Map<String,dynamic>.from(d.data());
+          data['id']=(data['id']??d.id).toString();
+          if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
+          if(data['available']==false)data['stock']=0;
+          return Product.fromJson(data);
+        }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
+        if(list.isNotEmpty){
+          if(mounted)setState((){products=list;loading=false;error=null;});
+          return;
+        }
+      }
+    }catch(e){
+      firestoreError=firestoreError??e;
+    }
+
+    // If Firestore has not been synced yet, use the configured Google Apps
+    // Script catalog endpoint. Admin stores the active deployment URL in
+    // settings/catalogSync so a redeployment does not require a new APK.
+    var catalogEndpoint=inventoryEndpoint;
+    try{
+      final settings=await FirebaseFirestore.instance.collection('settings').doc('catalogSync').get();
+      final configured=(settings.data()?['endpoint']??'').toString().trim();
+      if(configured.isNotEmpty) catalogEndpoint=configured;
+    }catch(_){}
+
     try{
       // Google Apps Script may respond through a redirect. Dio is already
       // used by ALLways and gives us explicit redirect handling plus a clearer
@@ -1005,10 +1035,11 @@ class _ShellState extends State<Shell> {
           validateStatus:(status)=>status!=null&&status>=200&&status<400,
         ),
       ).get(
-        inventoryEndpoint+'?_='+DateTime.now().millisecondsSinceEpoch.toString(),
+        catalogEndpoint+'?_='+DateTime.now().millisecondsSinceEpoch.toString(),
         options:Options(responseType:ResponseType.plain),
       );
       final status=response.statusCode??0;
+      if(status==404)throw Exception('Google Apps Script /exec URL is not active (HTTP 404). Update the endpoint in Admin → Catalog Sync after redeploying the Apps Script.');
       if(status<200||status>=300)throw Exception('Inventory server error: HTTP '+status.toString());
       final body=response.data?.toString()??'';
       if(body.trim().isEmpty)throw Exception('Inventory server returned an empty response');
