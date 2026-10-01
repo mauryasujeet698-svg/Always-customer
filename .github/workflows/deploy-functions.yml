@@ -35,6 +35,20 @@ jobs:
         working-directory: functions
         run: npm install
 
+      - name: Verify Firebase deployment credential is available
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$FIREBASE_TOKEN" ]; then
+            echo "Firebase deployment credential: FIREBASE_TOKEN"
+          elif [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "Firebase deployment credential: FIREBASE_SERVICE_ACCOUNT_JSON"
+          else
+            echo "ERROR: neither FIREBASE_TOKEN nor FIREBASE_SERVICE_ACCOUNT_JSON is configured."
+            exit 1
+          fi
+
       - name: Deploy Cloud Functions
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
