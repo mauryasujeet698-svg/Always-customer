@@ -1358,7 +1358,7 @@ class _ShellState extends State<Shell> {
     final pages=[
       ShopPage(products:products,loading:loading,error:error,onRefresh:loadInventory,onAdd:add,cart:cart,onQty:qty,user:user,wishlistIds:wishlistIds,onWishlist:toggleWishlist,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),addresses:addresses),
       const TravelPage(),
-      ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems,onAdd:add,onBuyAll:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder)))),
+      ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems,onAdd:add),
     ];
     return ValueListenableBuilder<String>(valueListenable:languageNotifier,builder:(context,lang,_)=>Scaffold(
       body:SafeArea(child:Column(children:[
@@ -1549,7 +1549,7 @@ class _ShopPageState extends State<ShopPage>{
                 Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant,fontSize:12,fontWeight:FontWeight.w500)),
               ])),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
-              IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:widget.onBuyAll))),icon:const Icon(Icons.favorite_border)),
+              IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:widget.onOpenCart))),icon:const Icon(Icons.favorite_border)),
               IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
             ]),
             InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
@@ -3567,7 +3567,7 @@ class _WishlistPageState extends State<WishlistPage> {
               ),
             ),
           ),
-        ),
+        ],
       );
     }
     return Scaffold(appBar: AppBar(title: const Text('Wishlist')), body: RefreshIndicator(onRefresh: load, child: body));
