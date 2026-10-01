@@ -3122,176 +3122,97 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
   }
 }
 
-class OnDemandRidePage extends StatefulWidget {
-  final String rideType;
-  const OnDemandRidePage({super.key,this.rideType='bike'});
+class OnDemandRidePage extends StatefulWidget{
+  final String rideType;final String? initialDestination;
+  const OnDemandRidePage({super.key,this.rideType='bike',this.initialDestination});
   @override State<OnDemandRidePage> createState()=>_OnDemandRidePageState();
 }
-
-class _OnDemandRidePageState extends State<OnDemandRidePage> {
-  late String rideType;
-  @override void initState(){super.initState();rideType=widget.rideType=='auto'?'auto':'bike';}
-  Position? pickupPosition;
-
-  Future<Position?> _currentPosition() async {
+class _OnDemandRidePageState extends State<OnDemandRidePage>{
+  late String rideType;final destination=TextEditingController();Position? pickup;String pickupAddress='Current location';String? pickupPincode,destinationPincode;LatLng? drop;List<LatLng> route=[];List<Map<String,dynamic>> places=[];double km=0,fare=0;int eta=0;bool searching=false,routing=false;String? routeError;
+  @override void initState(){super.initState();rideType=widget.rideType=='auto'?'auto':'bike';destination.text=widget.initialDestination??'';_loadPickup();}
+  @override void dispose(){destination.dispose();super.dispose();}
+  Future<void> _loadPickup()async{
     try{
-      if(!await Geolocator.isLocationServiceEnabled())return null;
-      var p=await Geolocator.checkPermission();
-      if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
-      if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return null;
-      return Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high)).timeout(const Duration(seconds:10));
-    }catch(_){return null;}
+      if(!await Geolocator.isLocationServiceEnabled())return;
+      var p=await Geolocator.checkPermission();if(p==LocationPermission.denied)p=await Geolocator.requestPermission();if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return;
+      pickup=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high));
+      final marks=await placemarkFromCoordinates(pickup!.latitude,pickup!.longitude);if(marks.isNotEmpty){final m=marks.first;pickupAddress=[m.name,m.street,m.locality,m.subLocality,m.postalCode].where((x)=>x!=null&&x!.trim().isNotEmpty).map((x)=>x!.trim()).toSet().join(', ');pickupPincode=m.postalCode;}
+      if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty)await _search(false);
+    }catch(_){}
+    if(mounted)setState((){});
   }
-
-  Future<void> _requestRide() async {
-    final user=FirebaseAuth.instance.currentUser;
-    if(user==null){
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));
-      return;
+  Future<void> _search([bool show=true])async{
+    final q=destination.text.trim();if(q.isEmpty){if(show)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter a destination.')));return;}
+    setState(()=>searching=true);
+    try{
+      final uri=Uri.https('nominatim.openstreetmap.org','/search',{'q':q,'format':'jsonv2','limit':'5','countrycodes':'in','addressdetails':'1'});
+      final res=await http.get(uri,headers:{'User-Agent':'ALLways/1.5 (+https://allways.in)'}).timeout(const Duration(seconds:10));if(res.statusCode!=200)throw Exception('Search unavailable');
+      final data=jsonDecode(res.body);places=data is List?data.whereType<Map>().map((x)=>Map<String,dynamic>.from(x)).toList():[];if(places.isEmpty)throw Exception('No matching places found.');
+    }catch(e){if(show&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));}
+    if(mounted)setState(()=>searching=false);
+  }
+  Future<void> _choose(Map<String,dynamic> p)async{
+    final lat=double.tryParse((p['lat']??'').toString()),lon=double.tryParse((p['lon']??'').toString());if(lat==null||lon==null)return;
+    destination.text=(p['display_name']??destination.text).toString();drop=LatLng(lat,lon);final addr=p['address'];destinationPincode=addr is Map?addr['postcode']?.toString():null;places=[];await _route();if(mounted)setState((){});
+  }
+  Future<void> _route()async{
+    if(pickup==null||drop==null)return;setState(()=>routing=true);
+    try{
+      final url='https://router.project-osrm.org/route/v1/driving/'+pickup!.longitude.toString()+','+pickup!.latitude.toString()+';'+drop!.longitude.toString()+','+drop!.latitude.toString()+'?overview=full&geometries=geojson';
+      final res=await http.get(Uri.parse(url),headers:{'User-Agent':'ALLways/1.5 (+https://allways.in)'}).timeout(const Duration(seconds:15));if(res.statusCode!=200)throw Exception('Routing unavailable');
+      final d=jsonDecode(res.body),rs=d is Map?d['routes']:null;if(rs is! List||rs.isEmpty)throw Exception('No route found');final r=rs.first as Map;
+      km=((r['distance'] is num?r['distance']:0).toDouble())/1000;eta=math.max(1,(((r['duration'] is num?r['duration']:0).toDouble())/60).round());
+      route=[];final g=r['geometry'];if(g is Map&&g['coordinates'] is List)for(final pair in g['coordinates'])if(pair is List&&pair.length>1)route.add(LatLng((pair[1] as num).toDouble(),(pair[0] as num).toDouble()));
+      _fare();routeError=null;
+    }catch(e){
+      route=[];routeError=e.toString().replaceFirst('Exception: ','');km=Geolocator.distanceBetween(pickup!.latitude,pickup!.longitude,drop!.latitude,drop!.longitude)/1000;eta=math.max(1,(km/25*60).round());_fare();
     }
-    final destination=TextEditingController();
-    try{
-      final pickup=await _currentPosition();
-      if(pickup==null){
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Turn on location to request a ride.')));
-        return;
-      }
-      pickupPosition=pickup;
-      double? dLat,dLng;
-      final ok=await showModalBottomSheet<bool>(
-        context:context,
-        isScrollControlled:true,
-        builder:(sheetContext)=>Padding(
-          padding:EdgeInsets.only(left:16,right:16,top:8,bottom:MediaQuery.of(sheetContext).viewInsets.bottom+16),
-          child:StatefulBuilder(builder:(c,setSheetState)=>Column(
-            mainAxisSize:MainAxisSize.min,
-            children:[
-              const SizedBox(height:4),
-              Row(children:[const Icon(Icons.two_wheeler_outlined),const SizedBox(width:10),const Expanded(child:Text('Book a Bike / Auto Ride',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900))),IconButton(onPressed:()=>Navigator.pop(c,false),icon:const Icon(Icons.close))]),
-              const SizedBox(height:12),
-
-              ListTile(
-                dense:true,
-                leading:const Icon(Icons.my_location,color:Colors.green),
-                title:const Text('Pickup'),
-                subtitle:Text('Current location • '+pickup.latitude.toStringAsFixed(5)+', '+pickup.longitude.toStringAsFixed(5)),
-              ),
-              TextField(
-                controller:destination,
-                textInputAction:TextInputAction.done,
-                decoration:const InputDecoration(prefixIcon:Icon(Icons.location_on_outlined),labelText:'Where to?',hintText:'Enter destination'),
-              ),
-              const SizedBox(height:12),
-              SizedBox(width:double.infinity,child:FilledButton.icon(
-                onPressed:()=>Navigator.pop(c,true),
-                icon:const Icon(Icons.search),
-                label:const Text('See fare & find partner'),
-              )),
-            ],
-          )),
-        ),
-      )??false;
-      if(!ok)return;
-      if(destination.text.trim().isEmpty){
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter your destination.')));
-        return;
-      }
-
-      try{
-        final places=await locationFromAddress(destination.text.trim());
-        if(places.isNotEmpty){dLat=places.first.latitude;dLng=places.first.longitude;}
-      }catch(_){}
-      String pickupAddress='Current location';
-      try {
-        final marks=await placemarkFromCoordinates(pickup.latitude,pickup.longitude);
-        if(marks.isNotEmpty){final m=marks.first;pickupAddress=[m.name,m.street,m.locality,m.subLocality].where((x)=>x!=null&&x!.trim().isNotEmpty).map((x)=>x!.trim()).toSet().join(', ');}
-      }catch(_){}
-      final distance=dLat==null||dLng==null?0.0:Geolocator.distanceBetween(pickup.latitude,pickup.longitude,dLat,dLng)/1000.0;
-      final base=rideType=='bike'?20.0:30.0;
-      final perKm=rideType=='bike'?8.0:12.0;
-      final minimum=rideType=='bike'?30.0:40.0;
-      final estimate=distance<=0?minimum:math.max(minimum,base+(distance*perKm));
-
-      final customerSnap=await FirebaseFirestore.instance.collection('customers').doc(user.uid).get();
-      final customerData=customerSnap.data()??<String,dynamic>{};
-      final customerPhone=(user.phoneNumber??customerData['phone']??customerData['mobileNumber']??'').toString();
-
-      final confirm=await showDialog<bool>(
-        context:context,
-        builder:(c)=>AlertDialog(
-          title:Text(rideType=='bike'?'Bike ride':'Auto ride'),
-          content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text('Pickup: Current location'),
-            Text('Drop: '+destination.text.trim()),
-            const SizedBox(height:8),
-            Text(distance>0?'Distance: '+distance.toStringAsFixed(1)+' km':'Distance will be updated after pickup'),
-            const SizedBox(height:8),
-            Text('Estimated fare: ₹'+estimate.toStringAsFixed(0),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-            const SizedBox(height:8),
-            const Text('Partner must accept before the ride starts. You can track and call the partner after acceptance.',style:TextStyle(color:Colors.grey,fontSize:12)),
-          ]),
-          actions:[
-            TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),
-            FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Confirm ride')),
-          ],
-        ),
-      )??false;
-      if(!confirm)return;
-
-      final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
-        'customerUid':user.uid,
-        'customerName':user.displayName??customerData['name']??'ALLways customer',
-        'customerPhone':customerPhone,
-        'rideType':rideType,
-        'status':'searching',
-        'pickupLatitude':pickup.latitude,
-        'pickupLongitude':pickup.longitude,
-        'pickupAddress': pickupAddress,
-        'destination':destination.text.trim(),
-        'destinationAddress':destination.text.trim(),
-        'destinationLatitude':dLat,
-        'destinationLongitude':dLng,
-        'distanceKm':distance,
-        'estimatedFare':estimate,
-        'rejectedBy':<String>[],
-        'createdAt':FieldValue.serverTimestamp(),
-        'updatedAt':FieldValue.serverTimestamp(),
-      });
-      if(mounted)Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
-    }finally{destination.dispose();}
+    if(mounted)setState(()=>routing=false);
   }
-
-  @override Widget build(BuildContext context)=>Scaffold(
-    appBar:AppBar(title:Text(rideType=='bike'?'Book Bike Ride':'Book Auto Ride')),
-    body:ListView(padding:const EdgeInsets.fromLTRB(16,10,16,28),children:[
-      Card(child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[const Icon(Icons.two_wheeler_outlined),const SizedBox(width:10),const Expanded(child:Text('On-demand rides',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)))]),
-        const SizedBox(height:8),
-        Text(rideType=='bike'?'Choose your destination, see an upfront bike fare estimate and request an available bike partner.':'Choose your destination, see an upfront auto fare estimate and request an available auto partner.',style:const TextStyle(color:Colors.grey,height:1.35)),
-        const SizedBox(height:14),
-
-        SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:_requestRide,icon:const Icon(Icons.search),label:Text('Find a '+(rideType=='bike'?'Bike':'Auto')))),
-      ]))),
-      const SizedBox(height:12),
-      Card(child:ListTile(
-        leading:const Icon(Icons.location_searching),
-        title:const Text('Live tracking'),
-        subtitle:const Text('After acceptance, customer and partner can see each other moving on the map. The partner marker uses a moving bike/vehicle icon.'),
-      )),
-      Card(child:ListTile(
-        leading:const Icon(Icons.call_outlined),
-        title:const Text('Contact after acceptance'),
-        subtitle:const Text('Customer and partner can call each other after the ride is accepted.'),
-      )),
-      Card(child:ListTile(
-        leading:const Icon(Icons.cancel_outlined),
-        title:const Text('Cancellation'),
-        subtitle:const Text('Customer can cancel while waiting or during an active ride. Partner can reject requests and cancel an accepted ride when necessary.'),
-      )),
-    ]),
-  );
+  void _fare(){final base=rideType=='bike'?20.0:30.0;final per=rideType=='bike'?8.0:12.0;final min=rideType=='bike'?30.0:40.0;fare=km<=0?min:math.max(min,base+km*per);}
+  Future<void> _request()async{
+    final u=FirebaseAuth.instance.currentUser;if(u==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
+    if(pickup==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Turn on location to request a ride.')));return;}
+    if(drop==null){await _search();if(drop==null)return;}
+    final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
+    if(pin.isNotEmpty&&!await isPincodeServiceable(pin)){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Pincode '+pin+' is not serviceable yet. 230502 is currently serviceable.')));return;}
+    final c=await FirebaseFirestore.instance.collection('customers').doc(u.uid).get(),cd=c.data()??{};final phone=(u.phoneNumber??cd['phone']??cd['mobileNumber']??'').toString();
+    final ok=await showModalBottomSheet<bool>(context:context,builder:(x)=>Padding(padding:const EdgeInsets.all(18),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),const SizedBox(width:10),Expanded(child:Text(rideType=='bike'?'Bike ride':'Auto ride',style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900))),Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))]),
+      const SizedBox(height:8),Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),Text('Pickup: '+pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis),Text('Drop: '+destination.text.trim(),maxLines:2,overflow:TextOverflow.ellipsis),const SizedBox(height:12),
+      SizedBox(width:double.infinity,child:FilledButton(onPressed:()=>Navigator.pop(x,true),child:const Text('Confirm ride'))),
+    ])))??false;if(!ok)return;
+    final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({'customerUid':u.uid,'customerName':u.displayName??cd['name']??'ALLways customer','customerPhone':phone,'rideType':rideType,'status':'searching','pickupLatitude':pickup!.latitude,'pickupLongitude':pickup!.longitude,'pickupAddress':pickupAddress,'pickupPincode':pickupPincode,'destination':destination.text.trim(),'destinationAddress':destination.text.trim(),'destinationLatitude':drop!.latitude,'destinationLongitude':drop!.longitude,'destinationPincode':pin,'distanceKm':km,'etaMinutes':eta,'estimatedFare':fare,'rejectedBy':<String>[],'createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+    if(mounted)Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
+  }
+  @override Widget build(BuildContext context){
+    final center=drop??(pickup==null?const LatLng(25.4358,81.8463):LatLng(pickup!.latitude,pickup!.longitude));final points=<LatLng>[if(pickup!=null)LatLng(pickup!.latitude,pickup!.longitude),...route,if(drop!=null)drop!];
+    return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,body:SafeArea(top:false,child:Column(children:[
+      SizedBox(height:MediaQuery.of(context).size.height*.48,child:Stack(children:[
+        FlutterMap(options:MapOptions(initialCenter:center,initialZoom:14.5,initialCameraFit:points.length>1?CameraFit.coordinates(coordinates:points,padding:const EdgeInsets.fromLTRB(40,100,40,240),maxZoom:16):null),children:[
+          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maxZoom:19,userAgentPackageName:'com.allways.app'),
+          if(route.length>1)PolylineLayer(polylines:[Polyline(points:route,strokeWidth:5,color:const Color(0xFF5B1ACF))]),
+          MarkerLayer(markers:[if(pickup!=null)Marker(point:LatLng(pickup!.latitude,pickup!.longitude),width:45,height:45,child:const Icon(Icons.my_location,color:Colors.blue,size:30)),if(drop!=null)Marker(point:drop!,width:45,height:45,child:const Icon(Icons.location_on,color:Colors.red,size:34))]),
+          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
+        ]),
+        Positioned(top:MediaQuery.of(context).padding.top+10,left:12,right:12,child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:10,vertical:4),child:Row(children:[
+          IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),Expanded(child:TextField(controller:destination,onSubmitted:(_)=>_search(),decoration:const InputDecoration(filled:false,border:InputBorder.none,prefixIcon:Icon(Icons.search),hintText:'Where are you going?'))),searching?const SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2)):IconButton(onPressed:_search,icon:const Icon(Icons.search)),
+        ]))),
+        if(places.isNotEmpty)Positioned(top:MediaQuery.of(context).padding.top+72,left:16,right:16,child:Card(child:ConstrainedBox(constraints:const BoxConstraints(maxHeight:260),child:ListView(shrinkWrap:true,children:places.map((p)=>ListTile(leading:const Icon(Icons.location_on_outlined),title:Text((p['name']??p['display_name']??'Place').toString(),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text((p['display_name']??'').toString(),maxLines:2,overflow:TextOverflow.ellipsis),onTap:()=>_choose(p))).toList())))),
+      ])),
+      Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,12,16,28),children:[
+        Row(children:[Expanded(child:ChoiceChip(label:const Text('Bike'),selected:rideType=='bike',onSelected:(_){setState(()=>rideType='bike');if(drop!=null)_route();})),const SizedBox(width:8),Expanded(child:ChoiceChip(label:const Text('Auto'),selected:rideType=='auto',onSelected:(_){setState(()=>rideType='auto');if(drop!=null)_route();}))]),
+        const SizedBox(height:10),
+        if(drop!=null)Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Row(children:[Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),const SizedBox(width:10),Expanded(child:Text(rideType=='bike'?'Bike':'Auto',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))]),
+          const SizedBox(height:8),Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),if(routeError!=null)Text('Route fallback: '+routeError!,style:const TextStyle(color:Colors.grey,fontSize:11)),const SizedBox(height:12),
+          SizedBox(width:double.infinity,child:FilledButton(onPressed:routing?null:_request,child:Text(routing?'Calculating…':'Request '+(rideType=='bike'?'Bike':'Auto')))),
+        ]))),
+        if(drop==null)const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('Search for a destination to see the route, distance, ETA and upfront estimate before requesting your ride.'))),
+      ])),
+    ])));
+  }
 }
-
 class OnDemandRideTrackingPage extends StatefulWidget {
   final String requestId,rideType;
   const OnDemandRideTrackingPage({super.key,required this.requestId,required this.rideType});
