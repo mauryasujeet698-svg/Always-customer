@@ -55,11 +55,11 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           if [ -n "$FIREBASE_TOKEN" ]; then
-            firebase deploy --only firestore:rules,functions --project allways-web --token "$FIREBASE_TOKEN"
+            firebase deploy --only functions --project allways-web --token "$FIREBASE_TOKEN"
           elif [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
             export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
-            firebase deploy --only firestore:rules,functions --project allways-web
+            firebase deploy --only functions --project allways-web
           else
             echo "Add FIREBASE_TOKEN or FIREBASE_SERVICE_ACCOUNT_JSON to GitHub repository secrets."
             exit 1
