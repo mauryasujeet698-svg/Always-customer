@@ -210,6 +210,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /settings/delivery {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /settings/deliveryAssignment {
       allow read: if signedIn();
       allow write: if isAdmin();
