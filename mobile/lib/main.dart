@@ -2583,46 +2583,164 @@ class TravelPage extends StatefulWidget {
   const TravelPage({super.key});
   @override State<TravelPage> createState()=>_TravelPageState();
 }
-class _TravelPageState extends State<TravelPage>{
-  bool loadingAvailability=true;int bikeCount=0,autoCount=0,carCount=0;
-  @override void initState(){super.initState();_loadAvailability();}
-  Future<void> _loadAvailability() async{try{
-    if(!await Geolocator.isLocationServiceEnabled()){if(mounted)setState(()=>loadingAvailability=false);return;}
-    var p=await Geolocator.checkPermission();if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
-    if(p==LocationPermission.denied||p==LocationPermission.deniedForever){if(mounted)setState(()=>loadingAvailability=false);return;}
-    final me=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.medium));
-    final snap=await FirebaseFirestore.instance.collection('ridePartners').where('status',isEqualTo:'online').get();int b=0,a=0,car=0;final now=DateTime.now();
-    for(final d in snap.docs){final x=d.data();if((x['approvalStatus']??'').toString().toLowerCase()!='approved'||x['availableForRides']!=true)continue;
-      final lat=x['carrierLat']??x['driverLat'],lng=x['carrierLng']??x['driverLng'];final la=lat is num?lat.toDouble():double.tryParse((lat??'').toString()),ln=lng is num?lng.toDouble():double.tryParse((lng??'').toString());
-      if(la==null||ln==null||la==0||ln==0)continue;final ts=x['carrierLocationUpdatedAt']??x['lastLocationAt'];final u=ts is Timestamp?ts.toDate():null;
-      if(u!=null&&now.difference(u).inMinutes>3)continue;if(Geolocator.distanceBetween(me.latitude,me.longitude,la,ln)>7000)continue;
-      final t=(x['vehicleType']??'bike').toString().toLowerCase();if(t=='auto')a++;else if(t=='car')car++;else b++;}
-    if(mounted)setState((){bikeCount=b;autoCount=a;carCount=car;loadingAvailability=false;});
-  }catch(_){if(mounted)setState(()=>loadingAvailability=false);}}
-  DateTime _rideDate(Map<String,dynamic>x){final t=x['createdAt'];if(t is Timestamp)return t.toDate();if(t is int)return DateTime.fromMillisecondsSinceEpoch(t);return DateTime.fromMillisecondsSinceEpoch(0);}
-  String _status(String s){switch(s.toLowerCase()){case'searching':return'Finding a partner';case'accepted':return'Partner accepted';case'arrived':return'Partner arrived';case'started':return'Ride in progress';case'completed':return'Ride completed';case'cancelled':return'Ride cancelled';default:return s.isEmpty?'Ride':s;}}
-  IconData _icon(Map<String,dynamic>x){final t=(x['rideType']??'bike').toString().toLowerCase();return t=='auto'?Icons.local_taxi_outlined:t=='car'?Icons.directions_car_outlined:Icons.two_wheeler;}
-  String _title(Map<String,dynamic>x){final t=(x['rideType']??'bike').toString().toLowerCase();return t=='auto'?'Auto ride':t=='car'?'Car ride':'Bike ride';}
-  String _dateText(DateTime d){final n=DateTime.now();if(d.year==n.year&&d.month==n.month&&d.day==n.day)return'Today '+d.hour.toString().padLeft(2,'0')+':'+d.minute.toString().padLeft(2,'0');return d.day.toString()+'/'+d.month.toString()+'/'+d.year.toString();}
-  Widget _history(BuildContext context){final u=FirebaseAuth.instance.currentUser;if(u==null)return const SizedBox.shrink();return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:u.uid).snapshots(),builder:(context,s){
-    final docs=List<QueryDocumentSnapshot<Map<String,dynamic>>>.from(s.data?.docs??const[]);docs.sort((a,b)=>_rideDate(b.data()).compareTo(_rideDate(a.data())));
-    final active=docs.where((d)=>['searching','accepted','arrived','started'].contains((d.data()['status']??'').toString().toLowerCase())).toList();
-    final recent=docs.where((d)=>['completed','cancelled'].contains((d.data()['status']??'').toString().toLowerCase())).take(3).toList();
-    return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-      if(active.isNotEmpty)...[const Text('Active ride',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:10),Card(elevation:0,color:const Color(0xFFF1ECFF),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),child:ListTile(contentPadding:const EdgeInsets.all(14),leading:Container(width:50,height:50,decoration:BoxDecoration(color:const Color(0xFF5B1ACF),borderRadius:BorderRadius.circular(15)),child:Icon(_icon(active.first.data()),color:Colors.white)),title:Text(_title(active.first.data()),style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text(_status((active.first.data()['status']??'').toString())),trailing:FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveRideTrackingScreen(rideId:active.first.id,isRider:false))),child:const Text('Track'))))],
-      const SizedBox(height:14),const Text('My rides',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:10),
-      if(recent.isEmpty)const Text('Your last three rides will appear here.',style:TextStyle(color:Colors.grey))else...recent.map((d){final x=d.data();final from=(x['pickupAddress']??'Pickup').toString().split(',').first;final to=(x['destinationAddress']??x['destination']??'Destination').toString().split(',').first;return Card(elevation:0,margin:const EdgeInsets.only(bottom:8),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),child:ListTile(leading:Icon(_icon(x),color:const Color(0xFF5B1ACF)),title:Text(_title(x),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(from+' → '+to+'\n'+_dateText(_rideDate(x))+' • '+_status((x['status']??'').toString())),isThreeLine:true));})
-    ]);});}
-  Widget _availability()=>Card(elevation:0,margin:const EdgeInsets.only(bottom:16),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-    Row(children:[const Expanded(child:Text('Nearby availability',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),IconButton(onPressed:loadingAvailability?null:_loadAvailability,icon:const Icon(Icons.refresh))]),Text(loadingAvailability?'Checking nearby approved partners…':(bikeCount+autoCount+carCount==0?'No approved partners nearby right now':'Partners available within 7 km'),style:const TextStyle(color:Colors.grey,fontSize:12)),const SizedBox(height:10),Row(children:[Expanded(child:_vehicle('Bike',bikeCount,Icons.two_wheeler,const Color(0xFF5B1ACF))),const SizedBox(width:8),Expanded(child:_vehicle('Auto',autoCount,Icons.local_taxi_outlined,Colors.black)),const SizedBox(width:8),Expanded(child:_vehicle('Car',carCount,Icons.directions_car_outlined,Colors.blueGrey))])])));
-  Widget _vehicle(String n,int count,IconData icon,Color color)=>Container(padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),decoration:BoxDecoration(color:color.withOpacity(.07),borderRadius:BorderRadius.circular(14)),child:Column(children:[Icon(icon,size:21,color:color),const SizedBox(height:4),Text(count.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(n,style:const TextStyle(fontSize:11,color:Colors.grey))]));
-  Widget _rideCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required Color color,required VoidCallback onTap})=>Card(elevation:0,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),child:InkWell(onTap:onTap,borderRadius:BorderRadius.circular(18),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[Container(width:58,height:58,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(16)),child:Icon(icon,color:Colors.white,size:30)),const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.grey,height:1.3))])),const Icon(Icons.chevron_right)]))));
-  @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.fromLTRB(16,12,16,110),children:[
-    Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Travel',style:TextStyle(fontSize:30,fontWeight:FontWeight.w900)),const Text('Simple, upfront rides with live tracking.',style:TextStyle(color:Colors.grey))])),const Icon(Icons.location_on_outlined,size:30)]),const SizedBox(height:14),_history(context),const SizedBox(height:14),_availability(),const SizedBox(height:8),
-    Container(padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFFFC928),borderRadius:BorderRadius.circular(22)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Row(children:[Icon(Icons.two_wheeler,size:34),SizedBox(width:10),Text('ALLways Mobility',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900))]),const SizedBox(height:8),const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(height:1.35)),const SizedBox(height:14),FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),style:FilledButton.styleFrom(backgroundColor:Colors.black,foregroundColor:Colors.white),child:const Text('Book a bike ride'))])),
-    const SizedBox(height:16),const Text('Ride with ALLways',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:10),_rideCard(context,icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride with live tracking.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),_rideCard(context,icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',color:const Color(0xFF111111),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),_rideCard(context,icon:Icons.directions_car_outlined,title:'Book a vehicle',subtitle:'Choose from 25 vehicle categories.',color:const Color(0xFF303030),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())))]);
-}
 
+class _TravelPageState extends State<TravelPage> {
+  bool loadingAvailability=true;
+  int bikeCount=0,autoCount=0,carCount=0;
+
+  @override void initState(){super.initState();_loadAvailability();}
+
+  Future<void> _loadAvailability() async {
+    try {
+      if(!await Geolocator.isLocationServiceEnabled()){if(mounted)setState(()=>loadingAvailability=false);return;}
+      var permission=await Geolocator.checkPermission();
+      if(permission==LocationPermission.denied)permission=await Geolocator.requestPermission();
+      if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever){if(mounted)setState(()=>loadingAvailability=false);return;}
+      final me=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.medium));
+      final snap=await FirebaseFirestore.instance.collection('ridePartners').where('status',isEqualTo:'online').get();
+      int b=0,a=0,car=0;
+      final now=DateTime.now();
+      for(final d in snap.docs){
+        final x=d.data();
+        if((x['approvalStatus']??'').toString().toLowerCase()!='approved'||x['availableForRides']!=true)continue;
+        final lat=x['carrierLat']??x['driverLat']; final lng=x['carrierLng']??x['driverLng'];
+        final la=lat is num?lat.toDouble():double.tryParse((lat??'').toString());
+        final ln=lng is num?lng.toDouble():double.tryParse((lng??'').toString());
+        if(la==null||ln==null||la==0||ln==0)continue;
+        final ts=x['carrierLocationUpdatedAt']??x['lastLocationAt'];
+        final updated=ts is Timestamp?ts.toDate():null;
+        if(updated!=null&&now.difference(updated).inMinutes>3)continue;
+        if(Geolocator.distanceBetween(me.latitude,me.longitude,la,ln)>7000)continue;
+        final type=(x['vehicleType']??'bike').toString().toLowerCase();
+        if(type=='auto')a++;else if(type=='car')car++;else b++;
+      }
+      if(mounted){setState((){bikeCount=b;autoCount=a;carCount=car;loadingAvailability=false;});}
+    }catch(_){if(mounted)setState(()=>loadingAvailability=false);}
+  }
+
+
+  DateTime _rideDate(Map<String,dynamic> x){
+    final t=x['createdAt'];
+    if(t is Timestamp)return t.toDate();
+    if(t is int)return DateTime.fromMillisecondsSinceEpoch(t);
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _rideStatus(String s){
+    switch(s.toLowerCase()){
+      case 'searching': return 'Finding a partner';
+      case 'accepted': return 'Partner accepted';
+      case 'arrived': return 'Partner arrived';
+      case 'started': return 'Ride in progress';
+      case 'completed': return 'Ride completed';
+      case 'cancelled': return 'Ride cancelled';
+      default: return s.isEmpty?'Ride':s;
+    }
+  }
+
+  IconData _rideIcon(Map<String,dynamic> x){
+    final t=(x['rideType']??'bike').toString().toLowerCase();
+    return t=='auto'?Icons.local_taxi_outlined:t=='car'?Icons.directions_car_outlined:Icons.two_wheeler;
+  }
+
+  String _rideTitle(Map<String,dynamic> x){
+    final t=(x['rideType']??'bike').toString().toLowerCase();
+    return t=='auto'?'Auto ride':t=='car'?'Car ride':'Bike ride';
+  }
+
+  String _rideDateText(DateTime d){
+    if(d.millisecondsSinceEpoch==0)return 'Date unavailable';
+    final n=DateTime.now();
+    if(d.year==n.year&&d.month==n.month&&d.day==n.day){
+      return 'Today '+d.hour.toString().padLeft(2,'0')+':'+d.minute.toString().padLeft(2,'0');
+    }
+    if(d.year==n.year)return d.day.toString()+'/'+d.month.toString();
+    return d.day.toString()+'/'+d.month.toString()+'/'+d.year.toString();
+  }
+
+  Widget _rideHistory(BuildContext context){
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null)return const SizedBox.shrink();
+    return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:u.uid).snapshots(),
+      builder:(context,snapshot){
+        final docs=List<QueryDocumentSnapshot<Map<String,dynamic>>>.from(snapshot.data?.docs??const []);
+        docs.sort((a,b)=>_rideDate(b.data()).compareTo(_rideDate(a.data())));
+        final active=docs.where((d)=>['searching','accepted','arrived','started'].contains((d.data()['status']??'').toString().toLowerCase())).toList();
+        final recent=docs.where((d)=>['completed','cancelled'].contains((d.data()['status']??'').toString().toLowerCase())).take(3).toList();
+        return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          if(active.isNotEmpty)...[
+            const Text('Active ride',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),
+            const SizedBox(height:10),
+            Card(
+              elevation:0,
+              color:const Color(0xFFF1ECFF),
+              shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),
+              child:ListTile(
+                contentPadding:const EdgeInsets.all(14),
+                leading:Container(width:50,height:50,decoration:BoxDecoration(color:const Color(0xFF5B1ACF),borderRadius:BorderRadius.circular(15)),child:Icon(_rideIcon(active.first.data()),color:Colors.white)),
+                title:Text(_rideTitle(active.first.data()),style:const TextStyle(fontWeight:FontWeight.w900)),
+                subtitle:Text(_rideStatus((active.first.data()['status']??'').toString())),
+                trailing:FilledButton(
+                  onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveRideTrackingScreen(rideId:active.first.id,isRider:false))),
+                  child:const Text('Track'),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height:14),
+          const Text('My rides',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),
+          const SizedBox(height:10),
+          if(recent.isEmpty)
+            const Text('Your last three rides will appear here.',style:TextStyle(color:Colors.grey))
+          else
+            ...recent.map((d){
+              final x=d.data();
+              final from=(x['pickupAddress']??x['pickup']??'Pickup').toString().split(',').first;
+              final to=(x['destinationAddress']??x['destination']??'Destination').toString().split(',').first;
+              return Card(
+                elevation:0,
+                margin:const EdgeInsets.only(bottom:8),
+                shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),
+                child:ListTile(
+                  leading:Container(width:44,height:44,decoration:BoxDecoration(color:const Color(0xFFF1ECFF),borderRadius:BorderRadius.circular(13)),child:Icon(_rideIcon(x),color:const Color(0xFF5B1ACF))),
+                  title:Text(_rideTitle(x),style:const TextStyle(fontWeight:FontWeight.w800)),
+                  subtitle:Text(from+' → '+to+'\n'+_rideDateText(_rideDate(x))+' • '+_rideStatus((x['status']??'').toString()),maxLines:2,overflow:TextOverflow.ellipsis),
+                ),
+              );
+            }),
+        ]);
+      },
+    );
+  }
+
+  Widget _availabilityCard(BuildContext context)=>Card(elevation:0,margin:const EdgeInsets.only(bottom:16),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+    Row(children:[const Expanded(child:Text('Nearby availability',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),IconButton(onPressed:loadingAvailability?null:_loadAvailability,icon:const Icon(Icons.refresh))]),
+    Text(loadingAvailability?'Checking nearby approved partners…':(bikeCount+autoCount+carCount==0?'No approved partners nearby right now':'Partners available within 7 km'),style:const TextStyle(color:Colors.grey,fontSize:12)),
+    const SizedBox(height:10),
+    Row(children:[Expanded(child:_vehicleAvailability('Bike',bikeCount,Icons.two_wheeler,Colors.deepPurple)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Auto',autoCount,Icons.local_taxi_outlined,Colors.black)),const SizedBox(width:8),Expanded(child:_vehicleAvailability('Car',carCount,Icons.directions_car_outlined,Colors.blueGrey))]),
+  ])));
+  Widget _vehicleAvailability(String label,int count,IconData icon,Color color)=>Container(padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),decoration:BoxDecoration(color:color.withOpacity(.07),borderRadius:BorderRadius.circular(14)),child:Column(children:[Icon(icon,size:21,color:color),const SizedBox(height:4),Text(count.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),Text(label,style:const TextStyle(fontSize:11,color:Colors.grey))]));
+  Widget _rideCard(BuildContext context,{required IconData icon,required String title,required String subtitle,required Color color,required VoidCallback onTap})=>Card(
+    elevation:0,margin:const EdgeInsets.only(bottom:12),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18)),
+    child:InkWell(onTap:onTap,borderRadius:BorderRadius.circular(18),child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
+      Container(width:58,height:58,decoration:BoxDecoration(color:color,borderRadius:BorderRadius.circular(16)),child:Icon(icon,color:Colors.white,size:30)),
+      const SizedBox(width:14),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:4),Text(subtitle,style:const TextStyle(color:Colors.grey,height:1.3))])),const Icon(Icons.chevron_right),
+    ]))));
+  @override Widget build(BuildContext context)=>ListView(padding:const EdgeInsets.fromLTRB(16,12,16,110),children:[
+    Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Travel',style:const TextStyle(fontSize:30,fontWeight:FontWeight.w900)),Text('Move around your city with simple, upfront rides.',style:const TextStyle(color:Colors.grey))])),const Icon(Icons.location_on_outlined,size:30)]),
+    const SizedBox(height:14),_rideHistory(context),const SizedBox(height:14),_availabilityCard(context),
+    Container(padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFFFC928),borderRadius:BorderRadius.circular(22)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      const Row(children:[Icon(Icons.two_wheeler,size:34),SizedBox(width:10),Text('ALLways Mobility',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900))]),const SizedBox(height:8),const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(height:1.35)),
+      const SizedBox(height:14),FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),style:FilledButton.styleFrom(backgroundColor:Colors.black,foregroundColor:Colors.white),child:const Text('Book a bike ride')),
+    ])),
+    const SizedBox(height:16),const Text('Ride with ALLways',style:TextStyle(fontSize:21,fontWeight:FontWeight.w900)),const SizedBox(height:10),
+    _rideCard(context,icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride. Upfront estimate and live tracking after acceptance.',color:const Color(0xFF5B1ACF),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike')))),
+    _rideCard(context,icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',color:const Color(0xFF111111),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto')))),
+    _rideCard(context,icon:Icons.directions_car_outlined,title:'Book a vehicle',subtitle:'Choose from 25 vehicle categories. Owners set price and booking terms.',color:const Color(0xFF303030),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage()))),
+    Card(elevation:0,color:const Color(0xFFF6F6F6),child:const Padding(padding:EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[Icon(Icons.shield_outlined),SizedBox(width:10),Expanded(child:Text('Safety tools, calling, cancellation and live location are available during an active ride.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
+  ]);
+}
 class ProfilePage extends StatefulWidget{
   final User? user; final List<Map<String,dynamic>> addresses; final VoidCallback onLogin;
   final Future<void> Function() onReload; final Future<void> Function(String) onDelete; final Future<void> Function(String) onCancel; final Future<void> Function(List<Map<String,dynamic>>) onReorder; final void Function(Product) onAdd; final VoidCallback onOpenCart;
