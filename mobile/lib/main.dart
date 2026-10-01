@@ -1395,8 +1395,62 @@ class _ShellState extends State<Shell> {
   }
 }
 
-class ActiveRideBanner extends StatelessWidget{
+class ActiveRideBanner extends StatefulWidget{
   const ActiveRideBanner({super.key});
+  @override State<ActiveRideBanner> createState()=>_ActiveRideBannerState();
+}
+class _ActiveRideBannerState extends State<ActiveRideBanner>{
+  String? dismissedRideId;
+  Future<void> _cancel(BuildContext context,DocumentSnapshot<Map<String,dynamic>> d) async{
+    final reasonController=TextEditingController();
+    final reasons=['Partner is taking too long','Changed my plans','Wrong pickup location','Found another ride','Other'];
+    String reason=reasons.first;
+    final selected=await showDialog<String>(
+      context:context,
+      builder:(dialog)=>StatefulBuilder(builder:(dialog,setLocal)=>AlertDialog(
+        title:const Text('Cancel ride?'),
+        content:Column(mainAxisSize:MainAxisSize.min,children:[
+          const Text('Please select a reason.'),
+          const SizedBox(height:8),
+          DropdownButtonFormField<String>(
+            value:reason,
+            items:reasons.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),
+            onChanged:(x){if(x!=null)setLocal(()=>reason=x);},
+          ),
+          if(reason=='Other')...[
+            const SizedBox(height:8),
+            TextField(controller:reasonController,maxLines:2,decoration:const InputDecoration(labelText:'Reason')),
+          ],
+        ]),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Keep ride')),
+          FilledButton(onPressed:()=>Navigator.pop(dialog,reason=='Other'&&reasonController.text.trim().isNotEmpty?reasonController.text.trim():reason),child:const Text('Cancel ride')),
+        ],
+      )),
+    );
+    reasonController.dispose();
+    if(selected==null||!mounted)return;
+    try{
+      final ref=FirebaseFirestore.instance.collection('autoRideRequests').doc(d.id);
+      await FirebaseFirestore.instance.runTransaction((tx)async{
+        final latest=await tx.get(ref);
+        final status=(latest.data()?['status']??'').toString().toLowerCase();
+        if(['completed','cancelled'].contains(status))throw Exception('This ride is already finished.');
+        tx.update(ref,{'status':'cancelled','cancelledBy':'customer','cancellationReason':selected,'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+      });
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride cancelled.')));
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel ride: '+e.toString())));
+    }
+  }
+  Future<void> _call(BuildContext context,Map<String,dynamic> x) async{
+    final phone=(x['driverPhone']??x['carrierPhone']??x['partnerPhone']??x['phone']??'').toString().trim();
+    if(phone.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Partner phone number is unavailable.')));return;}
+    final uri=Uri(scheme:'tel',path:phone);
+    if(!await launchUrl(uri,mode:LaunchMode.externalApplication)&&mounted){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Could not open the phone dialer.')));
+    }
+  }
   @override Widget build(BuildContext context){
     final user=FirebaseAuth.instance.currentUser;
     if(user==null)return const SizedBox.shrink();
@@ -1415,16 +1469,41 @@ class ActiveRideBanner extends StatelessWidget{
           return bd.compareTo(ad);
         });
         final d=docs.first;final x=d.data();final status=(x['status']??'searching').toString().toLowerCase();
+        if(dismissedRideId==d.id)return const SizedBox.shrink();
         final accepted=status=='accepted'||status=='arrived'||status=='started';
-        return Material(
-          color:Colors.transparent,
+        final phone=(x['driverPhone']??x['carrierPhone']??x['partnerPhone']??x['phone']??'').toString().trim();
+        return Dismissible(
+          key:ValueKey('active-ride-\${d.id}'),
+          direction:DismissDirection.horizontal,
+          onDismissed:(_){setState(()=>dismissedRideId=d.id);},
+          background:Container(
+            margin:const EdgeInsets.fromLTRB(12,8,12,0),
+            alignment:Alignment.centerLeft,
+            padding:const EdgeInsets.only(left:24),
+            decoration:BoxDecoration(color:Colors.grey.shade200,borderRadius:BorderRadius.circular(18)),
+            child:const Icon(Icons.close),
+          ),
+          secondaryBackground:Container(
+            margin:const EdgeInsets.fromLTRB(12,8,12,0),
+            alignment:Alignment.centerRight,
+            padding:const EdgeInsets.only(right:24),
+            decoration:BoxDecoration(color:Colors.grey.shade200,borderRadius:BorderRadius.circular(18)),
+            child:const Icon(Icons.close),
+          ),
           child:Card(
             margin:const EdgeInsets.fromLTRB(12,8,12,0),
             child:ListTile(
               leading:CircleAvatar(backgroundColor:const Color(0x1A5B1ACF),child:Icon(accepted?Icons.navigation:Icons.search,color:const Color(0xFF5B1ACF))),
               title:Text(accepted?'Your ride is confirmed':'Ride request is active',style:const TextStyle(fontWeight:FontWeight.w900)),
               subtitle:Text(accepted?'Partner accepted • Tap to track live':'Searching for a nearby partner…'),
-              trailing:const Icon(Icons.chevron_right),
+              trailing:accepted?Wrap(
+                spacing:0,
+                children:[
+                  if(phone.isNotEmpty)IconButton(tooltip:'Call partner',onPressed:()=>_call(context,x),icon:const Icon(Icons.call_outlined)),
+                  IconButton(tooltip:'Cancel ride',onPressed:()=>_cancel(context,d),icon:const Icon(Icons.close)),
+                  IconButton(tooltip:'Track ride',onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveRideTrackingScreen(rideId:d.id,isRider:false))),icon:const Icon(Icons.chevron_right)),
+                ],
+              ):const Icon(Icons.chevron_right),
               onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>accepted?LiveRideTrackingScreen(rideId:d.id,isRider:false):OnDemandRideTrackingPage(requestId:d.id,rideType:(x['rideType']??'bike').toString()))),
             ),
           ),
@@ -1433,6 +1512,7 @@ class ActiveRideBanner extends StatelessWidget{
     );
   }
 }
+
 
 class ShopPage extends StatefulWidget{
   final List<Product> products;
