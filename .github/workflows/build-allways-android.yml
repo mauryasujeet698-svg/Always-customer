@@ -1,5 +1,5 @@
 # ALLways Android build workflow - signing verification
-# Catalog and Travel fixes are built automatically on the allways-android-app branch.
+# Catalog and Travel fixes and syntax verification are built automatically on the allways-android-app branch.
 name: Build ALLways Android APK
 
 on:
