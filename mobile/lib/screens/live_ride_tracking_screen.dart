@@ -48,6 +48,9 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   double? _routeDurationSeconds;
   DateTime? _lastRouteUpdate;
   bool _routeLoading = false;
+  DateTime? _lastCameraMove;
+  bool _userMovedMap = false;
+  int _activeNavIndex = 0;
 
   @override
   void initState() {
@@ -184,7 +187,10 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
           final distance = step['distance'] is num ? (step['distance'] as num).toDouble() : 0;
           if (distance < 2 && steps.isNotEmpty) continue;
           final instruction = type == 'arrive' ? 'You have arrived' : type == 'depart' ? 'Start on the current road' : type == 'roundabout' ? 'Enter the roundabout' : modifier.isEmpty ? 'Continue straight' : modifier.replaceAll('_', ' ');
-          steps.add({'instruction':instruction,'road':(step['name'] ?? '').toString(),'distance':distance,'modifier':modifier});
+          final maneuverLocation = m['location'] is List && (m['location'] as List).length >= 2
+              ? LatLng(((m['location'] as List)[1] as num).toDouble(), ((m['location'] as List)[0] as num).toDouble())
+              : null;
+          steps.add({'instruction':instruction,'road':(step['name'] ?? '').toString(),'distance':distance,'modifier':modifier,'location':maneuverLocation});
         }
       }
       setState(() {
@@ -192,33 +198,52 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
         _navSteps = steps;
         _routeDistanceMeters = r['distance'] is num ? (r['distance'] as num).toDouble() : null;
         _routeDurationSeconds = r['duration'] is num ? (r['duration'] as num).toDouble() : null;
+        _activeNavIndex = 0;
         _lastRouteUpdate = DateTime.now();
       });
     } catch (_) {} finally { _routeLoading = false; }
   }
   void _fitCameraIfReady() {
-    if (!_mapReady) return;
-    final points = <LatLng>[
-      if (_pickupLocation != null) _pickupLocation!,
-      if (_destinationLocation != null) _destinationLocation!,
-      if (_driverLocation != null) _driverLocation!,
-      if (_customerLocation != null) _customerLocation!,
-    ];
-    if (points.isEmpty) return;
-    if (points.length == 1) {
-      _mapController.move(points.first, 14.5);
-      return;
+    if (!_mapReady || _userMovedMap) return;
+    final me = widget.isRider ? _driverLocation : _customerLocation;
+    final other = widget.isRider ? _customerLocation : _driverLocation;
+    if (me == null) return;
+    final now = DateTime.now();
+    if (_lastCameraMove != null && now.difference(_lastCameraMove!) < const Duration(milliseconds: 900)) return;
+    if (other != null) {
+      final meters = Geolocator.distanceBetween(me.latitude, me.longitude, other.latitude, other.longitude);
+      final zoom = meters <= 30 ? 18.8 :
+          meters <= 80 ? 18.2 :
+          meters <= 200 ? 17.3 :
+          meters <= 500 ? 16.2 :
+          meters <= 1200 ? 15.2 : 14.2;
+      final mid = LatLng((me.latitude + other.latitude) / 2, (me.longitude + other.longitude) / 2);
+      _mapController.move(mid, zoom);
+    } else {
+      _mapController.move(me, 16);
     }
-    if (_cameraFitted && _driverLocation != null) {
-      _mapController.move(_driverLocation!, 15);
-      return;
+    _lastCameraMove = now;
+    _cameraFitted = true;
+  }
+
+  Map<String,dynamic>? _currentNavStep() {
+    if (_navSteps.isEmpty) return null;
+    final me = widget.isRider ? _driverLocation : _customerLocation;
+    if (me == null) return _navSteps.first;
+    var best = _activeNavIndex.clamp(0, _navSteps.length - 1);
+    for (var i = best; i < _navSteps.length; i++) {
+      final loc = _navSteps[i]['location'];
+      if (loc is LatLng) {
+        final meters = Geolocator.distanceBetween(me.latitude, me.longitude, loc.latitude, loc.longitude);
+        if (meters > 18) {
+          best = i;
+          break;
+        }
+        if (i < _navSteps.length - 1) best = i + 1;
+      }
     }
-    try {
-      _mapController.fitCamera(CameraFit.coordinates(coordinates: points, padding: const EdgeInsets.all(70)));
-      _cameraFitted = true;
-    } catch (_) {
-      _mapController.move(points.first, 14);
-    }
+    _activeNavIndex = best;
+    return _navSteps[best];
   }
 
   Widget _circleMarker({required Color color, required IconData icon, double size = 58}) {
@@ -276,6 +301,9 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
                 _mapReady = true;
                 _fitCameraIfReady();
               },
+              onPositionChanged: (position, hasGesture) {
+                if (hasGesture) _userMovedMap = true;
+              },
             ),
             children: [
               TileLayer(
@@ -314,16 +342,25 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
               ),
             ),
           ),
-          if (_navSteps.isNotEmpty)
+          if (_navSteps.isNotEmpty && _currentNavStep() != null)
             Positioned(
               top: 84, left: 16, right: 16,
               child: Card(child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
-                Container(width:48,height:48,alignment:Alignment.center,decoration:BoxDecoration(color:const Color(0xFF673AB7),borderRadius:BorderRadius.circular(14)),child:Text((_navSteps.first['modifier']??'').toString().contains('left')?'←':(_navSteps.first['modifier']??'').toString().contains('right')?'→':'↑',style:const TextStyle(color:Colors.white,fontSize:28,fontWeight:FontWeight.w900))),
+                Builder(builder: (context) {
+                  final step = _currentNavStep()!;
+                  final modifier = (step['modifier'] ?? '').toString();
+                  final arrow = modifier.contains('left') ? '←' : modifier.contains('right') ? '→' : modifier.contains('uturn') ? '↶' : '↑';
+                  return Container(width:48,height:48,alignment:Alignment.center,decoration:BoxDecoration(color:const Color(0xFF673AB7),borderRadius:BorderRadius.circular(14)),child:Text(arrow,style:const TextStyle(color:Colors.white,fontSize:28,fontWeight:FontWeight.w900)));
+                }),
                 const SizedBox(width:12),
-                Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Text((_navSteps.first['instruction']??'Continue').toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
-                  Text(((_navSteps.first['distance'] as num) < 1000 ? (_navSteps.first['distance'] as num).round().toString()+' m' : ((_navSteps.first['distance'] as num)/1000).toStringAsFixed(1)+' km') + ((_navSteps.first['road']??'').toString().isEmpty?'':' • '+(_navSteps.first['road']).toString()),style:const TextStyle(color:Colors.grey),maxLines:1,overflow:TextOverflow.ellipsis),
-                ])),
+                Expanded(child:Builder(builder:(context){
+                  final step=_currentNavStep()!;
+                  final meters=(step['distance'] is num ? (step['distance'] as num).toDouble() : 0);
+                  return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    Text((step['instruction']??'Continue').toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                    Text((meters < 1000 ? meters.round().toString()+' m' : (meters/1000).toStringAsFixed(1)+' km') + ((step['road']??'').toString().isEmpty?'':' • '+(step['road']).toString()),style:const TextStyle(color:Colors.grey),maxLines:1,overflow:TextOverflow.ellipsis),
+                  ]);
+                })),
               ]))),
             ),
           Positioned(
