@@ -1368,6 +1368,7 @@ class _ShellState extends State<Shell> {
             leading:const Icon(Icons.system_update),
             actions:[TextButton(onPressed:openUpdate,child:const Text('UPDATE NOW'))],
           ),
+        if(user!=null) const ActiveRideBanner(),
         Expanded(child:pages[tab]),
       ])),
       bottomNavigationBar:AllwaysBottomNav(
@@ -1383,6 +1384,45 @@ class _ShellState extends State<Shell> {
         onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),
         icon:const Icon(Icons.shopping_cart),label:Text(count.toString()+' • ₹'+total.toStringAsFixed(0))),
     ));
+  }
+}
+
+class ActiveRideBanner extends StatelessWidget{
+  const ActiveRideBanner({super.key});
+  @override Widget build(BuildContext context){
+    final user=FirebaseAuth.instance.currentUser;
+    if(user==null)return const SizedBox.shrink();
+    return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:user.uid).snapshots(),
+      builder:(context,s){
+        final docs=(s.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]).where((d){
+          final st=(d.data()['status']??'').toString().toLowerCase();
+          return st=='searching'||st=='accepted'||st=='arrived'||st=='started';
+        }).toList();
+        if(docs.isEmpty)return const SizedBox.shrink();
+        docs.sort((a,b){
+          final at=a.data()['createdAt'];final bt=b.data()['createdAt'];
+          final ad=at is Timestamp?at.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+          final bd=bt is Timestamp?bt.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+          return bd.compareTo(ad);
+        });
+        final d=docs.first;final x=d.data();final status=(x['status']??'searching').toString().toLowerCase();
+        final accepted=status=='accepted'||status=='arrived'||status=='started';
+        return Material(
+          color:Colors.transparent,
+          child:Card(
+            margin:const EdgeInsets.fromLTRB(12,8,12,0),
+            child:ListTile(
+              leading:CircleAvatar(backgroundColor:const Color(0x1A5B1ACF),child:Icon(accepted?Icons.navigation:Icons.search,color:const Color(0xFF5B1ACF))),
+              title:Text(accepted?'Your ride is confirmed':'Ride request is active',style:const TextStyle(fontWeight:FontWeight.w900)),
+              subtitle:Text(accepted?'Partner accepted • Tap to track live':'Searching for a nearby partner…'),
+              trailing:const Icon(Icons.chevron_right),
+              onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>accepted?LiveRideTrackingScreen(rideId:d.id,isRider:false):OnDemandRideTrackingPage(requestId:d.id,rideType:(x['rideType']??'bike').toString()))),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
