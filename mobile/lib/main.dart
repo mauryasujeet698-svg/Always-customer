@@ -1394,7 +1394,7 @@ class _ShopPageState extends State<ShopPage>{
   }
   Widget productSection(BuildContext c,String title,List<Product> items,{bool seeAll=true}){
     if(items.isEmpty)return const SizedBox.shrink();
-    final show=items.take(4).toList();
+    final show=items.take(3).toList();
     return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       Row(children:[Expanded(child:Text(title,style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))),if(seeAll)TextButton(onPressed:()=>openCat(c,title=='Top offers'?'All':title),child:const Text('See all'))]),
       GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:show.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:8,mainAxisSpacing:10,childAspectRatio:.60),itemBuilder:(c,i)=>productCard(c,show[i])),
