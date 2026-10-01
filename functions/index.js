@@ -285,6 +285,9 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
         ? "bike"
         : type;
       if (normalizedType !== rideType) continue;
+      if (String(p.approvalStatus || "approved").toLowerCase() !== "approved") continue;
+      if (String(p.activeRideId || "").trim()) continue;
+      if (p.availableForRides === false || p.isOnline === false) continue;
 
       const pLat = Number(p.carrierLat ?? p.latitude);
       const pLng = Number(p.carrierLng ?? p.longitude);
@@ -302,7 +305,10 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
           rideId: event.params.requestId,
           rideType,
           distanceKm: distance.toFixed(1),
-        }
+          pickupAddress: String(ride.pickupAddress || "Nearby pickup"),
+          destination: String(ride.destinationAddress || ride.destination || ""),
+        },
+        p.fcmToken || p.fcm_token || p.notificationToken || ""
       );
     }
   }
