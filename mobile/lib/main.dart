@@ -2647,7 +2647,24 @@ class _TravelPageState extends State<TravelPage>{
             }),
             const SizedBox(height:8),
             const Text('Saved places',style:TextStyle(fontWeight:FontWeight.w900)),
-            if(FirebaseAuth.instance.currentUser!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('customers').doc(FirebaseAuth.instance.currentUser!.uid).collection('addresses').orderBy('createdAt',descending:true).limit(3).snapshots(),builder:(c,snap)=>Column(children:(snap.data?.docs??[]).map((d)=>ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.favorite_border),title:Text((d.data()['name']??'Saved place').toString()),subtitle:Text((d.data()['address']??'').toString(),maxLines:1,overflow:TextOverflow.ellipsis),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:'bike',initialDestination:(d.data()['address']??'').toString())))).toList()))),
+            if(FirebaseAuth.instance.currentUser!=null)
+              StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+                stream:FirebaseFirestore.instance.collection('customers').doc(FirebaseAuth.instance.currentUser!.uid).collection('addresses').orderBy('createdAt',descending:true).limit(3).snapshots(),
+                builder:(c,snap){
+                  final docs=snap.data?.docs??[];
+                  return Column(children:docs.map((d){
+                    final x=d.data();
+                    final address=(x['address']??'').toString();
+                    return ListTile(
+                      contentPadding:EdgeInsets.zero,
+                      leading:const Icon(Icons.favorite_border),
+                      title:Text((x['name']??'Saved place').toString()),
+                      subtitle:Text(address,maxLines:1,overflow:TextOverflow.ellipsis),
+                      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:'bike',initialDestination:address))),
+                    );
+                  }).toList());
+                },
+              ),
             const SizedBox(height:10),
             Row(children:[
               Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),icon:const Icon(Icons.two_wheeler),label:const Text('Bike'))),
@@ -3198,7 +3215,25 @@ class _OnDemandRidePageState extends State<OnDemandRidePage>{
         Positioned(top:MediaQuery.of(context).padding.top+10,left:12,right:12,child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:10,vertical:4),child:Row(children:[
           IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),Expanded(child:TextField(controller:destination,onSubmitted:(_)=>_search(),decoration:const InputDecoration(filled:false,border:InputBorder.none,prefixIcon:Icon(Icons.search),hintText:'Where are you going?'))),searching?const SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2)):IconButton(onPressed:_search,icon:const Icon(Icons.search)),
         ]))),
-        if(places.isNotEmpty)Positioned(top:MediaQuery.of(context).padding.top+72,left:16,right:16,child:Card(child:ConstrainedBox(constraints:const BoxConstraints(maxHeight:260),child:ListView(shrinkWrap:true,children:places.map((p)=>ListTile(leading:const Icon(Icons.location_on_outlined),title:Text((p['name']??p['display_name']??'Place').toString(),maxLines:1,overflow:TextOverflow.ellipsis),subtitle:Text((p['display_name']??'').toString(),maxLines:2,overflow:TextOverflow.ellipsis),onTap:()=>_choose(p))).toList())))),
+        if(places.isNotEmpty)
+          Positioned(
+            top:MediaQuery.of(context).padding.top+72,
+            left:16,right:16,
+            child:Card(
+              child:ConstrainedBox(
+                constraints:const BoxConstraints(maxHeight:260),
+                child:ListView(
+                  shrinkWrap:true,
+                  children:places.map((p)=>ListTile(
+                    leading:const Icon(Icons.location_on_outlined),
+                    title:Text((p['name']??p['display_name']??'Place').toString(),maxLines:1,overflow:TextOverflow.ellipsis),
+                    subtitle:Text((p['display_name']??'').toString(),maxLines:2,overflow:TextOverflow.ellipsis),
+                    onTap:()=>_choose(p),
+                  )).toList(),
+                ),
+              ),
+            ),
+          ),
       ])),
       Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,12,16,28),children:[
         Row(children:[Expanded(child:ChoiceChip(label:const Text('Bike'),selected:rideType=='bike',onSelected:(_){setState(()=>rideType='bike');if(drop!=null)_route();})),const SizedBox(width:8),Expanded(child:ChoiceChip(label:const Text('Auto'),selected:rideType=='auto',onSelected:(_){setState(()=>rideType='auto');if(drop!=null)_route();}))]),
