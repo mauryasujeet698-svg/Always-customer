@@ -2595,659 +2595,622 @@ class StatusView extends StatelessWidget{final String status;const StatusView({s
 }}
 
 
+
 class TravelPage extends StatefulWidget {
   const TravelPage({super.key});
-  @override State<TravelPage> createState()=>_TravelPageState();
-}
-class _TravelPageState extends State<TravelPage>{
-  Position? position; bool loading=true;
-  @override void initState(){super.initState();_locate();}
-  Future<void> _locate()async{
-    try{
-      if(!await Geolocator.isLocationServiceEnabled()){if(mounted)setState(()=>loading=false);return;}
-      var p=await Geolocator.checkPermission();if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
-      if(p==LocationPermission.denied||p==LocationPermission.deniedForever){if(mounted)setState(()=>loading=false);return;}
-      final x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high));
-      if(mounted)setState(()=>position=x);
-    }catch(_){}
-    if(mounted)setState(()=>loading=false);
-  }
-  Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _recent()async{
-    final u=FirebaseAuth.instance.currentUser;if(u==null)return [];
-    try{
-      final q=await FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:u.uid).get();
-      final d=q.docs.toList();d.sort((x,y){final a=x.data()['createdAt'],b=y.data()['createdAt'];final aa=a is Timestamp?a.toDate():DateTime(0),bb=b is Timestamp?b.toDate():DateTime(0);return bb.compareTo(aa);});return d.take(3).toList();
-    }catch(_){return [];}
-  }
-  @override Widget build(BuildContext context){
-    final center=position==null?const LatLng(25.4358,81.8463):LatLng(position!.latitude,position!.longitude);
-    return Scaffold(
-      backgroundColor:Theme.of(context).colorScheme.surface,
-      body:SafeArea(top:false,child:ListView(children:[
-        SizedBox(height:MediaQuery.of(context).size.height*.42,child:Stack(children:[
-          FlutterMap(options:MapOptions(initialCenter:center,initialZoom:15),children:[
-            TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maxZoom:19,userAgentPackageName:'com.allways.app'),
-            if(position!=null)MarkerLayer(markers:[Marker(point:center,width:52,height:52,child:Container(decoration:BoxDecoration(color:const Color(0xFF5B1ACF),shape:BoxShape.circle,border:Border.all(color:Colors.white,width:4)),child:const Icon(Icons.navigation,color:Colors.white,size:24)))]),
-            const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
-          ]),
-          Positioned(top:MediaQuery.of(context).padding.top+10,left:14,right:14,child:Card(child:ListTile(leading:const Icon(Icons.location_on_outlined),title:Text(loading?'Locating you…':(position==null?'Location unavailable':'Current location')),trailing:IconButton(onPressed:_locate,icon:const Icon(Icons.my_location))))),
-        ])),
-        Material(
-          color:Theme.of(context).colorScheme.surface,
-          borderRadius:const BorderRadius.vertical(top:Radius.circular(28)),
-          child:Padding(padding:const EdgeInsets.fromLTRB(18,18,18,28),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            const Text('Where are you going?',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
-            const SizedBox(height:10),
-            InkWell(onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),child:Container(padding:const EdgeInsets.all(16),decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),child:const Row(children:[Icon(Icons.search),SizedBox(width:12),Expanded(child:Text('Search destination',style:TextStyle(fontWeight:FontWeight.w700))),Icon(Icons.arrow_forward_ios,size:15)]))),
-            const SizedBox(height:18),const Text('Recent destinations',style:TextStyle(fontWeight:FontWeight.w900)),
-            FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(future:_recent(),builder:(c,snap){
-              final rows=snap.data??[];
-              if(rows.isEmpty)return const Padding(padding:EdgeInsets.only(top:8),child:Text('Your recent destinations will appear here.',style:TextStyle(color:Colors.grey)));
-              return Column(children:rows.map((d){final x=d.data();final label=(x['destinationAddress']??x['destination']??'Destination').toString();return ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.history),title:Text(label,maxLines:1,overflow:TextOverflow.ellipsis),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:(x['rideType']??'bike').toString(),initialDestination:label))));}).toList());
-            }),
-            const SizedBox(height:8),
-            const Text('Saved places',style:TextStyle(fontWeight:FontWeight.w900)),
-            if(FirebaseAuth.instance.currentUser!=null)
-              StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-                stream:FirebaseFirestore.instance.collection('customers').doc(FirebaseAuth.instance.currentUser!.uid).collection('addresses').orderBy('createdAt',descending:true).limit(3).snapshots(),
-                builder:(c,snap){
-                  final docs=snap.data?.docs??[];
-                  return Column(children:docs.map((d){
-                    final x=d.data();
-                    final address=(x['address']??'').toString();
-                    return ListTile(
-                      contentPadding:EdgeInsets.zero,
-                      leading:const Icon(Icons.favorite_border),
-                      title:Text((x['name']??'Saved place').toString()),
-                      subtitle:Text(address,maxLines:1,overflow:TextOverflow.ellipsis),
-                      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:'bike',initialDestination:address))),
-                    );
-                  }).toList());
-                },
-              ),
-            const SizedBox(height:10),
-            Row(children:[
-              Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'bike'))),icon:const Icon(Icons.two_wheeler),label:const Text('Bike'))),
-              const SizedBox(width:10),
-              Expanded(child:OutlinedButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const OnDemandRidePage(rideType:'auto'))),icon:const Icon(Icons.local_taxi_outlined),label:const Text('Auto'))),
-            ]),
-          ]),
-        ),
-      ])));
-  }
-}
-class ProfilePage extends StatefulWidget{
-  final User? user; final List<Map<String,dynamic>> addresses; final VoidCallback onLogin;
-  final Future<void> Function() onReload; final Future<void> Function(String) onDelete; final Future<void> Function(String) onCancel; final Future<void> Function(List<Map<String,dynamic>>) onReorder; final void Function(Product) onAdd; final VoidCallback onOpenCart;
-  const ProfilePage({super.key,required this.user,required this.addresses,required this.onLogin,required this.onReload,required this.onDelete,required this.onCancel,required this.onReorder,required this.onAdd,required this.onOpenCart});
-  @override State<ProfilePage> createState()=>_ProfilePageState();
-}
-class _ProfilePageState extends State<ProfilePage>{
-  Future<void> _checkForUpdate(BuildContext c) async {
-    try{
-      final r=await http.get(Uri.parse(updateManifestUrl)).timeout(const Duration(seconds:8));
-      if(!c.mounted)return;
-      if(r.statusCode==200){
-        final d=jsonDecode(r.body);
-        if(d is Map&&(d['version']??'').toString().isNotEmpty){
-          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Latest version: '+d['version'].toString())));
-          return;
-        }
-      }
-      ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Could not check for updates.')));
-    }catch(_){
-      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Could not check for updates.')));
-    }
-  }
-
-  Future<void> _deleteAccount(BuildContext c) async {
-    final confirmation=TextEditingController();
-    final confirmed=await showDialog<bool>(
-      context:c,
-      builder:(dialogContext)=>AlertDialog(
-        title:const Text('Delete Account'),
-        content:Column(mainAxisSize:MainAxisSize.min,children:[
-          const Text('This permanently deletes your ALLways account and customer profile data. This action cannot be undone.'),
-          const SizedBox(height:12),
-          TextField(controller:confirmation,decoration:const InputDecoration(labelText:'Type DELETE to confirm')),
-        ]),
-        actions:[
-          TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),
-          FilledButton(onPressed:()=>Navigator.pop(dialogContext,confirmation.text.trim()=='DELETE'),child:const Text('Delete')),
-        ],
-      ),
-    )??false;
-    confirmation.dispose();
-    if(!confirmed)return;
-    try{
-      final u=FirebaseAuth.instance.currentUser;
-      if(u==null)return;
-      try{
-        await u.delete();
-      }on FirebaseAuthException catch(e){
-        if(e.code!='requires-recent-login')rethrow;
-        final providers=u.providerData.map((p)=>p.providerId).toList();
-        if(providers.contains('google.com')){
-          final gs=GoogleSignIn.instance;
-          if(!gs.supportsAuthenticate())throw Exception('Please sign in again before deleting your account.');
-          final gu=await gs.authenticate();
-          final token=gu.authentication.idToken;
-          if(token==null||token.isEmpty)throw Exception('Google re-authentication failed.');
-          await u.reauthenticateWithCredential(GoogleAuthProvider.credential(idToken:token));
-        }else{
-          final password=await showDialog<String>(context:c,builder:(d){
-            final controller=TextEditingController();
-            return AlertDialog(
-              title:const Text('Confirm password'),
-              content:TextField(controller:controller,obscureText:true,decoration:const InputDecoration(labelText:'Password')),
-              actions:[
-                TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
-                FilledButton(onPressed:()=>Navigator.pop(d,controller.text),child:const Text('Continue')),
-              ],
-            );
-          });
-          if(password==null||password.isEmpty)throw Exception('Account deletion cancelled.');
-          await u.reauthenticateWithCredential(EmailAuthProvider.credential(email:u.email??'',password:password));
-        }
-        await u.delete();
-      }
-      await FirebaseFirestore.instance.collection('customers').doc(u.uid).delete().catchError((_){});
-      await FirebaseAuth.instance.signOut();
-    }catch(e){
-      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));
-    }
-  }
-
-  Future<void> _chooseAppearance(BuildContext c) async {
-    await showDialog<void>(
-      context:c,
-      builder:(dialogContext)=>ValueListenableBuilder<ThemeMode>(
-        valueListenable:themeNotifier,
-        builder:(context,mode,_)=>AlertDialog(
-          title:const Text('Appearance'),
-          content:Column(mainAxisSize:MainAxisSize.min,children:[
-            RadioListTile<ThemeMode>(title:const Text('Light'),value:ThemeMode.light,groupValue:mode,onChanged:(v)async{if(v==null)return;themeNotifier.value=v;final p=await SharedPreferences.getInstance();await p.setString('allways_theme_mode','light');if(dialogContext.mounted)Navigator.pop(dialogContext);}),
-            RadioListTile<ThemeMode>(title:const Text('Dark'),value:ThemeMode.dark,groupValue:mode,onChanged:(v)async{if(v==null)return;themeNotifier.value=v;final p=await SharedPreferences.getInstance();await p.setString('allways_theme_mode','dark');if(dialogContext.mounted)Navigator.pop(dialogContext);}),
-            RadioListTile<ThemeMode>(title:const Text('System'),value:ThemeMode.system,groupValue:mode,onChanged:(v)async{if(v==null)return;themeNotifier.value=v;final p=await SharedPreferences.getInstance();await p.setString('allways_theme_mode','system');if(dialogContext.mounted)Navigator.pop(dialogContext);}),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _menuCard(BuildContext c,{required IconData icon,required String title,required String subtitle,required VoidCallback onTap,bool danger=false,bool showDot=false}){
-    final scheme=Theme.of(c).colorScheme;
-    final accent=danger?scheme.error:scheme.primary;
-    return Card(
-      margin:const EdgeInsets.symmetric(horizontal:16,vertical:6),
-      elevation:0,
-      color:scheme.surface,
-      shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),
-      child:InkWell(
-        onTap:onTap,
-        borderRadius:BorderRadius.circular(16),
-        child:Padding(
-          padding:const EdgeInsets.symmetric(horizontal:14,vertical:14),
-          child:Row(children:[
-            Container(
-              width:48,height:48,
-              decoration:BoxDecoration(color:danger?scheme.errorContainer:scheme.primaryContainer,borderRadius:BorderRadius.circular(14)),
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(icon,color:danger?scheme.onErrorContainer:scheme.onPrimaryContainer),
-                if(showDot) Positioned(right:-3,top:-3,child:Container(width:10,height:10,decoration:BoxDecoration(color:Colors.green,shape:BoxShape.circle,border:Border.all(color:scheme.surface,width:2)))),
-              ]),
-            ),
-            const SizedBox(width:14),
-            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-              Text(title,style:TextStyle(fontSize:16,fontWeight:FontWeight.w800,color:danger?scheme.error:null)),
-              const SizedBox(height:3),
-              Text(subtitle,style:TextStyle(color:scheme.onSurfaceVariant,fontSize:13)),
-            ])),
-            Icon(Icons.chevron_right,color:accent),
-          ]),
-        ),
-      ),
-    );
-  }
-  // Language preference is reactive through languageNotifier so visible labels update immediately.
-  Future<void> _chooseLanguage(BuildContext c) async {
-    final prefs=await SharedPreferences.getInstance();
-    final current=prefs.getString('allways_language')??'English';
-    const languages=['English','Hindi','Hinglish','Bhojpuri','Awadhi'];
-    await showDialog<void>(
-      context:c,
-      builder:(dialogContext)=>AlertDialog(
-        title:const Text('Language'),
-        content:Column(mainAxisSize:MainAxisSize.min,children:[
-          for(final language in languages)
-            RadioListTile<String>(
-              value:language,
-              groupValue:current,
-              title:Text(language),
-              onChanged:(value) async {
-                if(value==null)return;
-                await prefs.setString('allways_language',value);
-                languageNotifier.value=value;
-                if(dialogContext.mounted)Navigator.pop(dialogContext);
-                if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Language preference saved: '+value)));
-              },
-            ),
-        ]),
-      ),
-    );
-  }
-
-  Future<void> _openNotifications(BuildContext c) async {
-    await markNotificationsRead();
-    if(!c.mounted)return;
-    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(_)=>const NotificationsPage());
-  }
-
-  @override Widget build(BuildContext c){
-    final u=widget.user;
-    if(u==null)return Center(child:FilledButton(onPressed:widget.onLogin,child:const Text('Sign in / Sign up')));
-    return ListView(
-      padding:const EdgeInsets.only(top:12,bottom:24),
-      children:[
-        Padding(padding:const EdgeInsets.fromLTRB(16,0,16,6),child:Text(tr('Profile'),style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900))),
-        Card(
-          margin:const EdgeInsets.symmetric(horizontal:16,vertical:6),
-          elevation:0,
-          shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),
-          child:Padding(padding:const EdgeInsets.all(16),child:Row(children:[
-            CircleAvatar(radius:30,child:Text((u.displayName??'A').trim().isEmpty?'A':(u.displayName??'A').trim()[0].toUpperCase())),
-            const SizedBox(width:14),
-            Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-              Text(u.displayName??'ALLways customer',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w800)),
-              const SizedBox(height:3),
-              Text(u.email??'',style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant)),
-            ])),
-          ])),
-        ),
-        _menuCard(c,icon:Icons.receipt_long_outlined,title:'Orders',subtitle:'View and track your ALLways orders',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OrdersPage(user:u,onCancel:widget.onCancel,onReorder:widget.onReorder)))),
-        _menuCard(c,icon:Icons.location_on_outlined,title:'Saved Addresses',subtitle:'Add, edit or manage your delivery addresses',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>SavedAddressesPage(userId:u.uid,addresses:widget.addresses,onReload:widget.onReload,onDelete:widget.onDelete)))),
-        _menuCard(c,icon:Icons.favorite_border,title:'Wishlist',subtitle:'Your saved products and favourites',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:()=>widget.onOpenCart())))),
-        ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,unread,__)=>_menuCard(c,icon:Icons.notifications_outlined,title:tr('Notifications'),subtitle:'Alerts, order updates and push settings',showDot:unread,onTap:()=>_openNotifications(c))),
-        _menuCard(c,icon:Icons.brightness_6_outlined,title:tr('Appearance'),subtitle:'Light, Dark or System theme',onTap:()=>_chooseAppearance(c)),
-        _menuCard(c,icon:Icons.language_outlined,title:tr('Language'),subtitle:'Choose your preferred app language',onTap:()=>_chooseLanguage(c)),
-        _menuCard(c,icon:Icons.share_outlined,title:tr('Share ALLways'),subtitle:'Share ALLways with friends and family',onTap:()=>SharePlus.instance.share(ShareParams(text:'Try ALLways — Closer to You, Always. Download ALLways 1.5.0: '+shareApkUrl))),
-        _menuCard(c,icon:Icons.system_update_outlined,title:tr('Check for Updates'),subtitle:'Check for the latest ALLways version',onTap:()=>_checkForUpdate(c)),
-        _menuCard(c,icon:Icons.privacy_tip_outlined,title:'Privacy Policy',subtitle:'How ALLways handles your information',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const PrivacyPolicyPage()))),
-        _menuCard(c,icon:Icons.logout_outlined,title:tr('Log Out'),subtitle:'Sign out of your ALLways account',danger:true,onTap:()=>FirebaseAuth.instance.signOut()),
-        _menuCard(c,icon:Icons.delete_outline,title:'Delete Account',subtitle:'Permanently delete your ALLways account',danger:true,onTap:()=>_deleteAccount(c)),
-        const SizedBox(height:12),
-        const Text('ALLways • Closer to You, Always',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey)),
-      ],
-    );
-  }
-
+  @override State<TravelPage> createState() => _TravelPageState();
 }
 
-Future<void> markNotificationsRead() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList('allways_notifications') ?? <String>[];
-    final updated = raw.map((entry) {
-      try {
-        final decoded = jsonDecode(entry);
-        if (decoded is Map) {
-          final item = Map<String,dynamic>.from(decoded);
-          item['read'] = true;
-          return jsonEncode(item);
-        }
-      } catch (_) {}
-      return entry;
-    }).toList();
-    await prefs.setStringList('allways_notifications', updated);
-  } catch (_) {}
-  unreadNotificationNotifier.value = false;
-}
+class _TravelPageState extends State<TravelPage> {
+  Position? position;
+  bool loading = true;
 
-class NotificationsPage extends StatefulWidget{
-  const NotificationsPage({super.key});
-  @override State<NotificationsPage> createState()=>_NotificationsPageState();
-}
-class _NotificationsPageState extends State<NotificationsPage>{
-  bool enabled=true,loading=true; List<Map<String,dynamic>> notifications=[];
-  final Map<String,bool> prefs=<String,bool>{'orderUpdates':true,'deliveryUpdates':true,'travelUpdates':true,'offers':true,'announcements':true};
-  String filter='All';
-  @override void initState(){super.initState();_load();}
+  @override void initState() { super.initState(); _locate(); }
 
-  Future<void> _load() async {try{final p=await SharedPreferences.getInstance();enabled=p.getBool('notifications_enabled')??p.getBool('allways_notifications_enabled')??true;for(final key in prefs.keys){prefs[key]=p.getBool('notification_'+key)??true;}final raw=p.getStringList('allways_notifications')??<String>[];notifications=raw.map((x){try{final d=jsonDecode(x);return d is Map?Map<String,dynamic>.from(d):<String,dynamic>{};}catch(_){return <String,dynamic>{};}}).where((x)=>x.isNotEmpty).toList();}catch(_){}if(mounted)setState(()=>loading=false);}
-  Future<void> _savePreference(String key,bool value) async {prefs[key]=value;final p=await SharedPreferences.getInstance();await p.setBool('notification_'+key,value);final u=FirebaseAuth.instance.currentUser;if(u!=null){try{await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'notificationPreferences':Map<String,bool>.from(prefs),'notificationsEnabled':enabled,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));}catch(_){}}if(mounted)setState((){});}
-  Future<void> _toggle(bool value) async {try{if(value){final status=await FirebaseMessaging.instance.requestPermission(alert:true,badge:true,sound:true,provisional:false);if(status.authorizationStatus==AuthorizationStatus.denied){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Notification permission is disabled for ALLways.')));return;}await FirebaseMessaging.instance.subscribeToTopic('all_users');enabled=true;}else{await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');enabled=false;}final p=await SharedPreferences.getInstance();await p.setBool('notifications_enabled',enabled);await p.setBool('allways_notifications_enabled',enabled);final u=FirebaseAuth.instance.currentUser;if(u!=null)await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','notificationsEnabled':enabled,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));if(enabled){final token=await FirebaseMessaging.instance.getToken();if(token!=null&&u!=null){await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).collection('tokens').doc(token).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await p.setString('allways_fcm_token',token);}}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Notification setting could not be saved: '+e.toString())));}if(mounted)setState((){});}
-  Future<void> _markAllRead() async {try{final p=await SharedPreferences.getInstance();final raw=p.getStringList('allways_notifications')??<String>[];final updated=raw.map((x){try{final d=jsonDecode(x);if(d is Map){final m=Map<String,dynamic>.from(d);m['read']=true;return jsonEncode(m);}}catch(_){}return x;}).toList();await p.setStringList('allways_notifications',updated);unreadNotificationNotifier.value=false;await _load();}catch(_){}}
-  Future<void> _clearHistory() async {final p=await SharedPreferences.getInstance();await p.remove('allways_notifications');unreadNotificationNotifier.value=false;if(mounted)setState(()=>notifications=[]);}
-  String _time(dynamic value){final ms=value is num?value.toInt():int.tryParse(value?.toString()??'')??0;if(ms<=0)return'';final d=DateTime.fromMillisecondsSinceEpoch(ms);final diff=DateTime.now().difference(d);if(diff.inMinutes<1)return'Just now';if(diff.inHours<1)return diff.inMinutes.toString()+' min ago';if(diff.inDays<1)return diff.inHours.toString()+' hr ago';return d.day.toString().padLeft(2,'0')+'/'+d.month.toString().padLeft(2,'0')+'/'+d.year.toString();}
-  bool _matches(Map<String,dynamic> n){if(filter=='All')return true;final type=(n['type']??'').toString().toLowerCase();if(filter=='Orders')return type.contains('order');if(filter=='Delivery')return type.contains('delivery');if(filter=='Travel')return type.contains('ride')||type.contains('vehicle')||type.contains('travel');if(filter=='Offers')return type.contains('offer')||type.contains('promotion');return true;}
-  Widget _setting({required IconData icon,required String title,required String subtitle,required String key})=>SwitchListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:2),secondary:CircleAvatar(child:Icon(icon)),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(subtitle),value:enabled&&prefs[key]!,onChanged:enabled?(v)=>_savePreference(key,v):null);
-  @override Widget build(BuildContext context){final visible=notifications.where(_matches).toList();return SafeArea(child:Column(children:[
-    Padding(padding:const EdgeInsets.fromLTRB(16,6,12,4),child:Row(children:[const Icon(Icons.notifications_outlined,size:26),const SizedBox(width:10),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Notifications',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),Text('Stay updated with your ALLways activity',style:TextStyle(color:Colors.grey,fontSize:12))])),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close))])),
-    Expanded(child:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
-      Card(child:SwitchListTile(contentPadding:const EdgeInsets.fromLTRB(16,8,16,8),secondary:CircleAvatar(radius:24,child:Icon(enabled?Icons.notifications_active_outlined:Icons.notifications_off_outlined)),title:const Text('ALLways notifications',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),subtitle:Text(enabled?'Notifications are enabled':'Notifications are turned off'),value:enabled,onChanged:_toggle)),
-      const SizedBox(height:14),const Text('ORDER & DELIVERY',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey)),const SizedBox(height:6),
-      Card(child:Column(children:[_setting(icon:Icons.receipt_long_outlined,title:'Order updates',subtitle:'Confirmation, preparation, delivery and completion',key:'orderUpdates'),const Divider(height:1),_setting(icon:Icons.local_shipping_outlined,title:'Delivery updates',subtitle:'Partner offers, acceptance and out-for-delivery alerts',key:'deliveryUpdates')])),
-      const SizedBox(height:14),const Text('TRAVEL & OFFERS',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey)),const SizedBox(height:6),
-      Card(child:Column(children:[_setting(icon:Icons.two_wheeler_outlined,title:'Travel & ride updates',subtitle:'Ride requests, acceptance and vehicle bookings',key:'travelUpdates'),const Divider(height:1),_setting(icon:Icons.local_offer_outlined,title:'Offers & promotions',subtitle:'Special offers and discounts from ALLways',key:'offers'),const Divider(height:1),_setting(icon:Icons.campaign_outlined,title:'ALLways announcements',subtitle:'Important service announcements and news',key:'announcements')])),
-      const SizedBox(height:18),
-      Row(children:[const Expanded(child:Text('NOTIFICATION HISTORY',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey))),TextButton(onPressed:notifications.isEmpty?null:_markAllRead,child:const Text('Mark all read')),TextButton(onPressed:notifications.isEmpty?null:_clearHistory,child:const Text('Clear'))]),
-      SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:['All','Orders','Delivery','Travel','Offers'].map((x)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:filter==x,onSelected:(_)=>setState(()=>filter=x)))).toList())),
-      const SizedBox(height:8),
-      if(visible.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(28),child:Column(children:[Icon(Icons.notifications_none,size:54,color:Theme.of(context).colorScheme.primary),const SizedBox(height:10),const Text('No notifications yet.',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),const SizedBox(height:4),const Text('Your order, delivery and travel updates will appear here.',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey))])))
-      else ...visible.map((n){final title=(n['title']??'ALLways').toString(),body=(n['body']??'').toString(),time=_time(n['timestamp']),read=n['read']==true,type=(n['type']??'').toString().toLowerCase();return Card(color:read?null:Theme.of(context).colorScheme.primaryContainer,margin:const EdgeInsets.only(bottom:8),child:ListTile(leading:CircleAvatar(child:Icon(type.contains('delivery')?Icons.local_shipping_outlined:type.contains('ride')?Icons.two_wheeler_outlined:Icons.notifications_outlined)),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(body),trailing:time.isEmpty?null:Text(time,style:const TextStyle(fontSize:11,color:Colors.grey))));}),
-      const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[const Icon(Icons.info_outline),const SizedBox(width:10),const Expanded(child:Text('Live location updates are shown on the tracking map, not as repeated push notifications. This keeps alerts useful and reduces unnecessary network traffic.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
-    ])),
-  ]));}
-}
-
-const vehicleCategories = <String>[
-  'Motorcycle','Scooter','E-bike','Auto Rickshaw','E-Rickshaw','Hatchback','Sedan','SUV','MUV',
-  'Luxury Car','Taxi / Cab','Tempo Traveller','Van','Mini Bus','Bus','Pickup Truck','Mini Truck (Tata Ace)',
-  'Bolero Pickup','Goods Auto','Cargo Van','Tractor','Tractor Trolley','Trailer','Ambulance','Other / Enter manually',
-];
-
-class VehicleBookingPage extends StatefulWidget {
-  const VehicleBookingPage({super.key});
-  @override State<VehicleBookingPage> createState()=>_VehicleBookingPageState();
-}
-
-class _VehicleBookingPageState extends State<VehicleBookingPage> {
-  StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? _vehicleBookingSubscription;
-  LiveLocationBroadcaster? _vehicleLocationBroadcaster;
-  String? _broadcastingVehicleBookingId;
-
-  @override
-  void initState(){
-    super.initState();
-    final uid=FirebaseAuth.instance.currentUser?.uid;
-    if(uid!=null){
-      _vehicleBookingSubscription=FirebaseFirestore.instance.collection('vehicleBookings').where('ownerUid',isEqualTo:uid).snapshots().listen((snapshot) async {
-        QueryDocumentSnapshot<Map<String,dynamic>>? active;
-        for(final d in snapshot.docs){
-          final status=(d.data()['status']??'').toString().toLowerCase();
-          if(status!='rejected'&&status!='cancelled'&&status!='delivered'){active=d;break;}
-        }
-        if(active==null){
-          await _vehicleLocationBroadcaster?.stop();
-          _vehicleLocationBroadcaster=null;_broadcastingVehicleBookingId=null;
-          return;
-        }
-        if(_broadcastingVehicleBookingId==active.id)return;
-        await _vehicleLocationBroadcaster?.stop();
-        final broadcaster=LiveLocationBroadcaster();
-        if(!mounted)return;
-        if(!await ensureBackgroundLocationDisclosure(context))return;
-        final started=await broadcaster.start(collection:'vehicleBookings',docId:active.id,prefix:'owner',background:true);
-        if(started){_vehicleLocationBroadcaster=broadcaster;_broadcastingVehicleBookingId=active.id;}
-      });
-    }
-  }
-
-  @override
-  void dispose(){
-    _vehicleBookingSubscription?.cancel();
-    _vehicleLocationBroadcaster?.stop();
-    super.dispose();
-  }
-
-  Future<void> _publishVehicle() async {
-    final user=FirebaseAuth.instance.currentUser;
-    if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
-    final name=TextEditingController(),phone=TextEditingController(),price=TextEditingController(),capacity=TextEditingController(),custom=TextEditingController(),village=TextEditingController(),landmark=TextEditingController(),pincode=TextEditingController();
-    double? vehicleLatitude;
-    double? vehicleLongitude;
-    String category=vehicleCategories.first; bool negotiate=true; XFile? vehiclePhoto; bool uploading=false;
-    try{
-      final ok=await showDialog<bool>(context:context,builder:(dialogContext)=>StatefulBuilder(builder:(context,setDialogState)=>AlertDialog(
-        title:const Text('List your vehicle'),
-        content:SizedBox(width:420,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-          DropdownButtonFormField<String>(initialValue:category,decoration:const InputDecoration(labelText:'Vehicle category'),items:vehicleCategories.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:(v){if(v!=null)setDialogState(()=>category=v);}),
-          if(category=='Other / Enter manually')TextField(controller:custom,decoration:const InputDecoration(labelText:'Enter vehicle type')),
-          TextField(controller:name,decoration:const InputDecoration(labelText:'Owner name')),
-          TextField(controller:phone,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'Mobile number')),
-          const SizedBox(height:10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: uploading ? null : () async {
-                final image = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 600);
-                if (image != null) setDialogState(() => vehiclePhoto = image);
-              },
-              icon: const Icon(Icons.camera_alt),
-              label: Text(vehiclePhoto == null ? 'Upload vehicle photo' : 'Vehicle photo selected'),
-            ),
-          ),
-          const Align(alignment:Alignment.centerLeft,child:Text('Vehicle photo is required.',style:TextStyle(color:Colors.grey,fontSize:12))),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: uploading ? null : () async {
-                try {
-                  if (!await Geolocator.isLocationServiceEnabled()) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turn on GPS first.')));
-                    return;
-                  }
-                  var permission=await Geolocator.checkPermission();
-                  if(permission==LocationPermission.denied) permission=await Geolocator.requestPermission();
-                  if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever){
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission was not granted.')));
-                    return;
-                  }
-                  final pos=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high)).timeout(const Duration(seconds:10));
-                  setDialogState((){vehicleLatitude=pos.latitude;vehicleLongitude=pos.longitude;});
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current GPS location captured.')));
-                } catch(e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not capture GPS location: $e')));
-                }
-              },
-              icon: const Icon(Icons.my_location),
-              label: Text(vehicleLatitude==null?'Use current location':'Current location captured'),
-            ),
-          ),
-          TextField(controller:village,decoration:const InputDecoration(labelText:'Village / Town / City Name')),
-          TextField(controller:landmark,decoration:const InputDecoration(labelText:'Landmark / Main Road')),
-          TextField(controller:pincode,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Pincode')),
-          TextField(controller:capacity,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Seats / capacity')),
-          TextField(controller:price,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Your price (₹)')),
-          SwitchListTile(contentPadding:EdgeInsets.zero,title:const Text('Allow negotiation'),value:negotiate,onChanged:(v)=>setDialogState(()=>negotiate=v)),
-          const Align(alignment:Alignment.centerLeft,child:Text('You choose the price. ALLways does not set a fixed vehicle-booking price.',style:TextStyle(color:Colors.grey,fontSize:12))),
-        ]))),
-        actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('Publish'))],
-      )))??false;
-      if(!ok)return;
-      final cleanPhone=phone.text.replaceAll(RegExp(r'\D'),''); final cleanPrice=num.tryParse(price.text.trim())??0;
-      if(name.text.trim().isEmpty||cleanPhone.length!=10||cleanPrice<=0||vehiclePhoto==null||village.text.trim().isEmpty||landmark.text.trim().isEmpty||pincode.text.trim().isEmpty){
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter owner name, valid 10-digit mobile number, price and upload a vehicle photo.')));return;
-      }
-      final type=category=='Other / Enter manually'?custom.text.trim():category;
-      if(type.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter the vehicle type.')));return;}
-      try {
-        uploading = true;
-        final vehiclePhotoUrl = await uploadImageToCloudinary(vehiclePhoto!, folder: 'vehicles/' + user.uid);
-        await FirebaseFirestore.instance.collection('vehicles').add({
-          'ownerUid':user.uid,'ownerName':name.text.trim(),'ownerPhone':cleanPhone,'category':type,
-          'capacity':int.tryParse(capacity.text.trim())??0,'price':cleanPrice,'allowNegotiation':negotiate,
-          'vehiclePhotoUrl':vehiclePhotoUrl,'status':'available','latitude':vehicleLatitude,'longitude':vehicleLongitude,'manual_location':{'villageTownCity':village.text.trim(),'landmarkMainRoad':landmark.text.trim(),'pincode':pincode.text.trim()},'createdAt':FieldValue.serverTimestamp()
-        });
-      } catch(e) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Vehicle photo upload failed: '+e.toString())));
+  Future<void> _locate() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted) setState(() => loading = false);
         return;
       }
-      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Vehicle published successfully.')));
-    }finally{name.dispose();phone.dispose();price.dispose();capacity.dispose();custom.dispose();village.dispose();landmark.dispose();pincode.dispose();}
-  }
-
-  Future<void> _book(DocumentSnapshot<Map<String,dynamic>> doc,{required bool negotiate}) async {
-    final user=FirebaseAuth.instance.currentUser;
-    if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
-    final d=doc.data()??{};
-    await FirebaseFirestore.instance.collection('vehicleBookings').add({'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],'ownerPhone':d['ownerPhone'],'customerUid':user.uid,'customerName':user.displayName??'ALLways customer','customerEmail':user.email??'','category':d['category'],'listedPrice':d['price'],'mode':negotiate?'negotiation':'book','status':'Booked','createdAt':FieldValue.serverTimestamp()});
-    if(!mounted)return;
-    await showDialog<void>(context:context,builder:(c)=>AlertDialog(
-      title:Text(negotiate?'Booking request sent':'Vehicle booked'),
-      content:Text(negotiate?'The vehicle owner can now contact you to negotiate and confirm the final price.':'Booking confirmed. You can now contact the vehicle owner.'),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Done')),FilledButton.icon(onPressed:()=>_call(d['ownerPhone']?.toString()??''),icon:const Icon(Icons.call),label:const Text('Contact owner'))],
-    ));
-  }
-
-  Future<void> _call(String phone) async { if(phone.trim().isEmpty)return; await launchUrl(Uri.parse('tel:'+phone.trim())); }
-
-  @override Widget build(BuildContext context){
-    final user=FirebaseAuth.instance.currentUser;
-    return Scaffold(appBar:AppBar(title:const Text('Book vehicle')),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection('vehicles').where('status',isEqualTo:'available').snapshots(),
-      builder:(context,snapshot){
-        final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
-        return ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
-          Card(child:ListTile(leading:const Icon(Icons.add_business_outlined),title:const Text('Offer your vehicle',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Vehicle owners choose their own price and can allow negotiation.'),trailing:const Icon(Icons.chevron_right),onTap:user==null?null:_publishVehicle)),
-          if(user!=null)
-            StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-              stream:FirebaseFirestore.instance.collection('vehicleBookings').where('ownerUid',isEqualTo:user.uid).snapshots(),
-              builder:(context,snapshot){
-                final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
-                final active=docs.where((d){final st=(d.data()['status']??'').toString().toLowerCase();return st!='rejected'&&st!='cancelled'&&st!='delivered';}).toList();
-                if(active.isEmpty)return const SizedBox.shrink();
-                return Card(child:ExpansionTile(
-                  leading:const Icon(Icons.assignment_outlined),
-                  title:const Text('Vehicle booking requests',style:TextStyle(fontWeight:FontWeight.w900)),
-                  children:active.take(10).map((doc){final d=doc.data();return ListTile(
-                    title:Text((d['customerName']??'Customer').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
-                    subtitle:Text((d['status']??'Booking').toString()+' • ₹'+(d['listedPrice']??0).toString()),
-                    trailing:OutlinedButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:'vehicleBookings',docId:doc.id,title:'Live vehicle tracking',mode:'vehicle',readOnly:true)),),child:const Text('Track')),
-                  );}).toList(),
-                ));
-              },
-            ),
-          const SizedBox(height:10),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-          if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please try again later.'),
-          if(!snapshot.hasData)const Padding(padding:EdgeInsets.all(20),child:Center(child:CircularProgressIndicator())),
-          if(snapshot.hasData&&docs.isEmpty)const InfoCard(title:'No vehicles listed yet',detail:'Vehicle owners can publish a vehicle from “Offer your vehicle”.'),
-          ...docs.map((doc){final d=doc.data();final allow=d['allowNegotiation']==true;return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Row(children:[const Icon(Icons.directions_car_outlined),const SizedBox(width:10),Expanded(child:Text((d['category']??'Vehicle').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+(d['price']??0).toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
-            const SizedBox(height:6),Text('Owner: '+(d['ownerName']??'').toString()+(d['capacity']!=null&&d['capacity'].toString()!='0'?' • Capacity: '+d['capacity'].toString():'')),
-            const SizedBox(height:4),Text(allow?'Owner allows negotiation':'Fixed owner price',style:const TextStyle(color:Colors.grey)),const SizedBox(height:10),
-            Row(children:[Expanded(child:FilledButton(onPressed:()=>_book(doc,negotiate:false),child:const Text('Book'))),if(allow)...[const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_book(doc,negotiate:true),child:const Text('Book & negotiate')))]])
-          ])));}),
-          const SizedBox(height:14),TravelBookingsSection(type:'vehicle'),const SizedBox(height:14),const Text('25 popular vehicle categories',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-          Wrap(spacing:8,runSpacing:8,children:vehicleCategories.map((x)=>Chip(label:Text(x))).toList()),
-        ]);
-      },
-    ));
-  }
-}
-
-class OnDemandRidePage extends StatefulWidget{
-  final String rideType;final String? initialDestination;
-  const OnDemandRidePage({super.key,this.rideType='bike',this.initialDestination});
-  @override State<OnDemandRidePage> createState()=>_OnDemandRidePageState();
-}
-class _OnDemandRidePageState extends State<OnDemandRidePage>{
-  late String rideType;final destination=TextEditingController();Position? pickup;String pickupAddress='Current location';String? pickupPincode,destinationPincode;LatLng? drop;List<LatLng> route=[];List<Map<String,dynamic>> places=[];double km=0,fare=0;int eta=0;bool searching=false,routing=false;String? routeError;
-  @override void initState(){super.initState();rideType=widget.rideType=='auto'?'auto':'bike';destination.text=widget.initialDestination??'';_loadPickup();}
-  @override void dispose(){destination.dispose();super.dispose();}
-  Future<void> _loadPickup()async{
-    try{
-      if(!await Geolocator.isLocationServiceEnabled())return;
-      var p=await Geolocator.checkPermission();if(p==LocationPermission.denied)p=await Geolocator.requestPermission();if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return;
-      pickup=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high));
-      final marks=await placemarkFromCoordinates(pickup!.latitude,pickup!.longitude);if(marks.isNotEmpty){final m=marks.first;pickupAddress=[m.name,m.street,m.locality,m.subLocality,m.postalCode].where((x)=>x!=null&&x!.trim().isNotEmpty).map((x)=>x!.trim()).toSet().join(', ');pickupPincode=m.postalCode;}
-      if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty)await _search(false);
-    }catch(_){}
-    if(mounted)setState((){});
-  }
-  Future<void> _search([bool show=true])async{
-    final q=destination.text.trim();if(q.isEmpty){if(show)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter a destination.')));return;}
-    setState(()=>searching=true);
-    try{
-      final uri=Uri.https('nominatim.openstreetmap.org','/search',{'q':q,'format':'jsonv2','limit':'5','countrycodes':'in','addressdetails':'1'});
-      final res=await http.get(uri,headers:{'User-Agent':'ALLways/1.5 (+https://allways.in)'}).timeout(const Duration(seconds:10));if(res.statusCode!=200)throw Exception('Search unavailable');
-      final data=jsonDecode(res.body);places=data is List?data.whereType<Map>().map((x)=>Map<String,dynamic>.from(x)).toList():[];if(places.isEmpty)throw Exception('No matching places found.');
-    }catch(e){if(show&&mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));}
-    if(mounted)setState(()=>searching=false);
-  }
-  Future<void> _choose(Map<String,dynamic> p)async{
-    final lat=double.tryParse((p['lat']??'').toString()),lon=double.tryParse((p['lon']??'').toString());if(lat==null||lon==null)return;
-    destination.text=(p['display_name']??destination.text).toString();drop=LatLng(lat,lon);final addr=p['address'];destinationPincode=addr is Map?addr['postcode']?.toString():null;places=[];await _route();if(mounted)setState((){});
-  }
-  Future<void> _route()async{
-    if(pickup==null||drop==null)return;setState(()=>routing=true);
-    try{
-      final url='https://router.project-osrm.org/route/v1/driving/'+pickup!.longitude.toString()+','+pickup!.latitude.toString()+';'+drop!.longitude.toString()+','+drop!.latitude.toString()+'?overview=full&geometries=geojson';
-      final res=await http.get(Uri.parse(url),headers:{'User-Agent':'ALLways/1.5 (+https://allways.in)'}).timeout(const Duration(seconds:15));if(res.statusCode!=200)throw Exception('Routing unavailable');
-      final d=jsonDecode(res.body),rs=d is Map?d['routes']:null;if(rs is! List||rs.isEmpty)throw Exception('No route found');final r=rs.first as Map;
-      km=((r['distance'] is num?r['distance']:0).toDouble())/1000;eta=math.max(1,(((r['duration'] is num?r['duration']:0).toDouble())/60).round());
-      route=[];final g=r['geometry'];if(g is Map&&g['coordinates'] is List)for(final pair in g['coordinates'])if(pair is List&&pair.length>1)route.add(LatLng((pair[1] as num).toDouble(),(pair[0] as num).toDouble()));
-      _fare();routeError=null;
-    }catch(e){
-      route=[];routeError=e.toString().replaceFirst('Exception: ','');km=Geolocator.distanceBetween(pickup!.latitude,pickup!.longitude,drop!.latitude,drop!.longitude)/1000;eta=math.max(1,(km/25*60).round());_fare();
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) setState(() => loading = false);
+        return;
+      }
+      final current = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) setState(() { position = current; loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
     }
-    if(mounted)setState(()=>routing=false);
   }
-  void _fare(){final base=rideType=='bike'?20.0:30.0;final per=rideType=='bike'?8.0:12.0;final min=rideType=='bike'?30.0:40.0;fare=km<=0?min:math.max(min,base+km*per);}
-  Future<void> _request()async{
-    final u=FirebaseAuth.instance.currentUser;if(u==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
-    if(pickup==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Turn on location to request a ride.')));return;}
-    if(drop==null){await _search();if(drop==null)return;}
-    final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
-    if(pin.isNotEmpty&&!await isPincodeServiceable(pin)){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Pincode '+pin+' is not serviceable yet. 230502 is currently serviceable.')));return;}
-    final c=await FirebaseFirestore.instance.collection('customers').doc(u.uid).get(),cd=c.data()??{};final phone=(u.phoneNumber??cd['phone']??cd['mobileNumber']??'').toString();
-    final ok=await showModalBottomSheet<bool>(context:context,builder:(x)=>Padding(padding:const EdgeInsets.all(18),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-      Row(children:[Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),const SizedBox(width:10),Expanded(child:Text(rideType=='bike'?'Bike ride':'Auto ride',style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900))),Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))]),
-      const SizedBox(height:8),Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),Text('Pickup: '+pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis),Text('Drop: '+destination.text.trim(),maxLines:2,overflow:TextOverflow.ellipsis),const SizedBox(height:12),
-      SizedBox(width:double.infinity,child:FilledButton(onPressed:()=>Navigator.pop(x,true),child:const Text('Confirm ride'))),
-    ])))??false;if(!ok)return;
-    final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({'customerUid':u.uid,'customerName':u.displayName??cd['name']??'ALLways customer','customerPhone':phone,'rideType':rideType,'status':'searching','pickupLatitude':pickup!.latitude,'pickupLongitude':pickup!.longitude,'pickupAddress':pickupAddress,'pickupPincode':pickupPincode,'destination':destination.text.trim(),'destinationAddress':destination.text.trim(),'destinationLatitude':drop!.latitude,'destinationLongitude':drop!.longitude,'destinationPincode':pin,'distanceKm':km,'etaMinutes':eta,'estimatedFare':fare,'rejectedBy':<String>[],'createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
-    if(mounted)Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
+
+  Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _recentRides() async {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('autoRideRequests')
+          .where('customerUid', isEqualTo: u.uid)
+          .get();
+      final docs = snap.docs.toList();
+      docs.sort((a,b) {
+        final av=a.data()['createdAt'], bv=b.data()['createdAt'];
+        final at=av is Timestamp?av.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+        final bt=bv is Timestamp?bv.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+        return bt.compareTo(at);
+      });
+      return docs.take(3).toList();
+    } catch (_) { return []; }
   }
-  @override Widget build(BuildContext context){
-    final center=drop??(pickup==null?const LatLng(25.4358,81.8463):LatLng(pickup!.latitude,pickup!.longitude));final points=<LatLng>[if(pickup!=null)LatLng(pickup!.latitude,pickup!.longitude),...route,if(drop!=null)drop!];
-    return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,body:SafeArea(top:false,child:Column(children:[
-      SizedBox(height:MediaQuery.of(context).size.height*.48,child:Stack(children:[
-        FlutterMap(options:MapOptions(initialCenter:center,initialZoom:14.5,initialCameraFit:points.length>1?CameraFit.coordinates(coordinates:points,padding:const EdgeInsets.fromLTRB(40,100,40,240),maxZoom:16):null),children:[
-          TileLayer(urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maxZoom:19,userAgentPackageName:'com.allways.app'),
-          if(route.length>1)PolylineLayer(polylines:[Polyline(points:route,strokeWidth:5,color:const Color(0xFF5B1ACF))]),
-          MarkerLayer(markers:[if(pickup!=null)Marker(point:LatLng(pickup!.latitude,pickup!.longitude),width:45,height:45,child:const Icon(Icons.my_location,color:Colors.blue,size:30)),if(drop!=null)Marker(point:drop!,width:45,height:45,child:const Icon(Icons.location_on,color:Colors.red,size:34))]),
-          const RichAttributionWidget(attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
-        ]),
-        Positioned(top:MediaQuery.of(context).padding.top+10,left:12,right:12,child:Card(child:Padding(padding:const EdgeInsets.symmetric(horizontal:10,vertical:4),child:Row(children:[
-          IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),Expanded(child:TextField(controller:destination,onSubmitted:(_)=>_search(),decoration:const InputDecoration(filled:false,border:InputBorder.none,prefixIcon:Icon(Icons.search),hintText:'Where are you going?'))),searching?const SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2)):IconButton(onPressed:_search,icon:const Icon(Icons.search)),
-        ]))),
-        if(places.isNotEmpty)
-          Positioned(
-            top:MediaQuery.of(context).padding.top+72,
-            left:16,right:16,
-            child:Card(
-              child:ConstrainedBox(
-                constraints:const BoxConstraints(maxHeight:260),
-                child:ListView(
-                  shrinkWrap:true,
-                  children:places.map((p)=>ListTile(
-                    leading:const Icon(Icons.location_on_outlined),
-                    title:Text((p['name']??p['display_name']??'Place').toString(),maxLines:1,overflow:TextOverflow.ellipsis),
-                    subtitle:Text((p['display_name']??'').toString(),maxLines:2,overflow:TextOverflow.ellipsis),
-                    onTap:()=>_choose(p),
-                  )).toList(),
+
+  void _openRide(String type, {String? destination}) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) =>
+      OnDemandRidePage(rideType:type, initialDestination:destination)));
+  }
+
+  @override Widget build(BuildContext context) {
+    final scheme=Theme.of(context).colorScheme;
+    final center=position==null
+        ? const LatLng(25.4358,81.8463)
+        : LatLng(position!.latitude,position!.longitude);
+    return Scaffold(
+      backgroundColor:scheme.surface,
+      body:SafeArea(
+        top:false,
+        child:ListView(
+          padding:const EdgeInsets.only(bottom:24),
+          children:[
+            SizedBox(
+              height:MediaQuery.of(context).size.height*.34,
+              child:Stack(children:[
+                FlutterMap(
+                  options:MapOptions(initialCenter:center,initialZoom:15),
+                  children:[
+                    TileLayer(
+                      urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      maxZoom:19,
+                      userAgentPackageName:'com.allways.app',
+                    ),
+                    if(position!=null)
+                      MarkerLayer(markers:[
+                        Marker(
+                          point:center,width:50,height:50,
+                          child:Container(
+                            decoration:BoxDecoration(
+                              color:const Color(0xFF5B1ACF),
+                              shape:BoxShape.circle,
+                              border:Border.all(color:Colors.white,width:4),
+                            ),
+                            child:const Icon(Icons.navigation,color:Colors.white,size:22),
+                          ),
+                        ),
+                      ]),
+                    const RichAttributionWidget(
+                      attributions:[TextSourceAttribution('© OpenStreetMap contributors')],
+                    ),
+                  ],
+                ),
+                Positioned(
+                  top:MediaQuery.of(context).padding.top+12,
+                  left:16,right:16,
+                  child:Card(
+                    elevation:4,
+                    child:ListTile(
+                      leading:const Icon(Icons.location_on_outlined),
+                      title:Text(
+                        loading?'Locating you…':
+                        position==null?'Location unavailable':'Current location',
+                        style:const TextStyle(fontWeight:FontWeight.w700),
+                      ),
+                      trailing:IconButton(onPressed:_locate,icon:const Icon(Icons.my_location)),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            Transform.translate(
+              offset:const Offset(0,-18),
+              child:Padding(
+                padding:const EdgeInsets.symmetric(horizontal:16),
+                child:Card(
+                  elevation:4,
+                  shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(26)),
+                  child:InkWell(
+                    borderRadius:BorderRadius.circular(26),
+                    onTap:()=>_openRide('bike'),
+                    child:const Padding(
+                      padding:EdgeInsets.fromLTRB(20,18,20,18),
+                      child:Row(children:[
+                        Icon(Icons.search,size:28),
+                        SizedBox(width:12),
+                        Expanded(child:Text('Where are you going?',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800))),
+                        Icon(Icons.arrow_forward_ios,size:16),
+                      ]),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-      ])),
-      Expanded(child:ListView(padding:const EdgeInsets.fromLTRB(16,12,16,28),children:[
-        Row(children:[Expanded(child:ChoiceChip(label:const Text('Bike'),selected:rideType=='bike',onSelected:(_){setState(()=>rideType='bike');if(drop!=null)_route();})),const SizedBox(width:8),Expanded(child:ChoiceChip(label:const Text('Auto'),selected:rideType=='auto',onSelected:(_){setState(()=>rideType='auto');if(drop!=null)_route();}))]),
-        const SizedBox(height:10),
-        if(drop!=null)Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-          Row(children:[Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),const SizedBox(width:10),Expanded(child:Text(rideType=='bike'?'Bike':'Auto',style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900))]),
-          const SizedBox(height:8),Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),if(routeError!=null)Text('Route fallback: '+routeError!,style:const TextStyle(color:Colors.grey,fontSize:11)),const SizedBox(height:12),
-          SizedBox(width:double.infinity,child:FilledButton(onPressed:routing?null:_request,child:Text(routing?'Calculating…':'Request '+(rideType=='bike'?'Bike':'Auto')))),
-        ]))),
-        if(drop==null)const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('Search for a destination to see the route, distance, ETA and upfront estimate before requesting your ride.'))),
-      ])),
-    ])));
+            Padding(
+              padding:const EdgeInsets.fromLTRB(16,0,16,18),
+              child:Column(
+                crossAxisAlignment:CrossAxisAlignment.start,
+                children:[
+                  const Text('Ride with ALLways',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:10),
+                  Row(children:[
+                    Expanded(child:_RideTypeCard(
+                      icon:Icons.two_wheeler,title:'Bike',subtitle:'Quick local ride',
+                      onTap:()=>_openRide('bike'),
+                    )),
+                    const SizedBox(width:10),
+                    Expanded(child:_RideTypeCard(
+                      icon:Icons.local_taxi_outlined,title:'Auto',subtitle:'Affordable local ride',
+                      onTap:()=>_openRide('auto'),
+                    )),
+                  ]),
+                  const SizedBox(height:22),
+                  const Text('Recent rides',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:6),
+                  FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
+                    future:_recentRides(),
+                    builder:(context,snapshot){
+                      final rides=snapshot.data??[];
+                      if(rides.isEmpty){
+                        return const Card(child:ListTile(
+                          leading:Icon(Icons.history),
+                          title:Text('Your recent rides will appear here.'),
+                          subtitle:Text('Book a ride to get started.'),
+                        ));
+                      }
+                      return Column(children:rides.map((doc){
+                        final d=doc.data();
+                        final destination=(d['destinationAddress']??d['destination']??'Previous destination').toString();
+                        final type=(d['rideType']??'bike').toString();
+                        final status=(d['status']??'').toString();
+                        return Card(child:ListTile(
+                          leading:Icon(type=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
+                          title:Text(destination,maxLines:1,overflow:TextOverflow.ellipsis),
+                          subtitle:Text(status.isEmpty?type.toUpperCase():status),
+                          trailing:const Icon(Icons.chevron_right),
+                          onTap:()=>_openRide(type=='auto'?'auto':'bike',destination:destination),
+                        ));
+                      }).toList());
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
+
+class _RideTypeCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _RideTypeCard({required this.icon,required this.title,required this.subtitle,required this.onTap});
+
+  @override Widget build(BuildContext context)=>Card(
+    child:InkWell(
+      onTap:onTap,
+      borderRadius:BorderRadius.circular(18),
+      child:Padding(
+        padding:const EdgeInsets.all(16),
+        child:Column(
+          crossAxisAlignment:CrossAxisAlignment.start,
+          children:[
+            Icon(icon,size:30),
+            const SizedBox(height:10),
+            Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
+            const SizedBox(height:3),
+            Text(subtitle,style:const TextStyle(color:Colors.grey)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class OnDemandRidePage extends StatefulWidget {
+  final String rideType;
+  final String? initialDestination;
+  const OnDemandRidePage({super.key,required this.rideType,this.initialDestination});
+  @override State<OnDemandRidePage> createState()=>_OnDemandRidePageState();
+}
+
+class _OnDemandRidePageState extends State<OnDemandRidePage> {
+  final destination=TextEditingController();
+  Position? pickup;
+  LatLng? drop;
+  String pickupAddress='Current location';
+  String? pickupPincode;
+  String? destinationPincode;
+  List<Map<String,dynamic>> places=[];
+  List<LatLng> route=[];
+  bool searching=false,routing=false;
+  double km=0,fare=0;
+  int eta=0;
+  String? routeError;
+  String get rideType=>widget.rideType=='auto'?'auto':'bike';
+
+  @override void initState(){
+    super.initState();
+    if(widget.initialDestination!=null)destination.text=widget.initialDestination!.trim();
+    _loadPickup();
+  }
+  @override void dispose(){destination.dispose();super.dispose();}
+
+  Future<void> _loadPickup() async {
+    try{
+      if(!await Geolocator.isLocationServiceEnabled())return;
+      var p=await Geolocator.checkPermission();
+      if(p==LocationPermission.denied)p=await Geolocator.requestPermission();
+      if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return;
+      pickup=await Geolocator.getCurrentPosition(
+        locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
+      );
+      try{
+        final marks=await placemarkFromCoordinates(pickup!.latitude,pickup!.longitude);
+        if(marks.isNotEmpty){
+          final m=marks.first;
+          final values=[m.name,m.street,m.locality,m.subLocality,m.postalCode]
+              .whereType<String>().map((x)=>x.trim()).where((x)=>x.isNotEmpty).toSet().toList();
+          if(values.isNotEmpty)pickupAddress=values.join(', ');
+          pickupPincode=m.postalCode;
+        }
+      }catch(_){}
+      if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty){
+        await _search(showMessage:false);
+      }
+    }catch(_){}
+    if(mounted)setState((){});
+  }
+
+  Future<void> _search({bool showMessage=true}) async {
+    final q=destination.text.trim();
+    if(q.isEmpty){
+      if(showMessage&&mounted)ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content:Text('Enter a destination.')));
+      return;
+    }
+    setState(()=>searching=true);
+    try{
+      final uri=Uri.https('nominatim.openstreetmap.org','/search',{
+        'q':q,'format':'jsonv2','limit':'5','countrycodes':'in','addressdetails':'1',
+      });
+      final res=await http.get(uri,headers:const {'User-Agent':'ALLways/1.5 (ALLways)'})
+          .timeout(const Duration(seconds:10));
+      if(res.statusCode!=200)throw Exception('Search unavailable');
+      final decoded=jsonDecode(res.body);
+      places=decoded is List
+          ? decoded.whereType<Map>().map((x)=>Map<String,dynamic>.from(x)).toList()
+          : [];
+      if(places.isEmpty)throw Exception('No matching places found.');
+    }catch(e){
+      places=[];
+      if(showMessage&&mounted)ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));
+    }finally{
+      if(mounted)setState(()=>searching=false);
+    }
+  }
+
+  Future<void> _choose(Map<String,dynamic> place) async {
+    final lat=double.tryParse((place['lat']??'').toString());
+    final lon=double.tryParse((place['lon']??'').toString());
+    if(lat==null||lon==null)return;
+    destination.text=(place['display_name']??destination.text).toString();
+    drop=LatLng(lat,lon);
+    final address=place['address'];
+    destinationPincode=address is Map?address['postcode']?.toString():null;
+    places=[];
+    await _route();
+    if(mounted)setState((){});
+  }
+
+  Future<void> _route() async {
+    if(pickup==null||drop==null)return;
+    setState(()=>routing=true);
+    try{
+      final url='https://router.project-osrm.org/route/v1/driving/'
+        +pickup!.longitude.toString()+','+pickup!.latitude.toString()+';'
+        +drop!.longitude.toString()+','+drop!.latitude.toString()
+        +'?overview=full&geometries=geojson';
+      final res=await http.get(Uri.parse(url),headers:const {'User-Agent':'ALLways/1.5 (ALLways)'})
+          .timeout(const Duration(seconds:15));
+      if(res.statusCode!=200)throw Exception('Routing unavailable');
+      final decoded=jsonDecode(res.body);
+      final routes=decoded is Map?decoded['routes']:null;
+      if(routes is! List||routes.isEmpty)throw Exception('No route found');
+      final first=Map<String,dynamic>.from(routes.first as Map);
+      km=((first['distance'] as num?)?.toDouble()??0)/1000;
+      eta=math.max(1,(((first['duration'] as num?)?.toDouble()??0)/60).round());
+      route=[];
+      final geometry=first['geometry'];
+      final coordinates=geometry is Map?geometry['coordinates']:null;
+      if(coordinates is List){
+        for(final pair in coordinates){
+          if(pair is List&&pair.length>=2){
+            route.add(LatLng((pair[1] as num).toDouble(),(pair[0] as num).toDouble()));
+          }
+        }
+      }
+      routeError=null;
+    }catch(e){
+      route=[];
+      routeError=e.toString().replaceFirst('Exception: ','');
+      km=Geolocator.distanceBetween(
+        pickup!.latitude,pickup!.longitude,drop!.latitude,drop!.longitude)/1000;
+      eta=math.max(1,(km/25*60).round());
+    }
+    _fare();
+    if(mounted)setState(()=>routing=false);
+  }
+
+  void _fare(){
+    final base=rideType=='bike'?20.0:30.0;
+    final per=rideType=='bike'?8.0:12.0;
+    final minimum=rideType=='bike'?30.0:40.0;
+    fare=km<=0?minimum:math.max(minimum,base+km*per);
+  }
+
+  Future<void> _requestRide() async {
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));
+      return;
+    }
+    if(pickup==null){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Turn on location to request a ride.')));
+      return;
+    }
+    if(drop==null){
+      await _search();
+      if(drop==null)return;
+    }
+    final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
+    if(pin.isNotEmpty&&!await isPincodeServiceable(pin)){
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content:Text('Pincode '+pin+' is not serviceable yet. Other pincodes will be available soon.')));
+      return;
+    }
+    final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).get();
+    final customer=snap.data()??{};
+    final phone=(u.phoneNumber??customer['phone']??customer['mobileNumber']??'').toString();
+
+    final confirmed=await showModalBottomSheet<bool>(
+      context:context,
+      builder:(c)=>SafeArea(
+        child:Padding(
+          padding:const EdgeInsets.all(18),
+          child:Column(
+            mainAxisSize:MainAxisSize.min,
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              Row(children:[
+                Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
+                const SizedBox(width:10),
+                Expanded(child:Text(
+                  rideType=='bike'?'Bike ride':'Auto ride',
+                  style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900),
+                )),
+                Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+              ]),
+              const SizedBox(height:8),
+              Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),
+              Text('Pickup: '+pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis),
+              Text('Drop: '+destination.text.trim(),maxLines:2,overflow:TextOverflow.ellipsis),
+              const SizedBox(height:12),
+              SizedBox(
+                width:double.infinity,
+                child:FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Confirm ride')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    )??false;
+    if(!confirmed)return;
+
+    final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
+      'customerUid':u.uid,
+      'customerName':u.displayName??customer['name']??'ALLways customer',
+      'customerPhone':phone,
+      'rideType':rideType,
+      'status':'searching',
+      'pickupLatitude':pickup!.latitude,
+      'pickupLongitude':pickup!.longitude,
+      'pickupAddress':pickupAddress,
+      'pickupPincode':pickupPincode,
+      'destination':destination.text.trim(),
+      'destinationAddress':destination.text.trim(),
+      'destinationLatitude':drop!.latitude,
+      'destinationLongitude':drop!.longitude,
+      'destinationPincode':pin,
+      'distanceKm':km,
+      'etaMinutes':eta,
+      'estimatedFare':fare,
+      'rejectedBy':<String>[],
+      'createdAt':FieldValue.serverTimestamp(),
+      'updatedAt':FieldValue.serverTimestamp(),
+    });
+
+    if(mounted)Navigator.push(context,MaterialPageRoute(
+      builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
+  }
+
+  @override Widget build(BuildContext context){
+    final scheme=Theme.of(context).colorScheme;
+    final center=drop??(pickup==null
+        ?const LatLng(25.4358,81.8463)
+        :LatLng(pickup!.latitude,pickup!.longitude));
+    return Scaffold(
+      backgroundColor:scheme.surface,
+      body:SafeArea(
+        top:false,
+        child:Column(children:[
+          SizedBox(
+            height:MediaQuery.of(context).size.height*.43,
+            child:Stack(children:[
+              FlutterMap(
+                options:MapOptions(initialCenter:center,initialZoom:14.5),
+                children:[
+                  TileLayer(
+                    urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    maxZoom:19,userAgentPackageName:'com.allways.app'),
+                  if(route.length>1)PolylineLayer(polylines:[
+                    Polyline(points:route,strokeWidth:5,color:const Color(0xFF5B1ACF)),
+                  ]),
+                  MarkerLayer(markers:[
+                    if(pickup!=null)Marker(
+                      point:LatLng(pickup!.latitude,pickup!.longitude),
+                      width:44,height:44,
+                      child:const Icon(Icons.my_location,color:Colors.blue,size:30)),
+                    if(drop!=null)Marker(
+                      point:drop!,width:44,height:44,
+                      child:const Icon(Icons.location_on,color:Colors.red,size:34)),
+                  ]),
+                  const RichAttributionWidget(
+                    attributions:[TextSourceAttribution('© OpenStreetMap contributors')]),
+                ],
+              ),
+              Positioned(
+                top:MediaQuery.of(context).padding.top+10,left:12,right:12,
+                child:Card(
+                  elevation:5,
+                  shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(24)),
+                  child:Padding(
+                    padding:const EdgeInsets.symmetric(horizontal:10,vertical:4),
+                    child:Row(children:[
+                      IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),
+                      Expanded(child:TextField(
+                        controller:destination,
+                        onSubmitted:(_)=>_search(),
+                        decoration:const InputDecoration(
+                          filled:false,border:InputBorder.none,
+                          prefixIcon:Icon(Icons.search),
+                          hintText:'Where are you going?',
+                        ),
+                      )),
+                      searching
+                          ? const SizedBox(width:22,height:22,child:CircularProgressIndicator(strokeWidth:2))
+                          : IconButton(onPressed:_search,icon:const Icon(Icons.search)),
+                    ]),
+                  ),
+                ),
+              ),
+              if(places.isNotEmpty)
+                Positioned(
+                  top:MediaQuery.of(context).padding.top+76,left:16,right:16,
+                  child:Card(
+                    elevation:6,
+                    child:ConstrainedBox(
+                      constraints:const BoxConstraints(maxHeight:260),
+                      child:ListView(
+                        shrinkWrap:true,
+                        children:places.map((place)=>ListTile(
+                          leading:const Icon(Icons.location_on_outlined),
+                          title:Text(
+                            (place['name']??place['display_name']??'Place').toString(),
+                            maxLines:1,overflow:TextOverflow.ellipsis),
+                          subtitle:Text(
+                            (place['display_name']??'').toString(),
+                            maxLines:2,overflow:TextOverflow.ellipsis),
+                          onTap:()=>_choose(place),
+                        )).toList(),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+          Expanded(
+            child:ListView(
+              padding:const EdgeInsets.fromLTRB(16,12,16,28),
+              children:[
+                Row(children:[
+                  Expanded(child:ChoiceChip(
+                    label:const Text('Bike'),
+                    selected:rideType=='bike',
+                    onSelected:(_){
+                      if(rideType!='bike')Navigator.pushReplacement(
+                        context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
+                          rideType:'bike',initialDestination:destination.text.trim())));
+                    },
+                  )),
+                  const SizedBox(width:8),
+                  Expanded(child:ChoiceChip(
+                    label:const Text('Auto'),
+                    selected:rideType=='auto',
+                    onSelected:(_){
+                      if(rideType!='auto')Navigator.pushReplacement(
+                        context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
+                          rideType:'auto',initialDestination:destination.text.trim())));
+                    },
+                  )),
+                ]),
+                const SizedBox(height:10),
+                if(drop!=null)Card(
+                  child:Padding(
+                    padding:const EdgeInsets.all(16),
+                    child:Column(
+                      crossAxisAlignment:CrossAxisAlignment.start,
+                      children:[
+                        Row(children:[
+                          Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
+                          const SizedBox(width:10),
+                          Expanded(child:Text(
+                            rideType=='bike'?'Bike':'Auto',
+                            style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),
+                          Text('₹'+fare.toStringAsFixed(0),
+                            style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+                        ]),
+                        const SizedBox(height:8),
+                        Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),
+                        if(routeError!=null)Padding(
+                          padding:const EdgeInsets.only(top:4),
+                          child:Text('Route fallback: '+routeError!,
+                            style:const TextStyle(color:Colors.grey,fontSize:11)),
+                        ),
+                        const SizedBox(height:12),
+                        SizedBox(
+                          width:double.infinity,
+                          child:FilledButton(
+                            onPressed:routing?null:_requestRide,
+                            child:Text(routing?'Calculating…':
+                              'Request '+(rideType=='bike'?'Bike':'Auto')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ) else const Card(
+                  child:Padding(
+                    padding:EdgeInsets.all(16),
+                    child:Text('Search for a destination to see the route, distance, ETA and upfront estimate before requesting your ride.'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 class OnDemandRideTrackingPage extends StatefulWidget {
   final String requestId,rideType;
   const OnDemandRideTrackingPage({super.key,required this.requestId,required this.rideType});
