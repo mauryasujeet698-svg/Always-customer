@@ -3541,7 +3541,12 @@ class _WishlistPageState extends State<WishlistPage> {
               )),
               const SizedBox(width:8),
               Expanded(child:FilledButton.icon(
-                onPressed: widget.onBuyAll,
+                onPressed: widget.onBuyAll==null?null:(){
+                  if(widget.onAdd!=null){
+                    for(final p in List<Product>.from(items)) widget.onAdd!(p);
+                  }
+                  widget.onBuyAll!();
+                },
                 icon:const Icon(Icons.shopping_bag_outlined),
                 label:const Text('Buy all'),
               )),
