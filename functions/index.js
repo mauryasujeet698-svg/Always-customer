@@ -514,3 +514,77 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
       {type:"vehicle_booking_update",bookingId:event.params.bookingId,status:String(after.status||"")});
   }
 );
+
+// Automatic Google Sheets -> Firestore catalog synchronization.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
+function catalogValue(row, headers, name, fallback = "") {
+  if (row && !Array.isArray(row) && typeof row === "object") {
+    const key = Object.keys(row).find(k => String(k).trim().toLowerCase() === name.toLowerCase());
+    return key ? row[key] : fallback;
+  }
+  if (!Array.isArray(row) || !Array.isArray(headers)) return fallback;
+  const index = headers.findIndex(h => String(h).trim().toLowerCase() === name.toLowerCase());
+  return index >= 0 ? row[index] : fallback;
+}
+function catalogBool(value, fallback = true) {
+  if (typeof value === "boolean") return value;
+  const v = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "available", "active", "in stock"].includes(v)) return true;
+  if (["false", "0", "no", "unavailable", "inactive", "out of stock"].includes(v)) return false;
+  return fallback;
+}
+function catalogNumber(value, fallback = 0) {
+  const n = Number(String(value ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : fallback;
+}
+exports.syncCatalogFromGoogleSheet = onSchedule(
+  { schedule: "every 5 minutes", timeZone: "Asia/Kolkata", region: "asia-south1" },
+  async () => {
+    const response = await fetch(CATALOG_SYNC_ENDPOINT, { redirect: "follow" });
+    if (!response.ok) throw new Error("Catalog Apps Script returned HTTP " + response.status);
+    const payload = await response.json();
+    if (!payload || payload.success !== true) throw new Error("Catalog Apps Script did not return success:true");
+    const headers = Array.isArray(payload.headers) ? payload.headers : [];
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    let written = 0;
+    for (let i = 0; i < rows.length; i += 400) {
+      const batch = db.batch();
+      for (const row of rows.slice(i, i + 400)) {
+        const rawId = catalogValue(row, headers, "ID", "");
+        const name = String(catalogValue(row, headers, "Product Name", "")).trim();
+        if (!name) continue;
+        const fallbackId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const id = String(rawId || fallbackId).trim();
+        if (!id) continue;
+        const product = {
+          id,
+          name,
+          category: String(catalogValue(row, headers, "Category", "")).trim(),
+          emoji: String(catalogValue(row, headers, "Emoji", "")).trim(),
+          price: catalogNumber(catalogValue(row, headers, "Price", 0)),
+          stock: catalogNumber(catalogValue(row, headers, "Stock", 0)),
+          available: catalogBool(catalogValue(row, headers, "Available", true), true),
+          maxQty: catalogNumber(catalogValue(row, headers, "Max Qty", 10), 10),
+          imageUrl: String(catalogValue(row, headers, "Image URL", "")).trim(),
+          updatedAt: FieldValue.serverTimestamp(),
+          source: "google_sheets",
+        };
+        batch.set(db.collection("products").doc(id), product, { merge: true });
+        batch.set(db.collection("inventory").doc(id), {
+          id, productId: id, name, category: product.category, price: product.price,
+          stock: product.stock, available: product.available, maxQty: product.maxQty,
+          imageUrl: product.imageUrl, updatedAt: FieldValue.serverTimestamp(), source: "google_sheets",
+        }, { merge: true });
+        written++;
+      }
+      await batch.commit();
+    }
+    await db.collection("settings").doc("catalogSync").set({
+      endpoint: CATALOG_SYNC_ENDPOINT, source: "google_sheets", automatic: true,
+      schedule: "every 5 minutes", lastSyncAt: FieldValue.serverTimestamp(),
+      lastRowCount: rows.length, lastWrittenCount: written, status: "success",
+    }, { merge: true });
+    console.log("Automatic catalog sync completed:", { rows: rows.length, written });
+  }
+);
