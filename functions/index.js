@@ -477,3 +477,34 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
     );
   }
 );
+
+
+exports.onVehicleBookingCreated = onDocumentCreated(
+  "vehicleBookings/{bookingId}",
+  async (event) => {
+    const booking=event.data?.data();
+    if(!booking)return;
+    const ownerUid=String(booking.ownerUid||"").trim();
+    if(!ownerUid)return;
+    await sendToUser(
+      ownerUid,
+      "New Vehicle Booking",
+      String(booking.customerName||"Customer")+" requested your "+String(booking.category||"vehicle")+".",
+      {type:"vehicle_booking",bookingId:event.params.bookingId,status:String(booking.status||"Booked")},
+      booking.ownerFcmToken||""
+    );
+  }
+);
+
+exports.onVehicleBookingUpdated = onDocumentUpdated(
+  "vehicleBookings/{bookingId}",
+  async (event) => {
+    const before=event.data.before.data()||{};
+    const after=event.data.after.data()||{};
+    if(String(before.status||"").toLowerCase()===String(after.status||"").toLowerCase())return;
+    const uid=String(after.customerUid||"").trim();
+    if(!uid)return;
+    await sendToUser(uid,"Vehicle Booking Update","Your vehicle booking is now "+String(after.status||"updated")+".",
+      {type:"vehicle_booking_update",bookingId:event.params.bookingId,status:String(after.status||"")});
+  }
+);
