@@ -2673,7 +2673,7 @@ class _TravelPageState extends State<TravelPage>{
             ]),
           ]),
         ),
-      ]));
+      ])));
   }
 }
 class ProfilePage extends StatefulWidget{
