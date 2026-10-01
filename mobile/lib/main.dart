@@ -3443,6 +3443,31 @@ class SavedAddressesPage extends StatefulWidget {
 class _SavedAddressesPageState extends State<SavedAddressesPage> {
   bool saving=false;
 
+  Future<void> _deleteSavedAddress(String id) async {
+    if(id.trim().isEmpty)return;
+    final confirm=await showDialog<bool>(
+      context:context,
+      builder:(c)=>AlertDialog(
+        title:const Text('Delete address?'),
+        content:const Text('This saved address will be permanently removed.'),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),
+          FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Delete')),
+        ],
+      ),
+    )??false;
+    if(!confirm)return;
+    setState(()=>saving=true);
+    try{
+      await widget.onDelete(id);
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Address deleted.')));
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not delete address: '+e.toString())));
+    }finally{
+      if(mounted)setState(()=>saving=false);
+    }
+  }
+
   Future<void> _editAddress(Map<String,dynamic> item) async {
     final name=TextEditingController(text:(item['name']??'').toString());
     final phone=TextEditingController(text:(item['phone']??'').toString());
@@ -3517,7 +3542,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
                     mainAxisSize:MainAxisSize.min,
                     children:[
                       IconButton(tooltip:'Edit',onPressed:saving?null:()=>_editAddress(x),icon:const Icon(Icons.edit)),
-                      IconButton(tooltip:'Delete',onPressed:saving?null:()=>widget.onDelete(x['id'].toString()),icon:const Icon(Icons.delete_outline)),
+                      IconButton(tooltip:'Delete',onPressed:saving?null:()=>_deleteSavedAddress((x['id']??'').toString()),icon:const Icon(Icons.delete_outline)),
                     ],
                   ),
                 ),
