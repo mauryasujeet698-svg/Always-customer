@@ -2,6 +2,7 @@ const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
+const {FieldValue} = require("firebase-admin/firestore");
 
 initializeApp();
 
@@ -58,7 +59,7 @@ exports.sendAnnouncement = onDocumentCreated(
 
       await snapshot.ref.update({
         status: "sent",
-        sentAt: new Date(),
+        sentAt: FieldValue.serverTimestamp(),
       });
     } catch (error) {
       console.error("ALLways announcement notification failed:", error);
