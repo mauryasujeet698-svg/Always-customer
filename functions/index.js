@@ -435,16 +435,45 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
   async (event) => {
     const announcement = event.data?.data();
     if (!announcement) return;
+
     const title = String(announcement.title || "ALLways");
     const body = String(announcement.body || "");
     if (!body) return;
+
+    const rawAudience = String(
+      announcement.topic || announcement.targetAudience || "all_users"
+    ).trim().toLowerCase();
+
+    const allowedTopics = new Set([
+      "all_users",
+      "customers",
+      "admins",
+      "carriers",
+      "delivery_partners",
+    ]);
+
+    const topic = allowedTopics.has(rawAudience) ? rawAudience : "all_users";
+
     await messaging.send(
       notificationMessage(
         title,
         body,
-        { type: "announcement", announcementId: event.params.announcementId },
-        { topic: "all_users" }
+        {
+          type: "announcement",
+          announcementId: event.params.announcementId,
+          topic,
+        },
+        { topic }
       )
+    );
+
+    await event.data.ref.set(
+      {
+        status: "sent",
+        sentAt: FieldValue.serverTimestamp(),
+        sentTopic: topic,
+      },
+      { merge: true }
     );
   }
 );
