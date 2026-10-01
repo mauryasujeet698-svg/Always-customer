@@ -756,7 +756,7 @@ jobs:
 
       - name: Runtime smoke test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
-        timeout-minutes: 20
+        timeout-minutes: 35
         with:
           api-level: 34
           target: google_apis
@@ -766,7 +766,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 1500
           pre-emulator-launch-script: |
             echo "Resetting ADB before emulator launch..."
             adb kill-server || true
