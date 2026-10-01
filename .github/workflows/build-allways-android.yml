@@ -600,6 +600,16 @@ jobs:
           grep -q "collection('settings').doc('homepage')" lib/main.dart
           echo "PASS: Customer catalog has primary inventory source, Firestore fallback, and homepage configuration integration."
 
+      - name: Deploy Firebase Functions
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+          npm install --global firebase-tools@latest
+          firebase deploy --only functions --project allways-web --non-interactive
+
       - name: Get packages
         run: |
           cd mobile
