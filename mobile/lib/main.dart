@@ -2837,16 +2837,18 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
   String pickupAddress='Current location';
   String? pickupPincode;
   String? destinationPincode;
+  late String selectedRideType;
   List<Map<String,dynamic>> places=[];
   List<LatLng> route=[];
   bool searching=false,routing=false;
   double km=0,fare=0;
   int eta=0;
   String? routeError;
-  String get rideType=>widget.rideType=='auto'?'auto':'bike';
+  String get rideType=>selectedRideType;
 
   @override void initState(){
     super.initState();
+    selectedRideType=widget.rideType=='auto'?'auto':'bike';
     if(widget.initialDestination!=null)destination.text=widget.initialDestination!.trim();
     _loadPickup();
   }
@@ -3007,6 +3009,24 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                   style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900),
                 )),
                 Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+              ]),
+              const SizedBox(height:12),
+              Row(children:[
+                Expanded(child:ChoiceChip(
+                  selected:rideType=='bike',
+                  onSelected:(_){setState((){selectedRideType='bike';_fare();});},
+                  label:const Row(mainAxisAlignment:MainAxisAlignment.center,children:[
+                    Icon(Icons.two_wheeler,size:18),SizedBox(width:6),Text('Bike'),
+                  ]),
+                )),
+                const SizedBox(width:10),
+                Expanded(child:ChoiceChip(
+                  selected:rideType=='auto',
+                  onSelected:(_){setState((){selectedRideType='auto';_fare();});},
+                  label:const Row(mainAxisAlignment:MainAxisAlignment.center,children:[
+                    Icon(Icons.local_taxi_outlined,size:18),SizedBox(width:6),Text('Auto'),
+                  ]),
+                )),
               ]),
               const SizedBox(height:8),
               Text(km.toStringAsFixed(1)+' km • '+eta.toString()+' min'),
