@@ -788,12 +788,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   );
 }
 class Product {
-  final String id,name,category,icon,description,brand;
+  final String id,name,category,icon,description,brand,imageUrl;
   final num price,stock;
-  const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.price,required this.stock});
+  const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.imageUrl,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
+    final image=(j['imageUrl']??j['Image URL']??j['image_url']??j['image']??'').toString().trim();
+    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
 class CartItem { final Product product; int qty; CartItem(this.product,this.qty); }
@@ -1604,7 +1605,15 @@ class _ShopPageState extends State<ShopPage>{
                       color:const Color(0xFFF5F5F5),
                       borderRadius:BorderRadius.circular(12),
                     ),
-                    child:Text(p.icon,style:const TextStyle(fontSize:42)),
+                    child:p.imageUrl.isNotEmpty
+                         ? Image.network(
+                             p.imageUrl,
+                             fit:BoxFit.cover,
+                             width:double.infinity,
+                             height:96,
+                             errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:42)),
+                           )
+                         : Text(p.icon,style:const TextStyle(fontSize:42)),
                   ),
                   Positioned(
                     right:-2,
@@ -1771,7 +1780,10 @@ class CategoryProductsPage extends StatelessWidget{
           final p=products[i],item=cart[p.id],liked=wishlistIds.contains(p.id);
           return Card(clipBehavior:Clip.antiAlias,child:Padding(padding:const EdgeInsets.all(9),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Stack(children:[
-              Container(height:150,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(14)),child:Text(p.icon,style:const TextStyle(fontSize:60))),
+              Container(height:150,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(14)),
+                child:p.imageUrl.isNotEmpty
+                    ? Image.network(p.imageUrl,fit:BoxFit.cover,width:double.infinity,height:150,errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:60)))
+                    : Text(p.icon,style:const TextStyle(fontSize:60))),
               Positioned(right:0,top:0,child:IconButton(onPressed:()=>onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red))),
             ]),
             const SizedBox(height:7),
@@ -1886,7 +1898,16 @@ class ProductScreen extends StatelessWidget{
   final Product product; final VoidCallback onAdd; final bool liked; final VoidCallback onWishlist;
   const ProductScreen({super.key,required this.product,required this.onAdd,required this.liked,required this.onWishlist});
   @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:Text(product.name),actions:[IconButton(onPressed:onWishlist,icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red))]),body:ListView(padding:const EdgeInsets.all(20),children:[
-    CircleAvatar(radius:54,child:Text(product.icon,style:const TextStyle(fontSize:44))),const SizedBox(height:20),
+    Container(
+       height:220,
+       width:double.infinity,
+       alignment:Alignment.center,
+       decoration:BoxDecoration(color:Theme.of(c).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),
+       clipBehavior:Clip.antiAlias,
+       child:product.imageUrl.isNotEmpty
+           ? Image.network(product.imageUrl,fit:BoxFit.cover,width:double.infinity,height:220,errorBuilder:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
+           : Text(product.icon,style:const TextStyle(fontSize:70)),
+     ),const SizedBox(height:20),
     Text(product.name,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:8),Text(product.category,style:const TextStyle(color:Colors.grey)),
     if(product.brand.isNotEmpty)Text(product.brand,style:const TextStyle(color:Colors.grey)),const SizedBox(height:14),
     Text('₹'+product.price.toString(),style:const TextStyle(fontSize:24,fontWeight:FontWeight.w800)),const SizedBox(height:14),
