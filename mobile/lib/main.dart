@@ -2745,18 +2745,60 @@ class _TravelPageState extends State<TravelPage> {
                 children:[
                   const Text('Ride with ALLways',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
                   const SizedBox(height:10),
-                  Row(children:[
-                    Expanded(child:_RideTypeCard(
-                      icon:Icons.two_wheeler,title:'Bike',subtitle:'Quick local ride',
-                      onTap:()=>_openRide('bike'),
-                    )),
-                    const SizedBox(width:10),
-                    Expanded(child:_RideTypeCard(
-                      icon:Icons.local_taxi_outlined,title:'Auto',subtitle:'Affordable local ride',
-                      onTap:()=>_openRide('auto'),
-                    )),
-                  ]),
-                  const SizedBox(height:22),
+                  SingleChildScrollView(
+                    scrollDirection:Axis.horizontal,
+                    child:Row(children:[
+                      SizedBox(width:154,child:_RideTypeCard(
+                        icon:Icons.two_wheeler,title:'Bike',subtitle:'Quick local ride',
+                        onTap:()=>_openRide('bike'),
+                      )),
+                      const SizedBox(width:10),
+                      SizedBox(width:154,child:_RideTypeCard(
+                        icon:Icons.local_taxi_outlined,title:'Auto',subtitle:'Affordable local ride',
+                        onTap:()=>_openRide('auto'),
+                      )),
+                      const SizedBox(width:10),
+                      SizedBox(width:154,child:_RideTypeCard(
+                        icon:Icons.directions_car_outlined,title:'Cab',subtitle:'Comfortable ride',
+                        onTap:()=>_openRide('car'),
+                      )),
+                    ]),
+                  ),
+                  const SizedBox(height:18),
+                  StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+                    stream:FirebaseAuth.instance.currentUser==null
+                        ? null
+                        : FirebaseFirestore.instance.collection('autoRideRequests')
+                            .where('customerUid',isEqualTo:FirebaseAuth.instance.currentUser!.uid)
+                            .snapshots(),
+                    builder:(context,snapshot){
+                      final docs=snapshot.data?.docs??[];
+                      QueryDocumentSnapshot<Map<String,dynamic>>? active;
+                      for(final doc in docs){
+                        final status=(doc.data()['status']??'').toString().toLowerCase();
+                        if(status=='searching'||status=='accepted'||status=='arrived'||status=='started'){
+                          active=doc;break;
+                        }
+                      }
+                      if(active==null)return const SizedBox.shrink();
+                      final d=active.data();
+                      final type=(d['rideType']??'bike').toString().toLowerCase();
+                      final destination=(d['destinationAddress']??d['destination']??'Your destination').toString();
+                      final status=(d['status']??'searching').toString();
+                      return Card(
+                        child:ListTile(
+                          leading:CircleAvatar(child:Icon(type=='bike'?Icons.two_wheeler:type=='car'?Icons.directions_car_outlined:Icons.local_taxi_outlined)),
+                          title:const Text('Active ride',style:TextStyle(fontWeight:FontWeight.w900)),
+                          subtitle:Text(status+' • '+destination,maxLines:1,overflow:TextOverflow.ellipsis),
+                          trailing:const Icon(Icons.chevron_right),
+                          onTap:()=>Navigator.push(context,MaterialPageRoute(
+                            builder:(_)=>OnDemandRideTrackingPage(requestId:active!.id,rideType:type),
+                          )),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height:18),
                   const Text('Recent rides',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
                   const SizedBox(height:6),
                   FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
@@ -2962,9 +3004,9 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
   }
 
   void _fare(){
-    final base=rideType=='bike'?20.0:30.0;
-    final per=rideType=='bike'?8.0:12.0;
-    final minimum=rideType=='bike'?30.0:40.0;
+    final base=rideType=='bike'?20.0:rideType=='auto'?30.0:50.0;
+    final per=rideType=='bike'?8.0:rideType=='auto'?12.0:16.0;
+    final minimum=rideType=='bike'?30.0:rideType=='auto'?40.0:60.0;
     fare=km<=0?minimum:math.max(minimum,base+km*per);
   }
 
@@ -3005,7 +3047,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                 Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
                 const SizedBox(width:10),
                 Expanded(child:Text(
-                  rideType=='bike'?'Bike ride':'Auto ride',
+                  rideType=='bike'?'Bike ride':rideType=='auto'?'Auto ride':'Cab ride',
                   style:const TextStyle(fontSize:21,fontWeight:FontWeight.w900),
                 )),
                 Text('₹'+fare.toStringAsFixed(0),style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
@@ -3160,27 +3202,43 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
             child:ListView(
               padding:const EdgeInsets.fromLTRB(16,12,16,28),
               children:[
-                Row(children:[
-                  Expanded(child:ChoiceChip(
-                    label:const Text('Bike'),
-                    selected:rideType=='bike',
-                    onSelected:(_){
-                      if(rideType!='bike')Navigator.pushReplacement(
-                        context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
-                          rideType:'bike',initialDestination:destination.text.trim())));
-                    },
-                  )),
-                  const SizedBox(width:8),
-                  Expanded(child:ChoiceChip(
-                    label:const Text('Auto'),
-                    selected:rideType=='auto',
-                    onSelected:(_){
-                      if(rideType!='auto')Navigator.pushReplacement(
-                        context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
-                          rideType:'auto',initialDestination:destination.text.trim())));
-                    },
-                  )),
-                ]),
+                SingleChildScrollView(
+                  scrollDirection:Axis.horizontal,
+                  child:Row(children:[
+                    ChoiceChip(
+                      avatar:const Icon(Icons.two_wheeler,size:18),
+                      label:const Text('Bike'),
+                      selected:rideType=='bike',
+                      onSelected:(_){
+                        if(rideType!='bike')Navigator.pushReplacement(
+                          context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
+                            rideType:'bike',initialDestination:destination.text.trim())));
+                      },
+                    ),
+                    const SizedBox(width:8),
+                    ChoiceChip(
+                      avatar:const Icon(Icons.local_taxi_outlined,size:18),
+                      label:const Text('Auto'),
+                      selected:rideType=='auto',
+                      onSelected:(_){
+                        if(rideType!='auto')Navigator.pushReplacement(
+                          context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
+                            rideType:'auto',initialDestination:destination.text.trim())));
+                      },
+                    ),
+                    const SizedBox(width:8),
+                    ChoiceChip(
+                      avatar:const Icon(Icons.directions_car_outlined,size:18),
+                      label:const Text('Cab'),
+                      selected:rideType=='car',
+                      onSelected:(_){
+                        if(rideType!='car')Navigator.pushReplacement(
+                          context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
+                            rideType:'car',initialDestination:destination.text.trim())));
+                      },
+                    ),
+                  ]),
+                ),
                 const SizedBox(height:10),
                 if(drop!=null)Card(
                   child:Padding(
@@ -3192,7 +3250,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                           Icon(rideType=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
                           const SizedBox(width:10),
                           Expanded(child:Text(
-                            rideType=='bike'?'Bike':'Auto',
+                            rideType=='bike'?'Bike':rideType=='auto'?'Auto':'Cab',
                             style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),
                           Text('₹'+fare.toStringAsFixed(0),
                             style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
@@ -3210,7 +3268,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                           child:FilledButton(
                             onPressed:routing?null:_requestRide,
                             child:Text(routing?'Calculating…':
-                              'Request '+(rideType=='bike'?'Bike':'Auto')),
+                              'Request '+(rideType=='bike'?'Bike':rideType=='auto'?'Auto':'Cab')),
                           ),
                         ),
                       ],
