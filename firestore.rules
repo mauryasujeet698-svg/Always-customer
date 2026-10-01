@@ -18,6 +18,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /fcmTokens/{userId}/tokens/{tokenId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /announcements/{id} {
+      allow read: if signedIn();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /orders/{orderId} {
       allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
       allow read: if signedIn() && (resource.data.customerId == request.auth.uid || isAdmin());
