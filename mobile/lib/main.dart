@@ -1358,7 +1358,7 @@ class _ShellState extends State<Shell> {
     final pages=[
       ShopPage(products:products,loading:loading,error:error,onRefresh:loadInventory,onAdd:add,cart:cart,onQty:qty,user:user,wishlistIds:wishlistIds,onWishlist:toggleWishlist,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),addresses:addresses),
       const TravelPage(),
-      ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems,onAdd:add),
+      ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems,onAdd:add,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder)))),
     ];
     return ValueListenableBuilder<String>(valueListenable:languageNotifier,builder:(context,lang,_)=>Scaffold(
       body:SafeArea(child:Column(children:[
@@ -3594,16 +3594,34 @@ class _WishlistPageState extends State<WishlistPage> {
           ),
           const SizedBox(height:10),
           ...items.map(
-
-          (p) => Card(
-            child: ListTile(
-              leading: CircleAvatar(child: Text(p.icon)),
-              title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text('₹' + p.price.toString() + ' • ' + p.category),
-              trailing: IconButton(onPressed: () => remove(p), icon: const Icon(Icons.favorite)),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => ProductScreen(product: p, onAdd: () { if (widget.onAdd != null) { widget.onAdd!(p); } else { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Open Wishlist from Shop or Profile to add items to the cart.'))); } }, liked: true, onWishlist: () => remove(p))),
+            (p) => Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Text(p.icon)),
+                title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('₹' + p.price.toString() + ' • ' + p.category),
+                trailing: IconButton(
+                  onPressed: () => remove(p),
+                  icon: const Icon(Icons.favorite),
+                ),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProductScreen(
+                      product: p,
+                      onAdd: () {
+                        if (widget.onAdd != null) {
+                          widget.onAdd!(p);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Open Wishlist from Shop or Profile to add items to the cart.')),
+                          );
+                        }
+                      },
+                      liked: true,
+                      onWishlist: () => remove(p),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
