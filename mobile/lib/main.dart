@@ -165,11 +165,11 @@ Future<Map<String,dynamic>> loadDeliverySettings() async {
   return {..._defaultDeliverySettings};
 }
 Future<String> extractPincode(String value) async {
-  final m=RegExp(r'(?<!\\d)\\d{6}(?!\\d)').firstMatch(value);
+  final m=RegExp(r'(?<!\d)\d{6}(?!\d)').firstMatch(value);
   return m?.group(0)??'';
 }
 Future<bool> isPincodeServiceable(String pincode) async {
-  final clean=pincode.replaceAll(RegExp(r'\\D'),'').trim();
+  final clean=pincode.replaceAll(RegExp(r'\D'),'').trim();
   if(clean.isEmpty)return true;
   try{
     final d=await FirebaseFirestore.instance.collection('serviceableZones').doc(clean).get();
