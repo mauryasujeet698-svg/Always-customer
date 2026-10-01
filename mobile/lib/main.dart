@@ -1912,7 +1912,7 @@ class _CartScreenState extends State<CartScreen>{
             content:const Text('Remove all items from your cart?'),
             actions:[
               TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Keep')),
-              FilledButton(onPressed:(){for(final item in List<CartItem>.from(widget.cart.values))widget.onQty(item.product.id,-item.qty);Navigator.pop(d);},child:const Text('Clear')),
+              FilledButton(onPressed:(){for(final item in List<CartItem>.from(widget.cart.values))widget.onQty(item.product.id,-item.qty);setState((){});Navigator.pop(d);},child:const Text('Clear')),
             ],
           ),
         ),icon:const Icon(Icons.delete_outline))],
@@ -1945,9 +1945,9 @@ class _CartScreenState extends State<CartScreen>{
                       Text('₹${x.product.price.toStringAsFixed(x.product.price%1==0?0:2)}',style:const TextStyle(color:AllwaysColors.muted)),
                       const SizedBox(height:8),
                       Container(height:34,decoration:BoxDecoration(color:AllwaysColors.primarySoft,borderRadius:BorderRadius.circular(17)),child:Row(mainAxisSize:MainAxisSize.min,children:[
-                        IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onQty(x.product.id,-1),icon:const Icon(Icons.remove,size:18,color:AllwaysColors.primary)),
+                        IconButton(visualDensity:VisualDensity.compact,onPressed:(){setState((){});widget.onQty(x.product.id,-1);setState((){});},icon:const Icon(Icons.remove,size:18,color:AllwaysColors.primary)),
                         SizedBox(width:28,child:Center(child:Text('${x.qty}',style:const TextStyle(fontWeight:FontWeight.w900)))),
-                        IconButton(visualDensity:VisualDensity.compact,onPressed:()=>widget.onQty(x.product.id,1),icon:const Icon(Icons.add,size:18,color:AllwaysColors.primary)),
+                        IconButton(visualDensity:VisualDensity.compact,onPressed:(){setState((){});widget.onQty(x.product.id,1);setState((){});},icon:const Icon(Icons.add,size:18,color:AllwaysColors.primary)),
                       ])),
                     ])),
                     const SizedBox(width:8),
