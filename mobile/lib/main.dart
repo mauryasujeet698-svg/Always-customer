@@ -835,6 +835,12 @@ class _ShellState extends State<Shell> {
         return;
       }
 
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
       try {
         await const MethodChannel('com.allways.app/apk_installer')
             .invokeMethod('createNotificationChannel');
@@ -843,6 +849,7 @@ class _ShellState extends State<Shell> {
       final notificationsEnabled = prefs.getBool('notifications_enabled') ?? prefs.getBool('allways_notifications_enabled') ?? true;
       if (!notificationsEnabled) return;
       await FirebaseMessaging.instance.subscribeToTopic('all_users');
+      await FirebaseMessaging.instance.subscribeToTopic('customers');
 
       final t = await FirebaseMessaging.instance.getToken();
 
@@ -921,6 +928,7 @@ class _ShellState extends State<Shell> {
       await setupNotifications();
     }else{
       await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
+      await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
       await prefs.setBool('allways_notifications_enabled',false);
       await prefs.setBool('notifications_enabled',false);
       if(user!=null){try{
