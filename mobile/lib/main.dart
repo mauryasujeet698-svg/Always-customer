@@ -114,6 +114,58 @@ const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/release
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://raw.githubusercontent.com/mauryasujeet698-svg/Always-website/allways-android-app/mobile/update.json';
 
+const Map<String,dynamic> _defaultDeliverySettings = {
+  'deliveryEnabled': true,
+  'instantEnabled': true,
+  'scheduledEnabled': true,
+  'freeScheduledThreshold': 499,
+  'scheduledPerKm': 11,
+  'instantBaseFee': 35,
+  'instantPerKm': 11,
+  'scheduledCutoffHour': 13,
+  'scheduledCutoffMinute': 30,
+  'pilotRadiusKm': 4,
+  'pilotCenterLat': 0,
+  'pilotCenterLng': 0,
+  'specialOfferEnabled': false,
+  'specialOfferTitle': 'Just for you',
+  'specialOfferMessage': 'More scheduled delivery slots are available today.',
+};
+
+num deliveryNum(Map<String,dynamic> s,String key,num fallback){
+  final v=s[key];
+  if(v is num)return v;
+  return num.tryParse((v??'').toString())??fallback;
+}
+
+bool deliveryBool(Map<String,dynamic> s,String key,bool fallback){
+  final v=s[key];
+  if(v is bool)return v;
+  return (v??fallback).toString().toLowerCase()=='true';
+}
+
+DateTime scheduledCutoffNow(Map<String,dynamic> s){
+  final now=DateTime.now();
+  final h=deliveryNum(s,'scheduledCutoffHour',13).toInt().clamp(0,23);
+  final m=deliveryNum(s,'scheduledCutoffMinute',30).toInt().clamp(0,59);
+  return DateTime(now.year,now.month,now.day,h,m);
+}
+
+int chargeableKm(double distanceKm){
+  if(distanceKm<=0)return 0;
+  return math.max(1,distanceKm.ceil());
+}
+
+Future<Map<String,dynamic>> loadDeliverySettings() async {
+  try{
+    final snap=await FirebaseFirestore.instance.collection('settings').doc('delivery').get();
+    final data=snap.data();
+    if(data!=null)return {..._defaultDeliverySettings,...data};
+  }catch(_){}
+  return {..._defaultDeliverySettings};
+}
+
+
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 final ValueNotifier<bool> unreadNotificationNotifier = ValueNotifier(false);
 final ValueNotifier<String> languageNotifier = ValueNotifier('English');
@@ -1148,10 +1200,10 @@ class _ShellState extends State<Shell> {
       if(mounted)setState((){});
     }catch(_){addresses=[];}
   }
-  Future<void> saveAddress(String n,String ph,String a) async {
+  Future<void> saveAddress(String n,String ph,String a,{double? latitude,double? longitude}) async {
     if(user==null)return;
     try{
-      await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').add({'name':n,'phone':ph,'address':a,'createdAt':FieldValue.serverTimestamp()});
+      await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').add({'name':n,'phone':ph,'address':a,'latitude':latitude,'longitude':longitude,'isCurrent':true,'createdAt':FieldValue.serverTimestamp()});
       await loadAddresses();
     }catch(_){}
   }
@@ -1160,20 +1212,84 @@ class _ShellState extends State<Shell> {
     try{await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').doc(id).delete();await loadAddresses();}catch(_){}
   }
 
-  Future<void> placeOrder(String name,String phone,String address,String note,double? latitude,double? longitude) async {
+  Future<void> placeOrder(String name,String phone,String address,String note,double? latitude,double? longitude,String deliveryType,DateTime? scheduledFor) async {
     if(user==null){login();return;} if(cart.isEmpty)return;
     await setupNotifications();
     final ph=phone.replaceAll(RegExp(r'\D'),'');
     if(name.trim().isEmpty||!RegExp(r'^\d{10}$').hasMatch(ph)||address.trim().isEmpty){msg('Enter name, valid 10-digit phone and address.');return;}
-    for(final x in cart.values){final p=products.where((z)=>z.id==x.product.id).firstOrNull;if(p==null||p.stock<x.qty){msg(x.product.name+' is no longer available.');await loadInventory();return;}}
-    final sub=total;final delivery=sub>=499?0:30;final grand=sub+delivery;final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
-    final order={'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'','name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),'customerLatitude':latitude,'customerLongitude':longitude,'locationSource':latitude!=null&&longitude!=null?'gps':'address',
+
+    final settings=await loadDeliverySettings();
+    final scheduled=(deliveryType=='scheduled');
+    if(!deliveryBool(settings,'deliveryEnabled',true)){msg('ALLways delivery is temporarily unavailable.');return;}
+    if(scheduled && !deliveryBool(settings,'scheduledEnabled',true)){msg('Scheduled delivery is currently unavailable.');return;}
+    if(!scheduled && !deliveryBool(settings,'instantEnabled',true)){msg('Instant delivery is currently unavailable.');return;}
+    if(scheduled && DateTime.now().isAfter(scheduledCutoffNow(settings))){
+      msg('Scheduled orders are closed for today. You can still place an instant order.');
+      return;
+    }
+    if(scheduled && scheduledFor!=null && scheduledFor.isBefore(DateTime.now().add(const Duration(minutes:30)))){
+      msg('Choose a scheduled time at least 30 minutes from now.');return;
+    }
+    if(scheduled && scheduledFor==null){msg('Please choose a scheduled delivery time.');return;}
+
+    for(final x in cart.values){
+      final p=products.where((z)=>z.id==x.product.id).firstOrNull;
+      if(p==null||p.stock<x.qty){msg(x.product.name+' is no longer available.');await loadInventory();return;}
+    }
+
+    final sub=total;
+    final threshold=deliveryNum(settings,'freeScheduledThreshold',499).toDouble();
+    final centerLat=deliveryNum(settings,'pilotCenterLat',0).toDouble();
+    final centerLng=deliveryNum(settings,'pilotCenterLng',0).toDouble();
+    final radius=deliveryNum(settings,'pilotRadiusKm',4).toDouble();
+    double distanceKm=0;
+    if(centerLat!=0&&centerLng!=0&&latitude!=null&&longitude!=null){
+      distanceKm=Geolocator.distanceBetween(latitude,longitude,centerLat,centerLng)/1000;
+      if(radius>0&&distanceKm>radius){
+        msg('This address is outside the current ALLways delivery area.');return;
+      }
+    }else if(centerLat!=0&&centerLng!=0){
+      msg('Use current location so ALLways can calculate the delivery distance.');return;
+    }else{
+      msg('Delivery area is not configured yet. Please contact ALLways operations.');return;
+    }
+
+    final km=chargeableKm(distanceKm);
+    final scheduledFree=scheduled && sub>=threshold;
+    final delivery=scheduled
+        ? (scheduledFree ? 0 : km*deliveryNum(settings,'scheduledPerKm',11))
+        : deliveryNum(settings,'instantBaseFee',35)+km*deliveryNum(settings,'instantPerKm',11);
+    final grand=sub+delivery;
+    final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
+
+    final order={
+      'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'',
+      'name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),
+      'customerLatitude':latitude,'customerLongitude':longitude,
+      'locationSource':latitude!=null&&longitude!=null?'gps':'address',
       'items':cart.values.map((x)=>{'id':x.product.id,'name':x.product.name,'qty':x.qty,'price':x.product.price}).toList(),
-      'subtotal':sub,'delivery':delivery,'total':grand,'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'','carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
-      'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'','createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,'time':DateTime.now().toLocal().toString()};
+      'subtotal':sub,'delivery':delivery,'deliveryFee':delivery,'total':grand,
+      'deliveryType':scheduled?'scheduled':'instant',
+      'scheduledFor':scheduledFor?.millisecondsSinceEpoch,
+      'deliveryDistanceKm':distanceKm,
+      'deliveryChargeableKm':km,
+      'freeScheduledDelivery':scheduledFree,
+      'freeScheduledThreshold':threshold,
+      'deliveryPricingRule':scheduled
+          ? (scheduledFree?'scheduled_free_over_threshold':'scheduled_per_km')
+          : 'instant_base_plus_per_km',
+      'deliveryZoneId':'pilot_zone','deliveryZoneName':'ALLways Pilot Zone',
+      'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
+      'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
+      'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
+      'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
+      'customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
+      'createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,
+      'time':DateTime.now().toLocal().toString(),
+    };
     try{
       await FirebaseFirestore.instance.collection('orders').doc(id).set(order);
-      await saveAddress(name.trim(),ph,address.trim());
+      await saveAddress(name.trim(),ph,address.trim(),latitude:latitude,longitude:longitude);
       setState(()=>cart.clear());
       if(mounted){
         Navigator.of(context).pop();
@@ -1182,7 +1298,6 @@ class _ShellState extends State<Shell> {
       }
     }catch(e){msg('Order could not be saved. Please try again.');}
   }
-
 
   Future<void> _enableOrderNotifications() async {
     final prefs = await SharedPreferences.getInstance();
@@ -1440,6 +1555,26 @@ class _ShopPageState extends State<ShopPage>{
             InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
             const SizedBox(height:10),
             TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Theme.of(c).colorScheme.surface,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide(color:Theme.of(c).colorScheme.outlineVariant))),onChanged:(v)=>setState(()=>search=v)),
+            const SizedBox(height:10),
+            StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+              stream:FirebaseFirestore.instance.collection('settings').doc('delivery').snapshots(),
+              builder:(context,deliverySnap){
+                final ds={..._defaultDeliverySettings,...(deliverySnap.data?.data()??<String,dynamic>{})};
+                final sub=widget.cart.values.fold<num>(0,(sum,item)=>sum+item.product.price*item.qty);
+                final threshold=deliveryNum(ds,'freeScheduledThreshold',499).toDouble();
+                final offerEnabled=deliveryBool(ds,'specialOfferEnabled',false);
+                return Column(children:[
+                  if(offerEnabled)
+                    Card(child:ListTile(leading:const Icon(Icons.local_offer_outlined,color:green),title:Text((ds['specialOfferTitle']??'Just for you').toString(),style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text((ds['specialOfferMessage']??'More scheduled delivery slots are available today.').toString()))),
+                  if(widget.cart.isNotEmpty)
+                    Card(color:AllwaysColors.primarySoft,child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[
+                      const Icon(Icons.local_shipping_outlined,color:green),
+                      const SizedBox(width:8),
+                      Expanded(child:Text(sub>=threshold?'FREE scheduled delivery unlocked!':'Add ₹'+(threshold-sub).ceil().toString()+' more to get FREE scheduled delivery',style:const TextStyle(fontWeight:FontWeight.w800))),
+                    ]))),
+                ]);
+              },
+            ),
             const SizedBox(height:12),
             StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
               stream:FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
@@ -1616,14 +1751,16 @@ class ProductScreen extends StatelessWidget{
 }
 
 class CartScreen extends StatefulWidget{
-  final Map<String,CartItem> cart;final List<Map<String,dynamic>> addresses;final void Function(String,int) onQty;final Future<void> Function(String,String,String,String,double?,double?) onPlace;
+  final Map<String,CartItem> cart;final List<Map<String,dynamic>> addresses;final void Function(String,int) onQty;final Future<void> Function(String,String,String,String,double?,double?,String,DateTime?) onPlace;
   const CartScreen({super.key,required this.cart,required this.addresses,required this.onQty,required this.onPlace});
   State<CartScreen> createState()=>_CartScreenState();
 }
 class _CartScreenState extends State<CartScreen>{
-  final n=TextEditingController(),p=TextEditingController(),a=TextEditingController(),note=TextEditingController();bool placing=false,locating=false;double? selectedLatitude,selectedLongitude;
+  final n=TextEditingController(),p=TextEditingController(),a=TextEditingController(),note=TextEditingController();bool placing=false,locating=false;double? selectedLatitude,selectedLongitude;Map<String,dynamic> deliverySettings={..._defaultDeliverySettings};String deliveryType='instant';DateTime? scheduledFor;
+  @override void initState(){super.initState();loadSettings();}
+  Future<void> loadSettings() async { final s=await loadDeliverySettings(); if(mounted)setState(()=>deliverySettings=s); }
   @override void dispose(){n.dispose();p.dispose();a.dispose();note.dispose();super.dispose();}
-  void use(Map<String,dynamic> x){n.text=(x['name']??'').toString();p.text=(x['phone']??'').toString();a.text=(x['address']??'').toString();selectedLatitude=(x['latitude'] as num?)?.toDouble();selectedLongitude=(x['longitude'] as num?)?.toDouble();setState((){});}
+  void use(Map<String,dynamic> x){n.text=(x['name']??'').toString();p.text=(x['phone']??'').toString();a.text=(x['address']??'').toString();final lat=x['latitude']??x['lat'];final lng=x['longitude']??x['lng'];selectedLatitude=lat is num?lat.toDouble():double.tryParse((lat??'').toString());selectedLongitude=lng is num?lng.toDouble():double.tryParse((lng??'').toString());setState((){});}
   Future<void> useCurrentLocation() async {
     setState(()=>locating=true);
     try{
@@ -1690,9 +1827,30 @@ class _CartScreenState extends State<CartScreen>{
     }
   }
   void msg(String text){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));}
+  Future<void> pickScheduledTime() async {
+    if(!deliveryBool(deliverySettings,'scheduledEnabled',true)||DateTime.now().isAfter(scheduledCutoffNow(deliverySettings)))return;
+    final now=DateTime.now();
+    final date=await showDatePicker(context:context,firstDate:DateTime(now.year,now.month,now.day),lastDate:DateTime(now.year,now.month,now.day+7),initialDate:scheduledFor??now);
+    if(date==null||!mounted)return;
+    final time=await showTimePicker(context:context,initialTime:scheduledFor!=null?TimeOfDay.fromDateTime(scheduledFor!):TimeOfDay.fromDateTime(now.add(const Duration(hours:2))));
+    if(time==null||!mounted)return;
+    setState(()=>scheduledFor=DateTime(date.year,date.month,date.day,time.hour,time.minute));
+  }
+
   Widget build(BuildContext c){
     final sub=widget.cart.values.fold<num>(0,(sum,item)=>sum+item.product.price*item.qty);
-    final fee=sub>=499?0:30;
+    final threshold=deliveryNum(deliverySettings,'freeScheduledThreshold',499).toDouble();
+    final centerLat=deliveryNum(deliverySettings,'pilotCenterLat',0).toDouble();
+    final centerLng=deliveryNum(deliverySettings,'pilotCenterLng',0).toDouble();
+    final distanceKm=(centerLat!=0&&centerLng!=0&&selectedLatitude!=null&&selectedLongitude!=null)
+        ?Geolocator.distanceBetween(selectedLatitude!,selectedLongitude!,centerLat,centerLng)/1000
+        :null;
+    final km=distanceKm==null?0:chargeableKm(distanceKm);
+    final scheduledFree=sub>=threshold;
+    final scheduledFee=scheduledFree?0:km*deliveryNum(deliverySettings,'scheduledPerKm',11);
+    final instantFee=deliveryNum(deliverySettings,'instantBaseFee',35)+km*deliveryNum(deliverySettings,'instantPerKm',11);
+    final scheduleAllowed=deliveryBool(deliverySettings,'scheduledEnabled',true)&&DateTime.now().isBefore(scheduledCutoffNow(deliverySettings));
+    final fee=deliveryType=='scheduled'?scheduledFee:instantFee;
     final grand=sub+fee;
     final dark=Theme.of(c).brightness==Brightness.dark;
     return Scaffold(
@@ -1750,15 +1908,51 @@ class _CartScreenState extends State<CartScreen>{
                 ),
               )),
               const SizedBox(height:4),
+              if(sub<threshold)
+                AllwaysCard(
+                  child:Row(children:[
+                    const Icon(Icons.local_offer_outlined,color:AllwaysColors.primary),
+                    const SizedBox(width:10),
+                    Expanded(child:Text('Add ₹'+(threshold-sub).ceil().toString()+' more to unlock FREE scheduled delivery',style:const TextStyle(fontWeight:FontWeight.w800))),
+                  ]),
+                )
+              else
+                const AllwaysCard(child:Row(children:[
+                  Icon(Icons.celebration_outlined,color:AllwaysColors.primary),
+                  SizedBox(width:10),
+                  Expanded(child:Text('You unlocked FREE scheduled delivery!',style:TextStyle(fontWeight:FontWeight.w800))),
+                ])),
+              const SizedBox(height:10),
+              AllwaysCard(
+                child:Column(children:[
+                  const Align(alignment:Alignment.centerLeft,child:Text('Delivery option',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),
+                  const SizedBox(height:8),
+                  Row(children:[
+                    Expanded(child:ChoiceChip(label:const Text('Instant'),selected:deliveryType=='instant',onSelected:deliveryBool(deliverySettings,'instantEnabled',true)?(_){setState(()=>deliveryType='instant');}:null)),
+                    const SizedBox(width:8),
+                    Expanded(child:ChoiceChip(label:Text(scheduleAllowed?'Scheduled':'Scheduled closed'),selected:deliveryType=='scheduled',onSelected:scheduleAllowed?(_){setState(()=>deliveryType='scheduled');}:null)),
+                  ]),
+                  const SizedBox(height:8),
+                  if(deliveryType=='scheduled')
+                    Row(children:[
+                      Expanded(child:OutlinedButton.icon(onPressed:pickScheduledTime,icon:const Icon(Icons.schedule),label:Text(scheduledFor==null?'Choose date & time':MaterialLocalizations.of(context).formatMediumDate(scheduledFor!)+' • '+MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledFor!))))),
+                    ]),
+                  if(deliveryType=='scheduled'&&scheduledFor!=null)
+                    Align(alignment:Alignment.centerLeft,child:Text(scheduledFree?'Scheduled delivery: FREE':'Scheduled delivery: ₹'+scheduledFee.toStringAsFixed(0)+' • '+km.toString()+' km',style:const TextStyle(color:AllwaysColors.muted))),
+                  if(deliveryType=='instant')
+                    Align(alignment:Alignment.centerLeft,child:Text('Instant delivery: ₹'+instantFee.toStringAsFixed(0)+' • base ₹'+deliveryNum(deliverySettings,'instantBaseFee',35).toStringAsFixed(0)+' + '+km.toString()+' km',style:const TextStyle(color:AllwaysColors.muted))),
+                ]),
+              ),
+              const SizedBox(height:10),
               AllwaysCard(
                 child:Column(children:[
                   const Align(alignment:Alignment.centerLeft,child:Text('Bill Details',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),
                   const SizedBox(height:12),
-                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Items Total'),Text('₹${sub.toStringAsFixed(0)}')]),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Items Total'),Text('₹'+sub.toStringAsFixed(0))]),
                   const SizedBox(height:8),
-                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Delivery Fee'),Text(fee==0?'FREE':'₹${fee}',style:const TextStyle(fontWeight:FontWeight.w700))]),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('Delivery Fee'),Text(fee==0?'FREE':'₹'+fee.toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w700))]),
                   const Divider(height:22),
-                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('You Pay',style:TextStyle(fontWeight:FontWeight.w900)),Text('₹${grand.toStringAsFixed(0)}',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:19))]),
+                  Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('You Pay',style:TextStyle(fontWeight:FontWeight.w900)),Text('₹'+grand.toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900,fontSize:19))]),
                   const SizedBox(height:8),
                   const Align(alignment:Alignment.centerLeft,child:Text('Cash on Delivery (COD)',style:TextStyle(color:AllwaysColors.muted))),
                 ]),
@@ -1797,7 +1991,7 @@ class _CartScreenState extends State<CartScreen>{
               SizedBox(height:52,child:FilledButton.icon(
                 onPressed:placing?null:()async{
                   setState(()=>placing=true);
-                  await widget.onPlace(n.text,p.text,a.text,note.text,selectedLatitude,selectedLongitude);
+                  await widget.onPlace(n.text,p.text,a.text,note.text,selectedLatitude,selectedLongitude,deliveryType,scheduledFor);
                   if(mounted)setState(()=>placing=false);
                 },
                 style:FilledButton.styleFrom(backgroundColor:AllwaysColors.primary,foregroundColor:Colors.white,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(18))),
@@ -3273,7 +3467,8 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
 
 class WishlistPage extends StatefulWidget {
   final void Function(Product)? onAdd;
-  const WishlistPage({super.key, this.onAdd});
+  final VoidCallback? onBuyAll;
+  const WishlistPage({super.key, this.onAdd, this.onBuyAll});
   @override State<WishlistPage> createState() => _WishlistPageState();
 }
 
@@ -3333,7 +3528,28 @@ class _WishlistPageState extends State<WishlistPage> {
     } else {
       body = ListView(
         padding: const EdgeInsets.all(16),
-        children: items.map(
+        children: [
+          Card(
+            child: Row(children:[
+              Expanded(child:OutlinedButton.icon(
+                onPressed: widget.onAdd==null?null:(){
+                  for(final p in List<Product>.from(items)) widget.onAdd!(p);
+                  if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Added '+items.length.toString()+' wishlist items to cart.')));
+                },
+                icon:const Icon(Icons.add_shopping_cart),
+                label:const Text('Add all to cart'),
+              )),
+              const SizedBox(width:8),
+              Expanded(child:FilledButton.icon(
+                onPressed: widget.onBuyAll,
+                icon:const Icon(Icons.shopping_bag_outlined),
+                label:const Text('Buy all'),
+              )),
+            ]),
+          ),
+          const SizedBox(height:10),
+          ...items.map(
+
           (p) => Card(
             child: ListTile(
               leading: CircleAvatar(child: Text(p.icon)),
@@ -3346,7 +3562,7 @@ class _WishlistPageState extends State<WishlistPage> {
               ),
             ),
           ),
-        ).toList(),
+        ),
       );
     }
     return Scaffold(appBar: AppBar(title: const Text('Wishlist')), body: RefreshIndicator(onRefresh: load, child: body));
