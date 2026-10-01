@@ -44,6 +44,7 @@ let currentUser = null;
 let firebaseReady = false;
 let db = null;
 let customerOrdersUnsubscribe = null;
+let announcementsUnsubscribe = null;
 let savedAddresses = [];
 let favouriteIds = new Set();
 let favouritesOnly = false;
@@ -821,7 +822,12 @@ function initAuth(){
         customerOrdersUnsubscribe();
         customerOrdersUnsubscribe = null;
       }
+      if(!currentUser && announcementsUnsubscribe){
+        announcementsUnsubscribe();
+        announcementsUnsubscribe = null;
+      }
       if(currentUser && db) listenToCustomerOrders();
+      if(currentUser && db) listenAnnouncements();
     });
   } catch(error) {
     firebaseReady = false;
@@ -829,6 +835,60 @@ function initAuth(){
     updateAuthButton();
   }
 }
+
+
+/* =========================================================
+   ANNOUNCEMENTS / NOTIFICATIONS
+   ========================================================= */
+
+function showAnnouncementBanner(title, body){
+  let banner=document.getElementById("allwaysAnnouncementBanner");
+  if(!banner){
+    banner=document.createElement("div");
+    banner.id="allwaysAnnouncementBanner";
+    banner.style.position="fixed";
+    banner.style.left="16px";
+    banner.style.right="16px";
+    banner.style.bottom="16px";
+    banner.style.zIndex="9999";
+    banner.style.background="#111";
+    banner.style.color="#fff";
+    banner.style.padding="14px 16px";
+    banner.style.borderRadius="14px";
+    banner.style.boxShadow="0 8px 28px rgba(0,0,0,.22)";
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML="<b>"+escapeHtml(title)+"</b><div style='margin-top:4px;opacity:.9'>"+escapeHtml(body)+"</div>";
+  clearTimeout(window.__allwaysAnnouncementTimer);
+  window.__allwaysAnnouncementTimer=setTimeout(function(){
+    if(banner)banner.remove();
+  },8000);
+}
+
+function listenAnnouncements(){
+  if(!db||!currentUser)return;
+  if(announcementsUnsubscribe)announcementsUnsubscribe();
+  announcementsUnsubscribe=db.collection("announcements")
+    .orderBy("createdAt","desc")
+    .limit(1)
+    .onSnapshot(function(snap){
+      snap.docChanges().forEach(function(change){
+        if(change.type!=="added")return;
+        var data=change.doc.data()||{};
+        var topic=String(data.topic||data.targetAudience||"all_users");
+        if(topic!=="all_users"&&topic!=="customers")return;
+        var title=String(data.title||"ALLways");
+        var body=String(data.body||"");
+        showAnnouncementBanner(title,body);
+        if(typeof Notification!=="undefined"&&Notification.permission==="granted"){
+          try{new Notification(title,{body:body});}catch(e){}
+        }
+      });
+    },function(error){
+      console.warn("ALLways announcements listener:",error);
+    });
+}
+
 
 
 /* =========================================================
