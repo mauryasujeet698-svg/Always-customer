@@ -145,8 +145,9 @@ service cloud.firestore {
           ]))
         || (signedIn() && resource.data.ownerUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'ownerLat','ownerLng','ownerLocationUpdatedAt','updatedAt'
-          ]));
+            'ownerLat','ownerLng','ownerLocationUpdatedAt','status','updatedAt'
+          ])
+          && request.resource.data.status in ['Booked','Accepted','Rejected','Cancelled','delivered']);
       allow delete: if false;
     }
 
