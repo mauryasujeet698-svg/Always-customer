@@ -5,9 +5,10 @@ service cloud.firestore {
     function isAdmin() {
       return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
     }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
 
-    // Customer catalog is intentionally readable without login so the shop
-    // can display products before authentication.
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -19,7 +20,7 @@ service cloud.firestore {
     }
 
     match /fcmTokens/{userId}/tokens/{tokenId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
     match /announcements/{id} {
@@ -29,10 +30,35 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
-      allow read: if signedIn() && (resource.data.customerId == request.auth.uid || isAdmin());
-      allow update: if isAdmin();
-      allow delete: if false;
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /customers/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    match /deliveryPartners/{userId} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /ridePartners/{userId} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /autoRideRequests/{rideId} {
+      allow read, create, update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if isAdmin();
     }
   }
 }
