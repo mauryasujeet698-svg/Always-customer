@@ -3998,7 +3998,13 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
     if(!confirm)return;
     setState(()=>saving=true);
     try{
-      await widget.onDelete(id);
+      await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(widget.userId)
+          .collection('addresses')
+          .doc(id.trim())
+          .delete();
+      await widget.onReload();
       if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Address deleted.')));
     }catch(e){
       if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not delete address: '+e.toString())));
