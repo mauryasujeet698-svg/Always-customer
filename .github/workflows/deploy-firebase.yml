@@ -42,5 +42,8 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
-          firebase deploy --project allways-web --only functions,firestore:rules --non-interactive
+          # Deploy Cloud Functions here. Firestore rules are intentionally
+          # deployed separately because this CI service account currently lacks
+          # permission to access/enable firestore.googleapis.com.
+          firebase deploy --project allways-web --only functions --non-interactive
 
