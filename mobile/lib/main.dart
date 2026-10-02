@@ -3757,6 +3757,140 @@ class TravelBookingsSection extends StatelessWidget {
   }
 }
 
+class MyTripsPage extends StatelessWidget {
+  const MyTripsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar:AppBar(title:const Text('My Trips')),
+      body:ListView(
+        padding:const EdgeInsets.fromLTRB(16,8,16,28),
+        children:[
+          const Text('Your ALLways travel bookings',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+          const SizedBox(height:6),
+          const Text('View, track, cancel eligible rides and review your completed travel bookings.',style:TextStyle(color:Colors.grey)),
+          const SizedBox(height:14),
+          const TravelBookingsSection(type:'ride'),
+          const SizedBox(height:12),
+          const TravelBookingsSection(type:'vehicle'),
+        ],
+      ),
+    );
+  }
+}
+
+class HelpSupportPage extends StatelessWidget {
+  const HelpSupportPage({super.key});
+
+  Future<void> _submitIssue(BuildContext context,String category) async {
+    final details=TextEditingController();
+    final user=FirebaseAuth.instance.currentUser;
+    if(user==null)return;
+    final submit=await showDialog<bool>(
+      context:context,
+      builder:(d)=>AlertDialog(
+        title:Text(category+' support'),
+        content:TextField(
+          controller:details,
+          maxLines:5,
+          decoration:const InputDecoration(
+            labelText:'Describe the issue',
+            hintText:'Tell us what happened...',
+          ),
+        ),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),
+          FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Submit')),
+        ],
+      ),
+    )??false;
+    if(!submit||details.text.trim().isEmpty){details.dispose();return;}
+    try{
+      await FirebaseFirestore.instance.collection('supportRequests').add({
+        'userUid':user.uid,
+        'userName':user.displayName??'ALLways customer',
+        'userEmail':user.email??'',
+        'category':category,
+        'details':details.text.trim(),
+        'status':'open',
+        'createdAt':FieldValue.serverTimestamp(),
+      });
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Support request submitted.')));
+    }catch(e){
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
+    }finally{
+      details.dispose();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const categories=[
+      ('Orders & Delivery',Icons.local_shipping_outlined),
+      ('Travel & Rides',Icons.directions_car_outlined),
+      ('Vehicle Booking',Icons.car_rental_outlined),
+      ('Account & Login',Icons.person_outline),
+      ('Other',Icons.help_outline),
+    ];
+    return Scaffold(
+      appBar:AppBar(title:const Text('Help & Support')),
+      body:ListView(
+        padding:const EdgeInsets.fromLTRB(16,8,16,28),
+        children:[
+          const Text('How can we help?',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+          const SizedBox(height:6),
+          const Text('Choose a topic and tell ALLways what you need help with.',style:TextStyle(color:Colors.grey)),
+          const SizedBox(height:14),
+          ...categories.map((item)=>Card(
+            child:ListTile(
+              leading:Icon(item.$2),
+              title:Text(item.$1,style:const TextStyle(fontWeight:FontWeight.w800)),
+              trailing:const Icon(Icons.chevron_right),
+              onTap:()=>_submitIssue(context,item.$1),
+            ),
+          )),
+          const SizedBox(height:10),
+          const InfoCard(
+            title:'Safety',
+            detail:'For an active ride or delivery issue, use the relevant support category above and include the booking or order details so the team can identify it quickly.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AccountSecurityPage extends StatelessWidget {
+  final Future<void> Function() onDelete;
+  const AccountSecurityPage({super.key,required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar:AppBar(title:const Text('Account & Security')),
+      body:ListView(
+        padding:const EdgeInsets.fromLTRB(16,8,16,28),
+        children:[
+          const Text('Sensitive account actions',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+          const SizedBox(height:6),
+          const Text('These actions are kept here to avoid accidental use.',style:TextStyle(color:Colors.grey)),
+          const SizedBox(height:14),
+          Card(
+            child:ListTile(
+              leading:const Icon(Icons.delete_outline,color:Colors.red),
+              title:const Text('Delete Account',style:TextStyle(fontWeight:FontWeight.w800,color:Colors.red)),
+              subtitle:const Text('Permanently delete your ALLways account'),
+              trailing:const Icon(Icons.chevron_right),
+              onTap:onDelete,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class PrivacyPolicyPage extends StatelessWidget {
   const PrivacyPolicyPage({super.key});
   @override
@@ -3816,23 +3950,41 @@ class _ProfilePageState extends State<ProfilePage>{
 
   Future<void> _deleteAccount(BuildContext c) async {
     final confirmation=TextEditingController();
-    final confirmed=await showDialog<bool>(
+    final firstConfirmed=await showDialog<bool>(
       context:c,
       builder:(dialogContext)=>AlertDialog(
         title:const Text('Delete Account'),
         content:Column(mainAxisSize:MainAxisSize.min,children:[
           const Text('This permanently deletes your ALLways account and customer profile data. This action cannot be undone.'),
           const SizedBox(height:12),
-          TextField(controller:confirmation,decoration:const InputDecoration(labelText:'Type DELETE to confirm')),
+          TextField(controller:confirmation,decoration:const InputDecoration(labelText:'Type DELETE to continue')),
         ]),
         actions:[
           TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),
-          FilledButton(onPressed:()=>Navigator.pop(dialogContext,confirmation.text.trim()=='DELETE'),child:const Text('Delete')),
+          FilledButton(onPressed:()=>Navigator.pop(dialogContext,confirmation.text.trim()=='DELETE'),child:const Text('Continue')),
         ],
       ),
     )??false;
     confirmation.dispose();
-    if(!confirmed)return;
+    if(!firstConfirmed)return;
+
+    final finalConfirmed=await showDialog<bool>(
+      context:c,
+      builder:(dialogContext)=>AlertDialog(
+        title:const Text('Final confirmation'),
+        content:const Text('Are you absolutely sure you want to permanently delete your ALLways account? This cannot be undone.'),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),
+          FilledButton(
+            style:FilledButton.styleFrom(backgroundColor:Colors.red),
+            onPressed:()=>Navigator.pop(dialogContext,true),
+            child:const Text('Yes, delete my account'),
+          ),
+        ],
+      ),
+    )??false;
+    if(!finalConfirmed)return;
+
     try{
       final u=FirebaseAuth.instance.currentUser;
       if(u==null)return;
@@ -3870,6 +4022,34 @@ class _ProfilePageState extends State<ProfilePage>{
     }catch(e){
       if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));
     }
+  }
+
+  Future<void> _confirmLogout(BuildContext c) async {
+    final first=await showDialog<bool>(
+      context:c,
+      builder:(d)=>AlertDialog(
+        title:const Text('Log Out?'),
+        content:const Text('You will be signed out of your ALLways account on this device.'),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),
+          FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Continue')),
+        ],
+      ),
+    )??false;
+    if(!first)return;
+    final second=await showDialog<bool>(
+      context:c,
+      builder:(d)=>AlertDialog(
+        title:const Text('Confirm Log Out'),
+        content:const Text('Are you sure you want to log out?'),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Stay logged in')),
+          FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Yes, Log Out')),
+        ],
+      ),
+    )??false;
+    if(!second)return;
+    await FirebaseAuth.instance.signOut();
   }
 
   Future<void> _chooseAppearance(BuildContext c) async {
@@ -3983,15 +4163,15 @@ class _ProfilePageState extends State<ProfilePage>{
         ),
         _menuCard(c,icon:Icons.receipt_long_outlined,title:'Orders',subtitle:'View and track your ALLways orders',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OrdersPage(user:u,onCancel:widget.onCancel,onReorder:widget.onReorder)))),
         _menuCard(c,icon:Icons.location_on_outlined,title:'Saved Addresses',subtitle:'Add, edit or manage your delivery addresses',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>SavedAddressesPage(userId:u.uid,addresses:widget.addresses,onReload:widget.onReload,onDelete:widget.onDelete)))),
-        _menuCard(c,icon:Icons.favorite_border,title:'Wishlist',subtitle:'Your saved products and favourites',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:()=>widget.onOpenCart())))),
-        ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,unread,__)=>_menuCard(c,icon:Icons.notifications_outlined,title:tr('Notifications'),subtitle:'Alerts, order updates and push settings',showDot:unread,onTap:()=>_openNotifications(c))),
+        _menuCard(c,icon:Icons.luggage_outlined,title:'My Trips',subtitle:'View and manage your ALLways travel bookings',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const MyTripsPage()))),
+        _menuCard(c,icon:Icons.support_agent_outlined,title:'Help & Support',subtitle:'Get help with orders, travel and your account',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const HelpSupportPage()))),
         _menuCard(c,icon:Icons.brightness_6_outlined,title:tr('Appearance'),subtitle:'Light, Dark or System theme',onTap:()=>_chooseAppearance(c)),
         _menuCard(c,icon:Icons.language_outlined,title:tr('Language'),subtitle:'Choose your preferred app language',onTap:()=>_chooseLanguage(c)),
         _menuCard(c,icon:Icons.share_outlined,title:tr('Share ALLways'),subtitle:'Share ALLways with friends and family',onTap:()=>SharePlus.instance.share(ShareParams(text:'Try ALLways — Closer to You, Always. Download ALLways 1.5.0: '+shareApkUrl))),
         _menuCard(c,icon:Icons.system_update_outlined,title:tr('Check for Updates'),subtitle:'Check for the latest ALLways version',onTap:()=>_checkForUpdate(c)),
         _menuCard(c,icon:Icons.privacy_tip_outlined,title:'Privacy Policy',subtitle:'How ALLways handles your information',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const PrivacyPolicyPage()))),
-        _menuCard(c,icon:Icons.logout_outlined,title:tr('Log Out'),subtitle:'Sign out of your ALLways account',danger:true,onTap:()=>FirebaseAuth.instance.signOut()),
-        _menuCard(c,icon:Icons.delete_outline,title:'Delete Account',subtitle:'Permanently delete your ALLways account',danger:true,onTap:()=>_deleteAccount(c)),
+        _menuCard(c,icon:Icons.security_outlined,title:'Account & Security',subtitle:'Manage sensitive account actions',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>AccountSecurityPage(onDelete:()=>_deleteAccount(c))))),
+        _menuCard(c,icon:Icons.logout_outlined,title:tr('Log Out'),subtitle:'Sign out of your ALLways account',danger:true,onTap:()=>_confirmLogout(c)),
         const SizedBox(height:12),
         const Text('ALLways • Closer to You, Always',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey)),
       ],
