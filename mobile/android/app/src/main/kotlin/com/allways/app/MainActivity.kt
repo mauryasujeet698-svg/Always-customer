@@ -80,7 +80,7 @@ class MainActivity : FlutterActivity() {
             )
         }
         val notification = NotificationCompat.Builder(this, notificationChannelId)
-            .setSmallIcon(R.drawable.ic_stat_allways_notification)
+            .setSmallIcon(applicationInfo.icon)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
