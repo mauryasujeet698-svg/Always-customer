@@ -1,16 +1,8 @@
 name: Deploy ALLways Firebase Functions
 
 on:
-  push:
-    branches:
-      - allways-android-app
-      - main
-    paths:
-      - "firestore.rules"
-      - "functions/**"
-      - "firebase.json"
-      - ".firebaserc"
-      - ".github/workflows/deploy-functions.yml"
+  # Cloud Functions deployment is intentionally manual while allways-web is on Firebase Spark.
+  # When Blaze is enabled, run this workflow manually to activate server-side automation.
   workflow_dispatch:
 
 permissions:
