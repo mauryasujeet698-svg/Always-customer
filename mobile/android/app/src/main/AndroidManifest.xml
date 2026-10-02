@@ -34,6 +34,7 @@
             </intent-filter>
         </service>
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="allways_updates"/>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_allways_notification"/>
         <meta-data android:name="flutterEmbedding" android:value="2"/>
         <receiver android:name=".MainActivity$InstallStatusReceiver" android:exported="false"/>
     </application>
