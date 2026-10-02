@@ -1,5 +1,4 @@
 const { initializeApp } = require("firebase-admin/app");
-const { getMessaging } = require("firebase-admin/messaging");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -7,145 +6,7 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 initializeApp();
 
 const db = getFirestore();
-const messaging = getMessaging();
 const auth = getAuth();
-
-function stringData(data = {}) {
-  return Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v ?? "")]));
-}
-
-function notificationMessage(title, body, data = {}, target) {
-  return {
-    ...target,
-    notification: { title, body },
-    data: stringData(data),
-    android: {
-      priority: "high",
-      notification: { channelId: "allways_updates" },
-    },
-  };
-}
-
-function preferenceKeyForType(type = "") {
-  const t = String(type).toLowerCase();
-  if (t.includes("order") || t.includes("delivery")) return "orderUpdates";
-  if (t.includes("ride") || t.includes("travel") || t.includes("vehicle")) return "travelUpdates";
-  if (t.includes("offer")) return "offers";
-  return "announcements";
-}
-
-function notificationAllowedFromData(data = {}, type = "") {
-  if (data.notificationsEnabled === false) return false;
-  const preferences = data.notificationPreferences || {};
-  return preferences[preferenceKeyForType(type)] !== false;
-}
-
-async function getUserTokens(uid) {
-  if (!uid) return [];
-  const id = String(uid);
-  const parent = await db.collection("fcmTokens").doc(id).get();
-  const parentData = parent.exists ? (parent.data() || {}) : {};
-  const result = new Map();
-
-  if (parentData.token && parentData.notificationsEnabled !== false) {
-    const token = String(parentData.token).trim();
-    if (token) {
-      result.set(token, {
-        token,
-        notificationsEnabled: true,
-        notificationPreferences: parentData.notificationPreferences || {},
-      });
-    }
-  }
-
-  const snap = await db.collection("fcmTokens").doc(id).collection("tokens").get();
-  for (const doc of snap.docs) {
-    const data = doc.data() || {};
-    if (data.notificationsEnabled === false) continue;
-    const token = String(data.token || doc.id).trim();
-    if (!token) continue;
-    result.set(token, {
-      token,
-      notificationsEnabled: data.notificationsEnabled !== false,
-      notificationPreferences: data.notificationPreferences || parentData.notificationPreferences || {},
-    });
-  }
-
-  return [...result.values()];
-}
-
-async function sendToUser(uid, title, body, data = {}, fallbackToken = "") {
-  if (!uid) return false;
-  let recipients = await getUserTokens(uid);
-
-  if (!recipients.length && fallbackToken) {
-    recipients = [{
-      token: String(fallbackToken).trim(),
-      notificationsEnabled: true,
-      notificationPreferences: {},
-    }];
-  }
-
-  recipients = recipients.filter(r =>
-    notificationAllowedFromData(r, data.type || "")
-  );
-
-  if (!recipients.length) {
-    console.log("No enabled FCM recipients for:", uid);
-    return false;
-  }
-
-  const messages = recipients.map(r =>
-    notificationMessage(title, body, data, { token: r.token })
-  );
-
-  let sent = false;
-  for (let i = 0; i < messages.length; i += 500) {
-    const response = await messaging.sendEach(messages.slice(i, i + 500));
-    response.responses.forEach((result, index) => {
-      if (result.success) {
-        sent = true;
-        return;
-      }
-      const code = result.error?.code || "";
-      if (code.includes("registration-token-not-registered") ||
-          code.includes("invalid-registration-token")) {
-        const recipient = recipients[i + index];
-        if (recipient?.token) {
-          db.collection("fcmTokens").doc(String(uid))
-            .collection("tokens").doc(recipient.token).delete().catch(() => {});
-        }
-      }
-    });
-  }
-  return sent;
-}
-
-async function sendToAllUsers(title, body, data = {}) {
-  const snap = await db.collection("fcmTokens").get();
-  const recipients = [];
-  for (const doc of snap.docs) {
-    const uid = doc.id;
-    const tokens = await getUserTokens(uid);
-    for (const token of tokens) {
-      if (notificationAllowedFromData(token, data.type || "")) {
-        recipients.push(token.token);
-      }
-    }
-  }
-
-  const unique = [...new Set(recipients)].filter(Boolean);
-  let sent = false;
-  for (let i = 0; i < unique.length; i += 500) {
-    const messages = unique.slice(i, i + 500).map(token =>
-      notificationMessage(title, body, data, { token })
-    );
-    if (!messages.length) continue;
-    const response = await messaging.sendEach(messages);
-    if (response.responses.some(r => r.success)) sent = true;
-  }
-  return sent;
-}
 
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -157,16 +18,6 @@ function distanceKm(lat1, lon1, lat2, lon2) {
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function notifyAdmins(title, body, data = {}) {
-  try {
-    const admin = await auth.getUserByEmail("mauryasujeet@gmail.com");
-    return sendToUser(admin.uid, title, body, data);
-  } catch (error) {
-    console.error("Could not resolve Admin account:", error);
-    return false;
-  }
 }
 
 // Delivery assignment mode is controlled from Admin: settings/deliveryAssignment.mode.
@@ -290,7 +141,7 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
   return partnerUid;
 }
 
-// Order creation: notify the real Admin account. Delivery assignment is manual in Admin.
+// Order creation and delivery assignment remain server-side. Notifications are handled outside Cloud Functions while the project stays on Firebase Spark.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
   async (event) => {
@@ -398,7 +249,7 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
   }
 );
 
-// New ride request -> all eligible online ride partners within 7 km.
+// New ride request detection remains server-side; notification delivery is intentionally outside Cloud Functions on Spark.
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -454,7 +305,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   }
 );
 
-// Ride state changes -> Customer.
+// Ride state changes remain server-side; notification delivery is intentionally outside Cloud Functions on Spark.
 exports.onAutoRideRequestUpdated = onDocumentUpdated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -499,7 +350,7 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
   }
 );
 
-// Partner registration/approval notifications.
+// Partner registration/approval state handling remains available; notification delivery is outside Cloud Functions on Spark.
 exports.onRidePartnerCreated = onDocumentCreated(
   "ridePartners/{uid}",
   async (event) => {
