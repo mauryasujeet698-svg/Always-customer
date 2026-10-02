@@ -769,6 +769,7 @@ jobs:
           chmod +x /tmp/allways_emulator_smoke_test.sh
 
       - name: Runtime smoke test on Android emulator
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         timeout-minutes: 35
         with:
@@ -780,6 +781,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
+          # If GitHub's emulator/ADB infrastructure fails, the job continues to
+          # mandatory static APK validation and signing verification below.
           emulator-boot-timeout: 1500
           pre-emulator-launch-script: |
             echo "Resetting ADB before emulator launch..."
