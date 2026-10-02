@@ -649,11 +649,11 @@ jobs:
           cd mobile
           MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
-          MAX_SIZE=$((50*1024*1024))
+          MAX_SIZE=$((45*1024*1024))
           APK_MB=$(awk "BEGIN {printf \"%.1f\", $APK_SIZE/1024/1024}")
-          echo "Release APK size: $APK_MB MB (target 40–45 MB, hard CI limit 50 MB)"
+          echo "Release APK size: $APK_MB MB (target 40–45 MB, hard CI limit 45 MB)"
           if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
-            echo "ERROR: ALLways arm64 APK exceeds the 50 MB release limit."
+            echo "ERROR: ALLways arm64 APK exceeds the 45 MB release limit."
             exit 1
           fi
 
