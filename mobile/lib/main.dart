@@ -122,6 +122,10 @@ const Map<String,dynamic> _defaultDeliverySettings = {
   'scheduledPerKm': 11,
   'instantBaseFee': 35,
   'instantPerKm': 11,
+  'scheduledStartHour': 9,
+  'scheduledStartMinute': 0,
+  'scheduledEndHour': 13,
+  'scheduledEndMinute': 30,
   'scheduledCutoffHour': 13,
   'scheduledCutoffMinute': 30,
   'pilotRadiusKm': 4,
@@ -144,11 +148,24 @@ bool deliveryBool(Map<String,dynamic> s,String key,bool fallback){
   return (v??fallback).toString().toLowerCase()=='true';
 }
 
+DateTime scheduledStartFor(Map<String,dynamic> s, DateTime date){
+  final h=deliveryNum(s,'scheduledStartHour',9).toInt().clamp(0,23);
+  final m=deliveryNum(s,'scheduledStartMinute',0).toInt().clamp(0,59);
+  return DateTime(date.year,date.month,date.day,h,m);
+}
+DateTime scheduledEndFor(Map<String,dynamic> s, DateTime date){
+  final h=deliveryNum(s,'scheduledEndHour',13).toInt().clamp(0,23);
+  final m=deliveryNum(s,'scheduledEndMinute',30).toInt().clamp(0,59);
+  return DateTime(date.year,date.month,date.day,h,m);
+}
 DateTime scheduledCutoffNow(Map<String,dynamic> s){
   final now=DateTime.now();
-  final h=deliveryNum(s,'scheduledCutoffHour',13).toInt().clamp(0,23);
-  final m=deliveryNum(s,'scheduledCutoffMinute',30).toInt().clamp(0,59);
-  return DateTime(now.year,now.month,now.day,h,m);
+  return scheduledEndFor(s,now);
+}
+bool isWithinScheduledWindow(Map<String,dynamic> s, DateTime value){
+  final start=scheduledStartFor(s,value);
+  final end=scheduledEndFor(s,value);
+  return !value.isBefore(start)&&!value.isAfter(end);
 }
 
 int chargeableKm(double distanceKm){
@@ -1259,14 +1276,20 @@ class _ShellState extends State<Shell> {
     if(!deliveryBool(settings,'deliveryEnabled',true)){msg('ALLways delivery is temporarily unavailable.');return;}
     if(scheduled && !deliveryBool(settings,'scheduledEnabled',true)){msg('Scheduled delivery is currently unavailable.');return;}
     if(!scheduled && !deliveryBool(settings,'instantEnabled',true)){msg('Instant delivery is currently unavailable.');return;}
-    if(scheduled && DateTime.now().isAfter(scheduledCutoffNow(settings))){
-      msg('Scheduled orders are closed for today. You can still place an instant order.');
-      return;
-    }
-    if(scheduled && scheduledFor!=null && scheduledFor.isBefore(DateTime.now().add(const Duration(minutes:30)))){
-      msg('Choose a scheduled time at least 30 minutes from now.');return;
-    }
     if(scheduled && scheduledFor==null){msg('Please choose a scheduled delivery time.');return;}
+    if(scheduled && scheduledFor!=null){
+      final now=DateTime.now();
+      if(!isWithinScheduledWindow(settings,scheduledFor)){
+        final start=scheduledStartFor(settings,scheduledFor);
+        final end=scheduledEndFor(settings,scheduledFor);
+        msg('Choose a scheduled time between '+TimeOfDay.fromDateTime(start).format(context)+' and '+TimeOfDay.fromDateTime(end).format(context)+'.');
+        return;
+      }
+      if(scheduledFor.year==now.year&&scheduledFor.month==now.month&&scheduledFor.day==now.day
+          &&scheduledFor.isBefore(now.add(const Duration(minutes:30)))){
+        msg('Choose a scheduled time at least 30 minutes from now.');return;
+      }
+    }
 
     for(final x in cart.values){
       final p=products.where((z)=>z.id==x.product.id).firstOrNull;
@@ -1278,6 +1301,11 @@ class _ShellState extends State<Shell> {
     final centerLat=deliveryNum(settings,'pilotCenterLat',0).toDouble();
     final centerLng=deliveryNum(settings,'pilotCenterLng',0).toDouble();
     final radius=deliveryNum(settings,'pilotRadiusKm',4).toDouble();
+    final pincode=await extractPincode(address);
+    final pincodeServiceable=pincode.isNotEmpty&&await isPincodeServiceable(pincode);
+    if(pincode.isNotEmpty&&!pincodeServiceable){
+      msg('PIN code '+pincode+' is not currently serviceable by ALLways.');return;
+    }
     double distanceKm=0;
     if(centerLat!=0&&centerLng!=0&&latitude!=null&&longitude!=null){
       distanceKm=Geolocator.distanceBetween(latitude,longitude,centerLat,centerLng)/1000;
@@ -1286,7 +1314,7 @@ class _ShellState extends State<Shell> {
       }
     }else if(centerLat!=0&&centerLng!=0){
       msg('Use current location so ALLways can calculate the delivery distance.');return;
-    }else{
+    }else if(!pincodeServiceable){
       msg('Delivery area is not configured yet. Please contact ALLways operations.');return;
     }
 
@@ -1314,7 +1342,7 @@ class _ShellState extends State<Shell> {
       'deliveryPricingRule':scheduled
           ? (scheduledFree?'scheduled_free_over_threshold':'scheduled_per_km')
           : 'instant_base_plus_per_km',
-      'deliveryZoneId':'pilot_zone','deliveryZoneName':'ALLways Pilot Zone',
+      'deliveryZoneId':pincode.isNotEmpty?'pincode_'+pincode:'pilot_zone','deliveryZoneName':pincode.isNotEmpty?'PIN '+pincode:'ALLways Pilot Zone','deliveryPincode':pincode,
       'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
       'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
       'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
@@ -2009,13 +2037,37 @@ class _CartScreenState extends State<CartScreen>{
   }
   void msg(String text){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(text)));}
   Future<void> pickScheduledTime() async {
-    if(!deliveryBool(deliverySettings,'scheduledEnabled',true)||DateTime.now().isAfter(scheduledCutoffNow(deliverySettings)))return;
+    if(!deliveryBool(deliverySettings,'scheduledEnabled',true))return;
     final now=DateTime.now();
-    final date=await showDatePicker(context:context,firstDate:DateTime(now.year,now.month,now.day),lastDate:DateTime(now.year,now.month,now.day+7),initialDate:scheduledFor??now);
+    final today=DateTime(now.year,now.month,now.day);
+    final todayEnd=scheduledEndFor(deliverySettings,today);
+    final defaultDate=now.isAfter(todayEnd)?today.add(const Duration(days:1)):today;
+    final date=await showDatePicker(
+      context:context,
+      firstDate:defaultDate,
+      lastDate:defaultDate.add(const Duration(days:7)),
+      initialDate:(scheduledFor!=null&&!scheduledFor!.isBefore(defaultDate))?scheduledFor!:defaultDate,
+    );
     if(date==null||!mounted)return;
-    final time=await showTimePicker(context:context,initialTime:scheduledFor!=null?TimeOfDay.fromDateTime(scheduledFor!):TimeOfDay.fromDateTime(now.add(const Duration(hours:2))));
+    final start=scheduledStartFor(deliverySettings,date);
+    final end=scheduledEndFor(deliverySettings,date);
+    final initial=scheduledFor!=null&&scheduledFor!.year==date.year&&scheduledFor!.month==date.month&&scheduledFor!.day==date.day
+        ?TimeOfDay.fromDateTime(scheduledFor!)
+        :TimeOfDay.fromDateTime(date==today
+            ?DateTime.now().add(const Duration(minutes:30)).isAfter(start)?DateTime.now().add(const Duration(minutes:30)):start
+            :start);
+    final time=await showTimePicker(context:context,initialTime:initial);
     if(time==null||!mounted)return;
-    setState(()=>scheduledFor=DateTime(date.year,date.month,date.day,time.hour,time.minute));
+    final value=DateTime(date.year,date.month,date.day,time.hour,time.minute);
+    if(!isWithinScheduledWindow(deliverySettings,value)){
+      msg('Choose a time between '+TimeOfDay.fromDateTime(start).format(context)+' and '+TimeOfDay.fromDateTime(end).format(context)+'.');
+      return;
+    }
+    if(date==today&&value.isBefore(DateTime.now().add(const Duration(minutes:30)))){
+      msg('Choose a scheduled time at least 30 minutes from now.');
+      return;
+    }
+    setState(()=>scheduledFor=value);
   }
 
   Widget build(BuildContext c){
@@ -2030,7 +2082,7 @@ class _CartScreenState extends State<CartScreen>{
     final scheduledFree=sub>=threshold;
     final scheduledFee=scheduledFree?0:km*deliveryNum(deliverySettings,'scheduledPerKm',11);
     final instantFee=deliveryNum(deliverySettings,'instantBaseFee',35)+km*deliveryNum(deliverySettings,'instantPerKm',11);
-    final scheduleAllowed=deliveryBool(deliverySettings,'scheduledEnabled',true)&&DateTime.now().isBefore(scheduledCutoffNow(deliverySettings));
+    final scheduleAllowed=deliveryBool(deliverySettings,'scheduledEnabled',true);
     final fee=deliveryType=='scheduled'?scheduledFee:instantFee;
     final grand=sub+fee;
     final dark=Theme.of(c).brightness==Brightness.dark;
@@ -2111,7 +2163,7 @@ class _CartScreenState extends State<CartScreen>{
                   Row(children:[
                     Expanded(child:ChoiceChip(label:const Text('Instant'),selected:deliveryType=='instant',onSelected:deliveryBool(deliverySettings,'instantEnabled',true)?(_){setState(()=>deliveryType='instant');}:null)),
                     const SizedBox(width:8),
-                    Expanded(child:ChoiceChip(label:Text(scheduleAllowed?'Scheduled':'Scheduled closed'),selected:deliveryType=='scheduled',onSelected:scheduleAllowed?(_){setState(()=>deliveryType='scheduled');}:null)),
+                    Expanded(child:ChoiceChip(label:Text(scheduleAllowed?'Scheduled':'Scheduled unavailable'),selected:deliveryType=='scheduled',onSelected:scheduleAllowed?(_){setState(()=>deliveryType='scheduled');}:null)),
                   ]),
                   const SizedBox(height:8),
                   if(deliveryType=='scheduled')
