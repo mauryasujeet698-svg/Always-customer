@@ -32,7 +32,7 @@ import 'screens/order_details_screen.dart';
 import 'allways_design.dart';
 
 const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
-const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}?access_token=';
+const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=';
 
 String _mapboxTilesUrl() => _mapboxStyleTiles + _mapboxPublicToken;
 const cloudinaryCloudName='busdtvia';
@@ -788,7 +788,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             children:[
               TileLayer(
                 urlTemplate:_mapboxTilesUrl(),
-                tileSize:512,
+                tileSize:256,
                 maxZoom:19,
                 userAgentPackageName:'com.allways.app',
               ),
@@ -3008,7 +3008,7 @@ class _TravelPageState extends State<TravelPage> {
                       children:[
                         TileLayer(
                           urlTemplate:mapUrl,
-                          tileSize:_mapboxPublicToken.trim().isNotEmpty?512:256,
+                          tileSize:256,
                           maxZoom:19,
                           userAgentPackageName:'com.allways.app',
                         ),
