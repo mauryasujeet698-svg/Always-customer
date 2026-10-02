@@ -88,7 +88,7 @@ service cloud.firestore {
         return signedIn()
           && exists(/databases/$(database)/documents/ridePartners/$(request.auth.uid))
           && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.status == 'online'
-          && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.vehicleType in ['bike','auto','two_wheeler'];
+          && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.vehicleType in ['bike','auto','car','two_wheeler'];
       }
 
       allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid
