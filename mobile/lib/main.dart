@@ -217,12 +217,37 @@ const Map<String,Map<String,String>> _translations = {
 
 String tr(String key) => _translations[languageNotifier.value]?[key] ?? key;
 
+Future<void> _persistBackgroundNotification(RemoteMessage message) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('notifications_enabled') == false) return;
+    final title = message.notification?.title ?? message.data['title'] ?? 'ALLways';
+    final body = message.notification?.body ?? message.data['body'] ?? message.data['message'] ?? 'You have a new ALLways update.';
+    final type = (message.data['type'] ?? 'announcement').toString();
+    final raw = prefs.getStringList('allways_notifications') ?? <String>[];
+    raw.removeWhere((entry) {
+      try {
+        final d = jsonDecode(entry);
+        return d is Map && d['messageId'] == message.messageId && message.messageId != null;
+      } catch (_) { return false; }
+    });
+    raw.insert(0, jsonEncode({
+      'messageId': message.messageId ?? '',
+      'title': title,
+      'body': body,
+      'type': type,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'read': false,
+    }));
+    if (raw.length > 50) raw.removeRange(50, raw.length);
+    await prefs.setStringList('allways_notifications', raw);
+  } catch (_) {}
+}
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Notification messages are displayed by Android when the app is backgrounded
-  // or terminated. Keep this handler top-level for Flutter's background isolate.
-  print('ALLways background FCM: ${message.messageId}');
+  await _persistBackgroundNotification(message);
 }
 
 Future<void> main() async {
@@ -845,7 +870,14 @@ class _ShellState extends State<Shell> {
       final body=m.notification?.body??m.data['body']??'Open ALLways to view this update.';
       saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString());
     });
-    messages=FirebaseMessaging.onMessage.listen((m)async{final title=m.notification?.title??m.data['title']??'ALLways';final body=m.notification?.body??m.data['body']??m.data['message']??'New update';await saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString());if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(title+': '+body)));});
+    messages=FirebaseMessaging.onMessage.listen((m)async{
+      final title=m.notification?.title??m.data['title']??'ALLways';
+      final body=m.notification?.body??m.data['body']??m.data['message']??'New update';
+      await saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString(),messageId:m.messageId);
+      try{
+        await const MethodChannel('com.allways.app/apk_installer').invokeMethod('showNotification',{'title':title,'body':body});
+      }catch(_){}
+    });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
   @override void dispose(){timer?.cancel();auth?.cancel();messages?.cancel();super.dispose();}
@@ -933,17 +965,26 @@ class _ShellState extends State<Shell> {
     } catch (_) {}
   }
 
-  Future<void> saveIncomingNotification(String title,String body,{String type='announcement'}) async {
+  Future<void> saveIncomingNotification(String title,String body,{String type='announcement',String? messageId}) async {
     try{
       final prefs=await SharedPreferences.getInstance();
       final enabled=prefs.getBool('notifications_enabled')??prefs.getBool('allways_notifications_enabled')??true;
       if(!enabled)return;
-      final key=type.contains('delivery')?'deliveryUpdates':type.contains('order')?'orderUpdates':(type.contains('ride')||type.contains('vehicle')||type.contains('travel'))?'travelUpdates':type.contains('offer')?'offers':'announcements';
+      final lower=type.toLowerCase();
+      final key=lower.contains('delivery')?'deliveryUpdates'
+          :lower.contains('order')?'orderUpdates'
+          :(lower.contains('ride')||lower.contains('vehicle')||lower.contains('travel'))?'travelUpdates'
+          :lower.contains('offer')?'offers':'announcements';
       if(prefs.getBool('notification_'+key)==false)return;
       final raw=prefs.getStringList('allways_notifications')??<String>[];
-      raw.insert(0,jsonEncode({'title':title,'body':body,'type':type,'timestamp':DateTime.now().millisecondsSinceEpoch,'read':false}));
-      unreadNotificationNotifier.value = true;
+      if(messageId!=null&&messageId.isNotEmpty){
+        raw.removeWhere((entry){
+          try{final d=jsonDecode(entry);return d is Map&&d['messageId']==messageId;}catch(_){return false;}
+        });
+      }
+      raw.insert(0,jsonEncode({'messageId':messageId??'','title':title,'body':body,'type':type,'timestamp':DateTime.now().millisecondsSinceEpoch,'read':false}));
       if(raw.length>50)raw.removeRange(50,raw.length);
+      unreadNotificationNotifier.value=true;
       await prefs.setStringList('allways_notifications',raw);
     }catch(_){}
   }
@@ -3760,105 +3801,359 @@ class TravelBookingsSection extends StatelessWidget {
 class MyTripsPage extends StatelessWidget {
   const MyTripsPage({super.key});
 
-  @override
-  Widget build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor:AllwaysColors.background,
       appBar:AppBar(title:const Text('My Trips')),
       body:ListView(
-        padding:const EdgeInsets.fromLTRB(16,8,16,28),
+        padding:const EdgeInsets.fromLTRB(28,8,28,28),
         children:[
-          const Text('Your ALLways travel bookings',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
-          const SizedBox(height:6),
-          const Text('View, track, cancel eligible rides and review your completed travel bookings.',style:TextStyle(color:Colors.grey)),
-          const SizedBox(height:14),
-          const TravelBookingsSection(type:'ride'),
-          const SizedBox(height:12),
-          const TravelBookingsSection(type:'vehicle'),
+          const Text('Your ALLways travel bookings',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900,height:1.12)),
+          const SizedBox(height:8),
+          const Text('View, track, cancel eligible rides and review your completed travel bookings.',style:TextStyle(color:AllwaysColors.muted,fontSize:15,height:1.35)),
+          const SizedBox(height:18),
+          const _TripBookingSection(type:'ride'),
         ],
       ),
     );
   }
 }
 
-class HelpSupportPage extends StatelessWidget {
-  const HelpSupportPage({super.key});
+class _TripBookingSection extends StatefulWidget {
+  final String type;
+  const _TripBookingSection({required this.type});
+  @override State<_TripBookingSection> createState()=>_TripBookingSectionState();
+}
 
-  Future<void> _submitIssue(BuildContext context,String category) async {
-    final details=TextEditingController();
+class _TripBookingSectionState extends State<_TripBookingSection> {
+  String filter='All';
+  String _status(dynamic v)=>v.toString().trim().toLowerCase();
+  bool _matches(Map<String,dynamic> d){
+    final s=_status(d['status']);
+    if(filter=='Ongoing')return !['cancelled','rejected','completed','delivered','expired'].contains(s);
+    if(filter=='Completed')return s=='completed'||s=='delivered';
+    if(filter=='Cancelled')return s=='cancelled'||s=='rejected'||s=='expired';
+    return true;
+  }
+  String _date(dynamic value){
+    if(value is Timestamp){
+      final d=value.toDate();
+      return d.day.toString().padLeft(2,'0')+' '+_month(d.month)+', '+d.hour.toString().padLeft(2,'0')+':'+d.minute.toString().padLeft(2,'0');
+    }
+    return '';
+  }
+  String _month(int m)=>const ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1];
+
+  @override Widget build(BuildContext context){
     final user=FirebaseAuth.instance.currentUser;
-    if(user==null)return;
-    final submit=await showDialog<bool>(
-      context:context,
-      builder:(d)=>AlertDialog(
-        title:Text(category+' support'),
-        content:TextField(
-          controller:details,
-          maxLines:5,
-          decoration:const InputDecoration(
-            labelText:'Describe the issue',
-            hintText:'Tell us what happened...',
+    if(user==null)return const SizedBox.shrink();
+    final collection=widget.type=='ride'?'rideBookings':'vehicleBookings';
+    final isRide=widget.type=='ride';
+    return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+      stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
+      builder:(context,snapshot){
+        final docs=[...(snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[])];
+        docs.sort((a,b){
+          final av=a.data()['createdAt']; final bv=b.data()['createdAt'];
+          final at=av is Timestamp?av.millisecondsSinceEpoch:0; final bt=bv is Timestamp?bv.millisecondsSinceEpoch:0;
+          return bt.compareTo(at);
+        });
+        final filtered=docs.where((d)=>_matches(d.data())).toList();
+        return Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Container(
+            padding:const EdgeInsets.all(4),
+            decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16),border:Border.all(color:AllwaysColors.border)),
+            child:Row(children:[
+              Expanded(child:_sectionTab('My Ride Bookings',isRide)),
+              Expanded(child:_sectionTab('My Vehicle Bookings',!isRide)),
+            ]),
           ),
-        ),
-        actions:[
-          TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),
-          FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Submit')),
-        ],
-      ),
-    )??false;
-    if(!submit||details.text.trim().isEmpty){details.dispose();return;}
+          if(isRide)...[const SizedBox(height:18),_filters()],
+          const SizedBox(height:12),
+          if(snapshot.hasError)const _TripEmpty(message:'Bookings could not be loaded. Please try again.')
+          else if(!snapshot.hasData)const Center(child:CircularProgressIndicator())
+          else if(filtered.isEmpty)_TripEmpty(message:isRide?'No bookings in this section.':'No vehicle bookings yet.')
+          else ...filtered.take(20).map((doc)=>Padding(
+            padding:const EdgeInsets.only(bottom:12),
+            child:_TripCard(data:doc.data(),bookingId:doc.id,isRide:isRide,dateText:_date(doc.data()['createdAt'])),
+          )),
+        ]);
+      },
+    );
+  }
+
+  Widget _sectionTab(String label,bool selected)=>InkWell(
+    borderRadius:BorderRadius.circular(12),
+    onTap:()=>setState(()=>filter='All'),
+    child:Container(
+      padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),
+      decoration:BoxDecoration(color:selected?const Color(0xFFFFDDE8):Colors.transparent,borderRadius:BorderRadius.circular(12)),
+      child:Text(label,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:selected?AllwaysColors.primary:AllwaysColors.text,fontSize:12)),
+    ),
+  );
+
+  Widget _filters()=>SingleChildScrollView(
+    scrollDirection:Axis.horizontal,
+    child:Row(children:['All','Ongoing','Completed','Cancelled'].map((x){
+      final selected=filter==x;
+      return Padding(
+        padding:const EdgeInsets.only(right:7),
+        child:ChoiceChip(label:Text(x),selected:selected,selectedColor:AllwaysColors.primary,backgroundColor:Colors.white,
+          labelStyle:TextStyle(color:selected?Colors.white:AllwaysColors.text,fontSize:12,fontWeight:FontWeight.w600),
+          onSelected:(_)=>setState(()=>filter=x)),
+      );
+    }).toList()),
+  );
+}
+
+class _TripCard extends StatelessWidget {
+  final Map<String,dynamic> data;
+  final String bookingId,dateText;
+  final bool isRide;
+  const _TripCard({required this.data,required this.bookingId,required this.isRide,required this.dateText});
+
+  String _s(dynamic v)=>v?.toString().trim()??'';
+  String get status=>_s(data['status']);
+  bool get terminal=>['cancelled','rejected','completed','delivered','expired'].contains(status.toLowerCase());
+
+  Future<void> _cancel(BuildContext context) async {
+    if(!isRide)return;
     try{
-      await FirebaseFirestore.instance.collection('supportRequests').add({
-        'userUid':user.uid,
-        'userName':user.displayName??'ALLways customer',
-        'userEmail':user.email??'',
-        'category':category,
-        'details':details.text.trim(),
-        'status':'open',
-        'createdAt':FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.collection('rideBookings').doc(bookingId).update({
+        'status':'Cancelled','cancelledBy':'customer','cancellationReason':'Customer cancelled the ride','cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
       });
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Support request submitted.')));
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride cancelled.')));
     }catch(e){
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
-    }finally{
-      details.dispose();
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel ride: '+e.toString())));
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _report(BuildContext context) async {
+    final details=TextEditingController();
+    final ok=await showDialog<bool>(context:context,builder:(d)=>AlertDialog(
+      title:Text((isRide?'Travel & Rides':'Vehicle Booking')+' report'),
+      content:TextField(controller:details,maxLines:4,decoration:const InputDecoration(labelText:'Describe the issue')),
+      actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Submit'))],
+    ))??false;
+    if(ok){
+      final u=FirebaseAuth.instance.currentUser;
+      if(u!=null)await FirebaseFirestore.instance.collection('travelReports').add({'bookingId':bookingId,'bookingType':isRide?'ride':'vehicle','userUid':u.uid,'report':details.text.trim(),'status':'open','createdAt':FieldValue.serverTimestamp()});
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Report submitted.')));
+    }
+    details.dispose();
+  }
+
+  @override Widget build(BuildContext context){
+    final pickup=_s(data['pickupAddress']??data['pickup']??data['from']??'Pratapgarh');
+    final destination=_s(data['destinationAddress']??data['destination']??data['to']??'');
+    final fare=data['fare']??data['price']??data['amount']??data['listedPrice'];
+    final vehicle=_s(data['vehicleType']??data['carrierVehicleType']??data['category']??(isRide?'Ride':'Vehicle'));
+    final partner=_s(data['partnerName']??data['driverName']??data['carrierName']??data['ownerName']??'ALLways partner');
+    final phone=_s(data['partnerPhone']??data['driverPhone']??data['carrierPhone']??data['ownerPhone']);
+    final statusColor=terminal?const Color(0xFFB3261E):const Color(0xFF16834B);
+    return Container(
+      padding:const EdgeInsets.all(14),
+      decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(18),border:Border.all(color:AllwaysColors.border)),
+      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Row(children:[
+          Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:statusColor.withOpacity(.12),borderRadius:BorderRadius.circular(10)),
+            child:Text(status.isEmpty?'Booking':status[0].toUpperCase()+status.substring(1),style:TextStyle(color:statusColor,fontWeight:FontWeight.w800,fontSize:11))),
+          const Spacer(),
+          if(dateText.isNotEmpty)Text(dateText,style:const TextStyle(color:AllwaysColors.muted,fontSize:11)),
+        ]),
+        const SizedBox(height:12),
+        Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              const Padding(padding:EdgeInsets.only(top:4),child:Icon(Icons.circle,size:9,color:Color(0xFF18A85B))),
+              const SizedBox(width:8),
+              Expanded(child:Text(pickup,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w700))),
+            ]),
+            const SizedBox(height:8),
+            Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              const Padding(padding:EdgeInsets.only(top:4),child:Icon(Icons.circle,size:9,color:Color(0xFFE83A4B))),
+              const SizedBox(width:8),
+              Expanded(child:Text(destination.isEmpty?'Destination':destination,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w700))),
+            ]),
+          ])),
+          const SizedBox(width:10),
+          Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
+            Text(fare==null?'—':'₹'+fare.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
+            const Text('Cash',style:TextStyle(color:AllwaysColors.muted,fontSize:11)),
+          ]),
+        ]),
+        const SizedBox(height:10),
+        Row(children:[
+          Container(width:42,height:42,decoration:const BoxDecoration(color:Color(0xFFF4DDE5),shape:BoxShape.circle),child:Icon(isRide?Icons.person:Icons.directions_car,color:AllwaysColors.primary)),
+          const SizedBox(width:10),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(partner,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800)),
+            Text(vehicle+(phone.isEmpty?'':' • '+phone),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12)),
+          ])),
+          if(phone.isNotEmpty)IconButton(onPressed:()=>launchUrl(Uri.parse('tel:'+phone)),icon:const Icon(Icons.call_outlined,color:AllwaysColors.primary)),
+        ]),
+        const SizedBox(height:10),
+        if(!terminal&&isRide)
+          Row(children:[
+            Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:'rideBookings',docId:bookingId,title:'Live ride tracking',mode:'ride',broadcastPrefix:'customer',allowCancel:true))),icon:const Icon(Icons.location_on_outlined,size:18),label:const Text('Track Ride'))),
+            const SizedBox(width:8),
+            Expanded(child:OutlinedButton.icon(onPressed:()=>_cancel(context),icon:const Icon(Icons.close,size:18),label:const Text('Cancel'))),
+          ]),
+        if(terminal||!isRide)
+          Row(children:[
+            Expanded(child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.description_outlined,size:18),label:const Text('View Details'))),
+            const SizedBox(width:8),
+            Expanded(child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.warning_amber_outlined,size:18),label:const Text('Report Issue'))),
+          ]),
+        if(isRide&&terminal&&status.toLowerCase()=='completed')
+          Padding(padding:const EdgeInsets.only(top:8),child:SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.refresh,size:18),label:const Text('Book Again')))),
+      ]),
+    );
+  }
+}
+
+class _TripEmpty extends StatelessWidget {
+  final String message;
+  const _TripEmpty({required this.message});
+  @override Widget build(BuildContext context)=>Container(
+    padding:const EdgeInsets.symmetric(vertical:28,horizontal:18),
+    decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(18)),
+    child:Center(child:Text(message,textAlign:TextAlign.center,style:const TextStyle(color:AllwaysColors.muted))),
+  );
+}
+class HelpSupportPage extends StatelessWidget {
+  const HelpSupportPage({super.key});
+
+  List<String> _issues(String category){
+    switch(category){
+      case 'Orders & Delivery': return ['Order not received','Wrong item','Refund issue','Delivery delay','Damaged item','Other'];
+      case 'Travel & Rides': return ['Ride not accepted','Driver / carrier issue','Ride cancelled','Fare issue','Pickup / location issue','Ride tracking issue','Other'];
+      case 'Vehicle Booking': return ['Vehicle unavailable','Booking issue','Cancellation issue','Pricing issue','Vehicle condition issue','Owner issue','Other'];
+      case 'Account & Login': return ['Login issue','Google Sign-In issue','Account issue','Delete account','Other'];
+      default: return ['General issue','Other'];
+    }
+  }
+
+  Future<void> _openIssue(BuildContext context,String category) async {
+    final user=FirebaseAuth.instance.currentUser;
+    if(user==null)return;
+    String? selected;
+    final details=TextEditingController();
+    final result=await showModalBottomSheet<bool>(
+      context:context,isScrollControlled:true,backgroundColor:Colors.transparent,
+      builder:(sheetContext)=>StatefulBuilder(builder:(context,setSheetState){
+        final issues=_issues(category);
+        return Padding(
+          padding:EdgeInsets.only(bottom:MediaQuery.of(context).viewInsets.bottom),
+          child:Container(
+            padding:const EdgeInsets.fromLTRB(20,18,20,20),
+            decoration:const BoxDecoration(color:Color(0xFFFFEEF3),borderRadius:BorderRadius.vertical(top:Radius.circular(28))),
+            child:SafeArea(
+              top:false,
+              child:SingleChildScrollView(
+                child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  Row(children:[
+                    Expanded(child:Text(category+' support',style:const TextStyle(fontSize:21,fontWeight:FontWeight.w800))),
+                    IconButton(onPressed:()=>Navigator.pop(sheetContext,false),icon:const Icon(Icons.close)),
+                  ]),
+                  const SizedBox(height:4),
+                  const Text('Select issue type',style:TextStyle(fontWeight:FontWeight.w800)),
+                  const SizedBox(height:10),
+                  Wrap(spacing:8,runSpacing:8,children:issues.map((issue){
+                    final active=selected==issue;
+                    return ChoiceChip(label:Text(issue),selected:active,selectedColor:const Color(0xFFF4C6D5),backgroundColor:Colors.white,onSelected:(_)=>setSheetState(()=>selected=issue));
+                  }).toList()),
+                  const SizedBox(height:18),
+                  const Text('Describe the issue',style:TextStyle(fontWeight:FontWeight.w800)),
+                  const SizedBox(height:8),
+                  TextField(controller:details,maxLines:5,decoration:const InputDecoration(hintText:'Please describe your issue in detail...',fillColor:Colors.white)),
+                  const SizedBox(height:16),
+                  SizedBox(width:double.infinity,child:FilledButton(
+                    onPressed:selected==null||details.text.trim().isEmpty?null:() async {
+                      try{
+                        await FirebaseFirestore.instance.collection('supportRequests').add({
+                          'userUid':user.uid,'userName':user.displayName??'ALLways customer','userEmail':user.email??'',
+                          'category':category,'issueType':selected,'details':details.text.trim(),'status':'open','createdAt':FieldValue.serverTimestamp(),
+                        });
+                        if(sheetContext.mounted)Navigator.pop(sheetContext,true);
+                      }catch(e){
+                        if(sheetContext.mounted)ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
+                      }
+                    },
+                    child:const Text('Submit'),
+                  )),
+                ]),
+              ),
+            ),
+          ),
+        );
+      }),
+    )??false;
+    details.dispose();
+    if(result&&context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Support request submitted.')));
+  }
+
+  @override Widget build(BuildContext context) {
     const categories=[
-      ('Orders & Delivery',Icons.local_shipping_outlined),
-      ('Travel & Rides',Icons.directions_car_outlined),
-      ('Vehicle Booking',Icons.car_rental_outlined),
-      ('Account & Login',Icons.person_outline),
-      ('Other',Icons.help_outline),
+      ('Orders & Delivery',Icons.inventory_2_outlined,'Order, delivery and product issues'),
+      ('Travel & Rides',Icons.two_wheeler_outlined,'Ride booking and travel issues'),
+      ('Vehicle Booking',Icons.directions_car_outlined,'Rent a vehicle issues'),
+      ('Account & Login',Icons.person_outline,'Profile, login and account issues'),
     ];
     return Scaffold(
+      backgroundColor:AllwaysColors.background,
       appBar:AppBar(title:const Text('Help & Support')),
       body:ListView(
-        padding:const EdgeInsets.fromLTRB(16,8,16,28),
+        padding:const EdgeInsets.fromLTRB(28,8,28,28),
         children:[
-          const Text('How can we help?',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+          const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
           const SizedBox(height:6),
-          const Text('Choose a topic and tell ALLways what you need help with.',style:TextStyle(color:Colors.grey)),
-          const SizedBox(height:14),
-          ...categories.map((item)=>Card(
-            child:ListTile(
-              leading:Icon(item.$2),
-              title:Text(item.$1,style:const TextStyle(fontWeight:FontWeight.w800)),
-              trailing:const Icon(Icons.chevron_right),
-              onTap:()=>_submitIssue(context,item.$1),
-            ),
-          )),
-          const SizedBox(height:10),
-          const InfoCard(
-            title:'Safety',
-            detail:'For an active ride or delivery issue, use the relevant support category above and include the booking or order details so the team can identify it quickly.',
+          const Text('Choose a topic and tell ALLways what you need help with.',style:TextStyle(color:AllwaysColors.muted,fontSize:14)),
+          const SizedBox(height:16),
+          GridView.builder(
+            shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:categories.length,
+            gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,crossAxisSpacing:10,mainAxisSpacing:10,childAspectRatio:1.15),
+            itemBuilder:(context,index){
+              final item=categories[index];
+              return InkWell(
+                borderRadius:BorderRadius.circular(18),onTap:()=>_openIssue(context,item.$1),
+                child:Container(
+                  padding:const EdgeInsets.all(14),
+                  decoration:BoxDecoration(color:index==0?const Color(0xFFFFEAF0):index==1?const Color(0xFFEAF4FF):index==2?const Color(0xFFEAF9F0):const Color(0xFFFFF6DF),borderRadius:BorderRadius.circular(18)),
+                  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    Icon(item.$2,color:AllwaysColors.primary,size:27),const Spacer(),
+                    Row(children:[Expanded(child:Text(item.$1,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:14))),const Icon(Icons.chevron_right,size:20)]),
+                    const SizedBox(height:4),
+                    Text(item.$3,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:11,height:1.2)),
+                  ]),
+                ),
+              );
+            },
           ),
+          const SizedBox(height:18),
+          const Text('Other Support Options',style:TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+          const SizedBox(height:8),
+          _SupportOption(icon:Icons.chat_bubble_outline,title:'Chat with us',subtitle:'Get help from our support team'),
+          const SizedBox(height:8),
+          _SupportOption(icon:Icons.description_outlined,title:'FAQ',subtitle:'Find answers to common questions'),
         ],
       ),
     );
   }
+}
+
+class _SupportOption extends StatelessWidget {
+  final IconData icon; final String title; final String subtitle;
+  const _SupportOption({required this.icon,required this.title,required this.subtitle});
+  @override Widget build(BuildContext context)=>Container(
+    padding:const EdgeInsets.all(14),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16)),
+    child:Row(children:[
+      Container(width:44,height:44,decoration:const BoxDecoration(color:Color(0xFFFCE3EB),shape:BoxShape.circle),child:Icon(icon,color:AllwaysColors.primary)),
+      const SizedBox(width:12),
+      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),Text(subtitle,style:const TextStyle(color:AllwaysColors.muted,fontSize:12))])),
+      const Icon(Icons.chevron_right,color:AllwaysColors.muted),
+    ]),
+  );
 }
 
 class AccountSecurityPage extends StatelessWidget {
@@ -4049,6 +4344,18 @@ class _ProfilePageState extends State<ProfilePage>{
       ),
     )??false;
     if(!second)return;
+    final current=FirebaseAuth.instance.currentUser;
+    if(current!=null){
+      try{
+        await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
+        await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
+        final token=await FirebaseMessaging.instance.getToken();
+        if(token!=null&&token.isNotEmpty){
+          await FirebaseFirestore.instance.collection('fcmTokens').doc(current.uid).collection('tokens').doc(token).delete();
+        }
+        await FirebaseFirestore.instance.collection('fcmTokens').doc(current.uid).set({'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+      }catch(_){}
+    }
     await FirebaseAuth.instance.signOut();
   }
 
@@ -4137,7 +4444,7 @@ class _ProfilePageState extends State<ProfilePage>{
   Future<void> _openNotifications(BuildContext c) async {
     await markNotificationsRead();
     if(!c.mounted)return;
-    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(_)=>const NotificationsPage());
+    await Navigator.push(c,MaterialPageRoute(builder:(_)=>const NotificationsPage()));
   }
 
   @override Widget build(BuildContext c){
@@ -4204,38 +4511,193 @@ class NotificationsPage extends StatefulWidget{
   const NotificationsPage({super.key});
   @override State<NotificationsPage> createState()=>_NotificationsPageState();
 }
+
 class _NotificationsPageState extends State<NotificationsPage>{
-  bool enabled=true,loading=true; List<Map<String,dynamic>> notifications=[];
-  final Map<String,bool> prefs=<String,bool>{'orderUpdates':true,'deliveryUpdates':true,'travelUpdates':true,'offers':true,'announcements':true};
+  bool loading=true;
+  List<Map<String,dynamic>> notifications=[];
   String filter='All';
+
   @override void initState(){super.initState();_load();}
 
-  Future<void> _load() async {try{final p=await SharedPreferences.getInstance();enabled=p.getBool('notifications_enabled')??p.getBool('allways_notifications_enabled')??true;for(final key in prefs.keys){prefs[key]=p.getBool('notification_'+key)??true;}final raw=p.getStringList('allways_notifications')??<String>[];notifications=raw.map((x){try{final d=jsonDecode(x);return d is Map?Map<String,dynamic>.from(d):<String,dynamic>{};}catch(_){return <String,dynamic>{};}}).where((x)=>x.isNotEmpty).toList();}catch(_){}if(mounted)setState(()=>loading=false);}
-  Future<void> _savePreference(String key,bool value) async {prefs[key]=value;final p=await SharedPreferences.getInstance();await p.setBool('notification_'+key,value);final u=FirebaseAuth.instance.currentUser;if(u!=null){try{await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'notificationPreferences':Map<String,bool>.from(prefs),'notificationsEnabled':enabled,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));}catch(_){}}if(mounted)setState((){});}
-  Future<void> _toggle(bool value) async {try{if(value){final status=await FirebaseMessaging.instance.requestPermission(alert:true,badge:true,sound:true,provisional:false);if(status.authorizationStatus==AuthorizationStatus.denied){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Notification permission is disabled for ALLways.')));return;}await FirebaseMessaging.instance.subscribeToTopic('all_users');enabled=true;}else{await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');enabled=false;}final p=await SharedPreferences.getInstance();await p.setBool('notifications_enabled',enabled);await p.setBool('allways_notifications_enabled',enabled);final u=FirebaseAuth.instance.currentUser;if(u!=null)await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','notificationsEnabled':enabled,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));if(enabled){final token=await FirebaseMessaging.instance.getToken();if(token!=null&&u!=null){await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).collection('tokens').doc(token).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await FirebaseFirestore.instance.collection('fcmTokens').doc(u.uid).set({'uid':u.uid,'email':u.email??'','token':token,'notificationsEnabled':true,'notificationPreferences':Map<String,bool>.from(prefs),'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));await p.setString('allways_fcm_token',token);}}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Notification setting could not be saved: '+e.toString())));}if(mounted)setState((){});}
-  Future<void> _markAllRead() async {try{final p=await SharedPreferences.getInstance();final raw=p.getStringList('allways_notifications')??<String>[];final updated=raw.map((x){try{final d=jsonDecode(x);if(d is Map){final m=Map<String,dynamic>.from(d);m['read']=true;return jsonEncode(m);}}catch(_){}return x;}).toList();await p.setStringList('allways_notifications',updated);unreadNotificationNotifier.value=false;await _load();}catch(_){}}
-  Future<void> _clearHistory() async {final p=await SharedPreferences.getInstance();await p.remove('allways_notifications');unreadNotificationNotifier.value=false;if(mounted)setState(()=>notifications=[]);}
-  String _time(dynamic value){final ms=value is num?value.toInt():int.tryParse(value?.toString()??'')??0;if(ms<=0)return'';final d=DateTime.fromMillisecondsSinceEpoch(ms);final diff=DateTime.now().difference(d);if(diff.inMinutes<1)return'Just now';if(diff.inHours<1)return diff.inMinutes.toString()+' min ago';if(diff.inDays<1)return diff.inHours.toString()+' hr ago';return d.day.toString().padLeft(2,'0')+'/'+d.month.toString().padLeft(2,'0')+'/'+d.year.toString();}
-  bool _matches(Map<String,dynamic> n){if(filter=='All')return true;final type=(n['type']??'').toString().toLowerCase();if(filter=='Orders')return type.contains('order');if(filter=='Delivery')return type.contains('delivery');if(filter=='Travel')return type.contains('ride')||type.contains('vehicle')||type.contains('travel');if(filter=='Offers')return type.contains('offer')||type.contains('promotion');return true;}
-  Widget _setting({required IconData icon,required String title,required String subtitle,required String key})=>SwitchListTile(contentPadding:const EdgeInsets.symmetric(horizontal:16,vertical:2),secondary:CircleAvatar(child:Icon(icon)),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(subtitle),value:enabled&&prefs[key]!,onChanged:enabled?(v)=>_savePreference(key,v):null);
-  @override Widget build(BuildContext context){final visible=notifications.where(_matches).toList();return SafeArea(child:Column(children:[
-    Padding(padding:const EdgeInsets.fromLTRB(16,6,12,4),child:Row(children:[const Icon(Icons.notifications_outlined,size:26),const SizedBox(width:10),const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Notifications',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),Text('Stay updated with your ALLways activity',style:TextStyle(color:Colors.grey,fontSize:12))])),IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.close))])),
-    Expanded(child:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
-      Card(child:SwitchListTile(contentPadding:const EdgeInsets.fromLTRB(16,8,16,8),secondary:CircleAvatar(radius:24,child:Icon(enabled?Icons.notifications_active_outlined:Icons.notifications_off_outlined)),title:const Text('ALLways notifications',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),subtitle:Text(enabled?'Notifications are enabled':'Notifications are turned off'),value:enabled,onChanged:_toggle)),
-      const SizedBox(height:14),const Text('ORDER & DELIVERY',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey)),const SizedBox(height:6),
-      Card(child:Column(children:[_setting(icon:Icons.receipt_long_outlined,title:'Order updates',subtitle:'Confirmation, preparation, delivery and completion',key:'orderUpdates'),const Divider(height:1),_setting(icon:Icons.local_shipping_outlined,title:'Delivery updates',subtitle:'Partner offers, acceptance and out-for-delivery alerts',key:'deliveryUpdates')])),
-      const SizedBox(height:14),const Text('TRAVEL & OFFERS',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey)),const SizedBox(height:6),
-      Card(child:Column(children:[_setting(icon:Icons.two_wheeler_outlined,title:'Travel & ride updates',subtitle:'Ride requests, acceptance and vehicle bookings',key:'travelUpdates'),const Divider(height:1),_setting(icon:Icons.local_offer_outlined,title:'Offers & promotions',subtitle:'Special offers and discounts from ALLways',key:'offers'),const Divider(height:1),_setting(icon:Icons.campaign_outlined,title:'ALLways announcements',subtitle:'Important service announcements and news',key:'announcements')])),
-      const SizedBox(height:18),
-      Row(children:[const Expanded(child:Text('NOTIFICATION HISTORY',style:TextStyle(fontSize:12,fontWeight:FontWeight.w900,color:Colors.grey))),TextButton(onPressed:notifications.isEmpty?null:_markAllRead,child:const Text('Mark all read')),TextButton(onPressed:notifications.isEmpty?null:_clearHistory,child:const Text('Clear'))]),
-      SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:['All','Orders','Delivery','Travel','Offers'].map((x)=>Padding(padding:const EdgeInsets.only(right:6),child:ChoiceChip(label:Text(x),selected:filter==x,onSelected:(_)=>setState(()=>filter=x)))).toList())),
-      const SizedBox(height:8),
-      if(visible.isEmpty)Card(child:Padding(padding:const EdgeInsets.all(28),child:Column(children:[Icon(Icons.notifications_none,size:54,color:Theme.of(context).colorScheme.primary),const SizedBox(height:10),const Text('No notifications yet.',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),const SizedBox(height:4),const Text('Your order, delivery and travel updates will appear here.',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey))])))
-      else ...visible.map((n){final title=(n['title']??'ALLways').toString(),body=(n['body']??'').toString(),time=_time(n['timestamp']),read=n['read']==true,type=(n['type']??'').toString().toLowerCase();return Card(color:read?null:Theme.of(context).colorScheme.primaryContainer,margin:const EdgeInsets.only(bottom:8),child:ListTile(leading:CircleAvatar(child:Icon(type.contains('delivery')?Icons.local_shipping_outlined:type.contains('ride')?Icons.two_wheeler_outlined:Icons.notifications_outlined)),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(body),trailing:time.isEmpty?null:Text(time,style:const TextStyle(fontSize:11,color:Colors.grey))));}),
-      const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(14),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[const Icon(Icons.info_outline),const SizedBox(width:10),const Expanded(child:Text('Live location updates are shown on the tracking map, not as repeated push notifications. This keeps alerts useful and reduces unnecessary network traffic.',style:TextStyle(color:Colors.grey,height:1.35)))]))),
-    ])),
-  ]));}
+  Future<void> _load() async {
+    try{
+      final p=await SharedPreferences.getInstance();
+      final raw=p.getStringList('allways_notifications')??<String>[];
+      notifications=raw.map((x){
+        try{final d=jsonDecode(x);return d is Map?Map<String,dynamic>.from(d):<String,dynamic>{};}
+        catch(_){return <String,dynamic>{};}
+      }).where((x)=>x.isNotEmpty).toList();
+    }catch(_){}
+    if(mounted)setState(()=>loading=false);
+  }
+
+  bool _matches(Map<String,dynamic> n){
+    if(filter=='All')return true;
+    final type=(n['type']??n['category']??'').toString().toLowerCase();
+    if(filter=='Orders')return type.contains('order');
+    if(filter=='Delivery')return type.contains('delivery');
+    if(filter=='Travel')return type.contains('ride')||type.contains('vehicle')||type.contains('travel');
+    if(filter=='Offers')return type.contains('offer')||type.contains('promotion');
+    return true;
+  }
+
+  String _time(dynamic value){
+    final ms=value is num?value.toInt():int.tryParse(value?.toString()??'')??0;
+    if(ms<=0)return'';
+    final d=DateTime.fromMillisecondsSinceEpoch(ms);
+    final diff=DateTime.now().difference(d);
+    if(diff.inMinutes<1)return'Just now';
+    if(diff.inHours<1)return diff.inMinutes.toString()+' min ago';
+    if(diff.inDays<1)return diff.inHours.toString()+' hr ago';
+    if(diff.inDays<7)return diff.inDays.toString()+' days ago';
+    return d.day.toString()+'/'+d.month.toString();
+  }
+
+  Future<void> _markRead(int index) async {
+    final p=await SharedPreferences.getInstance();
+    final raw=p.getStringList('allways_notifications')??<String>[];
+    if(index>=0&&index<raw.length){
+      try{
+        final d=jsonDecode(raw[index]);
+        if(d is Map){
+          final m=Map<String,dynamic>.from(d)..['read']=true;
+          raw[index]=jsonEncode(m);
+          await p.setStringList('allways_notifications',raw);
+        }
+      }catch(_){}
+    }
+    await _load();
+    if(notifications.every((n)=>n['read']==true))unreadNotificationNotifier.value=false;
+  }
+
+  Future<void> _markAllRead() async {
+    final p=await SharedPreferences.getInstance();
+    final raw=p.getStringList('allways_notifications')??<String>[];
+    final updated=raw.map((x){
+      try{
+        final d=jsonDecode(x);
+        if(d is Map){final m=Map<String,dynamic>.from(d)..['read']=true;return jsonEncode(m);}
+      }catch(_){}
+      return x;
+    }).toList();
+    await p.setStringList('allways_notifications',updated);
+    unreadNotificationNotifier.value=false;
+    await _load();
+  }
+
+  IconData _iconFor(String type){
+    final t=type.toLowerCase();
+    if(t.contains('delivery'))return Icons.local_shipping_outlined;
+    if(t.contains('order'))return Icons.receipt_long_outlined;
+    if(t.contains('ride'))return Icons.two_wheeler_outlined;
+    if(t.contains('vehicle'))return Icons.directions_car_outlined;
+    if(t.contains('offer')||t.contains('promotion'))return Icons.local_offer_outlined;
+    if(t.contains('announcement'))return Icons.campaign_outlined;
+    return Icons.notifications_active_outlined;
+  }
+
+  @override Widget build(BuildContext context){
+    final visible=notifications.where(_matches).toList();
+    return Scaffold(
+      backgroundColor:AllwaysColors.background,
+      body:SafeArea(
+        child:Column(children:[
+          Padding(
+            padding:const EdgeInsets.fromLTRB(16,8,12,4),
+            child:Row(children:[
+              IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),
+              const SizedBox(width:2),
+              const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                Text('Notifications',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
+                Text('Stay updated with your ALLways activity',style:TextStyle(color:Colors.grey,fontSize:12)),
+              ])),
+              IconButton(tooltip:'Notification settings',onPressed:()=>Navigator.pushNamed(context,'/notifications-settings'),icon:const Icon(Icons.settings_outlined)),
+            ]),
+          ),
+          Expanded(
+            child:loading?const Center(child:CircularProgressIndicator()):RefreshIndicator(
+              onRefresh:_load,
+              child:ListView(
+                padding:const EdgeInsets.fromLTRB(16,8,16,28),
+                children:[
+                  SingleChildScrollView(
+                    scrollDirection:Axis.horizontal,
+                    child:Row(children:['All','Orders','Delivery','Travel','Offers'].map((x){
+                      final selected=filter==x;
+                      return Padding(
+                        padding:const EdgeInsets.only(right:8),
+                        child:ChoiceChip(
+                          label:Text(x),selected:selected,selectedColor:AllwaysColors.primary,backgroundColor:Colors.white,
+                          labelStyle:TextStyle(color:selected?Colors.white:AllwaysColors.text,fontWeight:FontWeight.w600),
+                          onSelected:(_)=>setState(()=>filter=x),
+                        ),
+                      );
+                    }).toList()),
+                  ),
+                  const SizedBox(height:12),
+                  if(visible.isEmpty)
+                    Container(
+                      padding:const EdgeInsets.symmetric(horizontal:24,vertical:48),
+                      decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(20)),
+                      child:const Column(children:[
+                        Icon(Icons.notifications_none_rounded,size:54,color:AllwaysColors.primary),
+                        SizedBox(height:12),
+                        Text('No notifications yet',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),
+                        SizedBox(height:5),
+                        Text('Order, delivery, travel and ALLways updates will appear here.',textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted)),
+                      ]),
+                    )
+                  else ...visible.map((n){
+                    final title=(n['title']??'ALLways').toString();
+                    final body=(n['body']??n['message']??'').toString();
+                    final type=(n['type']??n['category']??'announcement').toString();
+                    final unread=n['read']!=true;
+                    final originalIndex=notifications.indexOf(n);
+                    return Padding(
+                      padding:const EdgeInsets.only(bottom:10),
+                      child:Material(
+                        color:unread?const Color(0xFFFFF1F5):Colors.white,borderRadius:BorderRadius.circular(18),
+                        child:InkWell(
+                          borderRadius:BorderRadius.circular(18),
+                          onTap:()=>_markRead(originalIndex),
+                          child:Padding(
+                            padding:const EdgeInsets.all(14),
+                            child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                              Container(width:48,height:48,decoration:const BoxDecoration(color:Color(0xFFFCE3EB),shape:BoxShape.circle),child:Icon(_iconFor(type),color:AllwaysColors.primary)),
+                              const SizedBox(width:12),
+                              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                                Row(children:[
+                                  Expanded(child:Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:15))),
+                                  const SizedBox(width:6),
+                                  Text(_time(n['timestamp']),style:const TextStyle(color:AllwaysColors.muted,fontSize:11)),
+                                ]),
+                                const SizedBox(height:4),
+                                Text(body,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12.5,height:1.3)),
+                              ])),
+                              const SizedBox(width:6),
+                              Column(children:[
+                                if(unread)Container(width:7,height:7,decoration:const BoxDecoration(color:AllwaysColors.primary,shape:BoxShape.circle)),
+                                const SizedBox(height:12),
+                                const Icon(Icons.chevron_right,color:AllwaysColors.muted),
+                              ]),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  if(notifications.isNotEmpty)
+                    Align(alignment:Alignment.centerRight,child:TextButton.icon(onPressed:_markAllRead,icon:const Icon(Icons.done_all_outlined,size:18),label:const Text('Mark all as read'))),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
+
 
 const vehicleCategories = <String>[
   'Motorcycle','Scooter','E-bike','Auto Rickshaw','E-Rickshaw','Hatchback','Sedan','SUV','MUV',
