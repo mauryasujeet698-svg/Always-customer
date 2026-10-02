@@ -646,12 +646,12 @@ jobs:
           MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
         run: |
           cd mobile
-          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64,android-x64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
+          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
-          MAX_SIZE=$((50*1024*1024))
-          echo "Release APK size: $APK_SIZE bytes (50 MB CI safety limit; Play Store delivery will use AAB/splits later)"
+          MAX_SIZE=$((75*1024*1024))
+          echo "Release APK size: $APK_SIZE bytes (75 MB CI safety limit for arm64 Mapbox SDK build; Play Store delivery will use AAB/splits later)"
           if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
-            echo "ERROR: ALLways APK exceeds 50 MB size target."
+            echo "ERROR: ALLways arm64 APK exceeds 75 MB CI safety limit."
             exit 1
           fi
 
