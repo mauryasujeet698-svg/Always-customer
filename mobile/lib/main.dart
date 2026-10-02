@@ -11,7 +11,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -28,10 +27,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
-import 'utils/voice_search_helper.dart';
 import 'screens/live_ride_tracking_screen.dart';
 import 'screens/notifications_settings_screen.dart';
-import 'screens/wishlist_screen.dart';
 import 'screens/order_details_screen.dart';
 import 'allways_design.dart';
 
