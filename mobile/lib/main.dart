@@ -15,6 +15,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mbx;
 import 'package:latlong2/latlong.dart';
 
 // Mapbox public token is injected at build time from GitHub Actions Secrets.
@@ -260,6 +261,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (_mapboxPublicToken.trim().isNotEmpty) {
+    mbx.MapboxOptions.setAccessToken(_mapboxPublicToken.trim());
+  }
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   final prefs = await SharedPreferences.getInstance();
   final savedNotifications = prefs.getStringList('allways_notifications') ?? <String>[];
@@ -2745,7 +2749,7 @@ class TravelPage extends StatefulWidget {
 }
 
 class _TravelPageState extends State<TravelPage> {
-  final MapController _travelMapController=MapController();
+  mbx.MapboxMap? _mapboxTravelMap;
   Position? position;
   bool loading=true;
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
@@ -2758,6 +2762,42 @@ class _TravelPageState extends State<TravelPage> {
   void initState(){super.initState();_locate();_loadTravelFavorites();}
 
   String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
+
+  mbx.Point _mapPoint(Position p)=>mbx.Point(
+    coordinates:mbx.Position(p.longitude,p.latitude),
+  );
+
+  Future<void> _setMapPosition(Position p,{double zoom=14.5}) async {
+    final map=_mapboxTravelMap;
+    if(map==null)return;
+    try{
+      await map.location.updateSettings(
+        mbx.LocationComponentSettings(
+          enabled:true,
+          pulsingEnabled:false,
+          showAccuracyRing:false,
+        ),
+      );
+      await map.setCamera(mbx.CameraOptions(center:_mapPoint(p),zoom:zoom));
+    }catch(_){}
+  }
+
+  Future<void> _onMapCreated(mbx.MapboxMap map) async {
+    _mapboxTravelMap=map;
+    final p=position;
+    try{
+      await map.location.updateSettings(
+        mbx.LocationComponentSettings(
+          enabled:p!=null,
+          pulsingEnabled:false,
+          showAccuracyRing:false,
+        ),
+      );
+      if(p!=null){
+        await map.setCamera(mbx.CameraOptions(center:_mapPoint(p),zoom:14.5));
+      }
+    }catch(_){}
+  }
 
   Future<void> _loadTravelFavorites() async {
     final u=FirebaseAuth.instance.currentUser;
@@ -2798,7 +2838,7 @@ class _TravelPageState extends State<TravelPage> {
   }
 
   @override
-  void dispose(){_search.dispose();_speech.stop();_travelMapController.dispose();super.dispose();}
+  void dispose(){_search.dispose();_speech.stop();super.dispose();}
 
   Future<void> _locate() async {
     try{
@@ -2836,6 +2876,7 @@ class _TravelPageState extends State<TravelPage> {
         _locationSubtitle=subtitle;
         loading=false;
       });
+      await _setMapPosition(current);
     }catch(_){
       if(mounted)setState(()=>loading=false);
     }
@@ -2891,32 +2932,38 @@ class _TravelPageState extends State<TravelPage> {
     required String subtitle,
     VoidCallback? onTap,
   }){
-    return InkWell(
-      onTap:onTap,
-      borderRadius:BorderRadius.circular(18),
-      child:Padding(
-        padding:const EdgeInsets.symmetric(vertical:13),
-        child:Row(children:[
-          const Icon(Icons.history,color:Color(0xFF68727F),size:30),
-          const SizedBox(width:14),
-          Expanded(child:Column(
-            crossAxisAlignment:CrossAxisAlignment.start,
-            children:[
-              Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
-              const SizedBox(height:3),
-              Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
-            ],
-          )),
-          IconButton(
-            tooltip:_favoriteDestinations.contains(title)?'Remove favourite':'Save favourite',
-            onPressed:()=>_toggleTravelFavorite(title),
-            icon:Icon(
-              _favoriteDestinations.contains(title)?Icons.favorite:Icons.favorite_border,
-              color:_favoriteDestinations.contains(title)?const Color(0xFFE51B5E):const Color(0xFF68727F),
-              size:28,
+    return SizedBox(
+      height:88,
+      child:InkWell(
+        onTap:onTap,
+        borderRadius:BorderRadius.circular(16),
+        child:Padding(
+          padding:const EdgeInsets.symmetric(horizontal:2,vertical:8),
+          child:Row(children:[
+            const Icon(Icons.history,color:Color(0xFF68727F),size:30),
+            const SizedBox(width:14),
+            Expanded(child:Column(
+              mainAxisAlignment:MainAxisAlignment.center,
+              crossAxisAlignment:CrossAxisAlignment.start,
+              children:[
+                Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+                const SizedBox(height:3),
+                Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
+              ],
+            )),
+            IconButton(
+              tooltip:_favoriteDestinations.contains(title)?'Remove favourite':'Save favourite',
+              padding:EdgeInsets.zero,
+              constraints:const BoxConstraints(minWidth:44,minHeight:44),
+              onPressed:()=>_toggleTravelFavorite(title),
+              icon:Icon(
+                _favoriteDestinations.contains(title)?Icons.favorite:Icons.favorite_border,
+                color:_favoriteDestinations.contains(title)?const Color(0xFFE51B5E):const Color(0xFF68727F),
+                size:28,
+              ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }
@@ -2976,10 +3023,7 @@ class _TravelPageState extends State<TravelPage> {
   @override
   Widget build(BuildContext context){
     final size=MediaQuery.of(context).size;
-    final mapHeight=size.height*.41;
-    final center=position==null
-      ?const LatLng(25.4358,81.8463)
-      :LatLng(position!.latitude,position!.longitude);
+    final mapHeight=size.height*.40;
 
     return Scaffold(
       backgroundColor:const Color(0xFFFFFAFC),
@@ -2996,48 +3040,17 @@ class _TravelPageState extends State<TravelPage> {
                   SizedBox(
                     height:mapHeight,
                     width:double.infinity,
-                    child:FlutterMap(
-                      mapController:_travelMapController,
-                      options:MapOptions(
-                        initialCenter:center,
-                        initialZoom:14.5,
-                        minZoom:10,
-                        maxZoom:19,
-                        onMapReady:(){
-                          if(position!=null){
-                            _travelMapController.move(center,14.5);
-                          }
-                        },
+                    child:mbx.MapWidget(
+                      key:const ValueKey('allways-travel-mapbox'),
+                      styleUri:mbx.MapboxStyles.STANDARD,
+                      cameraOptions:mbx.CameraOptions(
+                        center:mbx.Point(coordinates:mbx.Position(
+                          position?.longitude??81.8463,
+                          position?.latitude??25.4358,
+                        )),
+                        zoom:14.5,
                       ),
-                      children:[
-                        TileLayer(
-                          urlTemplate:_mapboxTilesUrl(),
-                          tileSize:512,
-                          maxZoom:19,
-                          userAgentPackageName:'com.allways.app',
-                        ),
-                        RichAttributionWidget(attributions:[
-                          TextSourceAttribution('© Mapbox © OpenStreetMap'),
-                        ]),
-                        if(position!=null)
-                          MarkerLayer(markers:[
-                            Marker(
-                              point:center,
-                              width:28,
-                              height:28,
-                              child:Container(
-                                decoration:BoxDecoration(
-                                  color:const Color(0xFF2D8CFF),
-                                  shape:BoxShape.circle,
-                                  border:Border.all(color:Colors.white,width:5),
-                                  boxShadow:const [
-                                    BoxShadow(color:Color(0x332D8CFF),blurRadius:12,spreadRadius:4),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ]),
-                      ],
+                      onMapCreated:_onMapCreated,
                     ),
                   ),
 
@@ -3051,7 +3064,8 @@ class _TravelPageState extends State<TravelPage> {
                       borderRadius:BorderRadius.circular(26),
                       child:InkWell(
                         onTap:(){
-                          if(position!=null)_travelMapController.move(center,15);
+                          final p=position;
+                          if(p!=null)_setMapPosition(p,zoom:15);
                         },
                         borderRadius:BorderRadius.circular(26),
                         child:Padding(
@@ -3087,7 +3101,7 @@ class _TravelPageState extends State<TravelPage> {
                       shape:const CircleBorder(),
                       child:IconButton(
                         tooltip:'Recenter',
-                        onPressed:position==null?null:()=>_travelMapController.move(center,15),
+                        onPressed:position==null?null:()=>_setMapPosition(position!,zoom:15),
                         icon:const Icon(Icons.my_location,size:25),
                       ),
                     ),
@@ -3115,18 +3129,18 @@ class _TravelPageState extends State<TravelPage> {
                                   controller:_search,
                                   readOnly:true,
                                   onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
-                                  decoration:InputDecoration(
+                                  decoration:const InputDecoration(
                                     border:InputBorder.none,
+                                    enabledBorder:InputBorder.none,
+                                    focusedBorder:InputBorder.none,
+                                    disabledBorder:InputBorder.none,
+                                    errorBorder:InputBorder.none,
+                                    focusedErrorBorder:InputBorder.none,
+                                    filled:false,
                                     isDense:true,
+                                    contentPadding:EdgeInsets.zero,
                                     hintText:'Where are you going?',
-                                    hintStyle:const TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:Color(0xFF68727F)),
-                                    suffixIcon:_search.text.trim().isEmpty?null:IconButton(
-                                      tooltip:'Clear',
-                                      padding:EdgeInsets.zero,
-                                      constraints:const BoxConstraints(minWidth:34,minHeight:34),
-                                      icon:const Icon(Icons.close,size:20),
-                                      onPressed:()=>setState(()=>_search.clear()),
-                                    ),
+                                    hintStyle:TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:Color(0xFF68727F)),
                                   ),
                                 )),
                               ]),
@@ -3166,7 +3180,7 @@ class _TravelPageState extends State<TravelPage> {
                       color:Colors.white,
                       borderRadius:BorderRadius.circular(24),
                     ),
-                    padding:const EdgeInsets.fromLTRB(16,4,10,4),
+                    padding:const EdgeInsets.fromLTRB(16,3,10,3),
                     child:Column(
                       children:[
                         ...rides.map((doc){
@@ -3191,7 +3205,7 @@ class _TravelPageState extends State<TravelPage> {
               ),
             ),
 
-            const SizedBox(height:26),
+            const SizedBox(height:22),
 
             Padding(
               padding:const EdgeInsets.fromLTRB(28,0,20,10),
@@ -3221,7 +3235,7 @@ class _TravelPageState extends State<TravelPage> {
                   _travelCard(
                     icon:Icons.two_wheeler,
                     title:'Book a Bike',
-                    subtitle:'Quick & affordable bike rides',
+                    subtitle:'Quick & affordable\nbike rides',
                     background:const Color(0xFFEAF3FF),
                     iconBackground:const Color(0xFF2878D8),
                     onTap:()=>_openRide('bike'),
@@ -3230,7 +3244,7 @@ class _TravelPageState extends State<TravelPage> {
                   _travelCard(
                     icon:Icons.directions_car_filled,
                     title:'Rent a Vehicle',
-                    subtitle:'Find vehicles for your trips',
+                    subtitle:'Find vehicles for\nyour trips',
                     background:const Color(0xFFEAF8EF),
                     iconBackground:const Color(0xFF18A661),
                     onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
