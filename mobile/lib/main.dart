@@ -2747,9 +2747,7 @@ class _TravelPageState extends State<TravelPage> {
   bool loading=true;
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
-  final stt.SpeechToText _speech=stt.SpeechToText();
   final Set<String> _favoriteDestinations=<String>{};
-  bool _listening=false;
 
   @override
   void initState(){super.initState();_locate();_loadTravelFavorites();}
@@ -2757,9 +2755,7 @@ class _TravelPageState extends State<TravelPage> {
   String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
 
   Future<void> _setMapPosition(Position p,{double zoom=14.5}) async {
-    try{
-      _travelMapController.move(LatLng(p.latitude,p.longitude),zoom);
-    }catch(_){}
+    try{_travelMapController.move(LatLng(p.latitude,p.longitude),zoom);}catch(_){}
   }
 
   Future<void> _loadTravelFavorites() async {
@@ -2801,7 +2797,7 @@ class _TravelPageState extends State<TravelPage> {
   }
 
   @override
-  void dispose(){_search.dispose();_speech.stop();super.dispose();}
+  void dispose(){_search.dispose();super.dispose();}
 
   Future<void> _locate() async {
     try{
@@ -2815,11 +2811,9 @@ class _TravelPageState extends State<TravelPage> {
         if(mounted)setState(()=>loading=false);
         return;
       }
-
       final current=await Geolocator.getCurrentPosition(
         locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
       );
-
       var subtitle='Pratapgarh, Uttar Pradesh';
       try{
         final marks=await placemarkFromCoordinates(current.latitude,current.longitude);
@@ -2833,7 +2827,6 @@ class _TravelPageState extends State<TravelPage> {
           if(parts.isNotEmpty)subtitle=parts.join(', ');
         }
       }catch(_){}
-
       if(mounted)setState((){
         position=current;
         _locationSubtitle=subtitle;
@@ -2865,7 +2858,6 @@ class _TravelPageState extends State<TravelPage> {
     return out;
   }
 
-
   Future<void> _openDestinationSearch() async {
     final result=await Navigator.push<Map<String,dynamic>>(
       context,
@@ -2887,65 +2879,47 @@ class _TravelPageState extends State<TravelPage> {
       OnDemandRidePage(rideType:type,initialDestination:destination)));
   }
 
-  Future<void> _voiceSearch() async {
-    if(_listening){
-      await _speech.stop();
-      if(mounted)setState(()=>_listening=false);
-      return;
-    }
-    final ready=await _speech.initialize(
-      onStatus:(status){if(mounted&&status=='done')setState(()=>_listening=false);},
-      onError:(_){if(mounted)setState(()=>_listening=false);},
-    );
-    if(!ready)return;
-    if(mounted)setState(()=>_listening=true);
-    await _speech.listen(onResult:(result){
-      if(result.recognizedWords.trim().isNotEmpty){
-        _search.text=result.recognizedWords.trim();
-        if(result.finalResult&&mounted){
-          setState(()=>_listening=false);
-        }
-      }
-    },localeId:'hi_IN');
-  }
-
-  Widget _recentRow({
-    required String title,
-    required String subtitle,
-    VoidCallback? onTap,
-  }){
+  Widget _recentRow({required String title,required String subtitle,VoidCallback? onTap}){
+    final favorite=_favoriteDestinations.contains(title);
     return SizedBox(
-      height:88,
+      height:78,
       child:InkWell(
         onTap:onTap,
         borderRadius:BorderRadius.circular(16),
         child:Padding(
-          padding:const EdgeInsets.symmetric(horizontal:2,vertical:8),
+          padding:const EdgeInsets.symmetric(horizontal:4,vertical:6),
           child:Row(children:[
-            const Icon(Icons.history,color:Color(0xFF68727F),size:30),
+            const Icon(Icons.history,color:Color(0xFF69717D),size:27),
             const SizedBox(width:14),
             Expanded(child:Column(
               mainAxisAlignment:MainAxisAlignment.center,
               crossAxisAlignment:CrossAxisAlignment.start,
               children:[
                 Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
-                const SizedBox(height:3),
-                Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
+                const SizedBox(height:2),
+                Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF7A828D))),
               ],
             )),
             IconButton(
-              tooltip:_favoriteDestinations.contains(title)?'Remove favourite':'Save favourite',
-              padding:EdgeInsets.zero,
-              constraints:const BoxConstraints(minWidth:44,minHeight:44),
+              tooltip:favorite?'Remove favourite':'Save favourite',
               onPressed:()=>_toggleTravelFavorite(title),
-              icon:Icon(
-                _favoriteDestinations.contains(title)?Icons.favorite:Icons.favorite_border,
-                color:_favoriteDestinations.contains(title)?const Color(0xFFE51B5E):const Color(0xFF68727F),
-                size:28,
-              ),
+              icon:Icon(favorite?Icons.favorite:Icons.favorite_border,color:favorite?const Color(0xFFE51B5E):const Color(0xFF69717D),size:26),
             ),
           ]),
         ),
+      ),
+    );
+  }
+
+  Widget _zoomButton({required IconData icon,required VoidCallback onPressed}){
+    return Material(
+      color:Colors.white,
+      elevation:3,
+      shape:const CircleBorder(),
+      child:InkWell(
+        customBorder:const CircleBorder(),
+        onTap:onPressed,
+        child:SizedBox(width:48,height:48,child:Icon(icon,size:25,color:const Color(0xFF25262A))),
       ),
     );
   }
@@ -2974,14 +2948,11 @@ class _TravelPageState extends State<TravelPage> {
                 children:[
                   Container(
                     width:52,height:52,
-                    decoration:BoxDecoration(
-                      color:iconBackground,
-                      borderRadius:BorderRadius.circular(16),
-                    ),
+                    decoration:BoxDecoration(color:iconBackground,borderRadius:BorderRadius.circular(16)),
                     child:Icon(icon,color:Colors.white,size:28),
                   ),
                   const Spacer(),
-                  Text(title,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                  Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
                   const SizedBox(height:4),
                   Expanded(
                     child:Row(
@@ -3005,8 +2976,11 @@ class _TravelPageState extends State<TravelPage> {
   @override
   Widget build(BuildContext context){
     final size=MediaQuery.of(context).size;
-    final mapHeight=size.height*.40;
-
+    final topInset=MediaQuery.of(context).padding.top;
+    final mapHeight=(size.height*.42).clamp(340.0,620.0);
+    final mapUrl=_mapboxPublicToken.trim().isNotEmpty
+        ? _mapboxTilesUrl()
+        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     return Scaffold(
       backgroundColor:const Color(0xFFFFFAFC),
       body:SafeArea(
@@ -3015,7 +2989,7 @@ class _TravelPageState extends State<TravelPage> {
           padding:const EdgeInsets.only(bottom:24),
           children:[
             SizedBox(
-              height:mapHeight+58,
+              height:mapHeight+72,
               child:Stack(
                 clipBehavior:Clip.none,
                 children:[
@@ -3027,27 +3001,31 @@ class _TravelPageState extends State<TravelPage> {
                       options:MapOptions(
                         initialCenter:LatLng(position?.latitude??25.4358,position?.longitude??81.8463),
                         initialZoom:14.5,
-                        minZoom:5,
+                        minZoom:8,
                         maxZoom:19,
+                        interactionOptions:const InteractionOptions(flags:InteractiveFlag.all),
                       ),
                       children:[
                         TileLayer(
-                          urlTemplate:_mapboxTilesUrl(),
-                          tileSize:512,
+                          urlTemplate:mapUrl,
+                          tileSize:_mapboxPublicToken.trim().isNotEmpty?512:256,
                           maxZoom:19,
                           userAgentPackageName:'com.allways.app',
                         ),
                         RichAttributionWidget(attributions:[
-                          TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                          TextSourceAttribution(_mapboxPublicToken.trim().isNotEmpty?'© Mapbox © OpenStreetMap':'© OpenStreetMap contributors'),
                         ]),
                         if(position!=null)MarkerLayer(markers:[
                           Marker(
                             point:LatLng(position!.latitude,position!.longitude),
-                            width:42,
-                            height:42,
+                            width:44,height:44,
                             child:Container(
-                              decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,boxShadow:[BoxShadow(color:Colors.black.withOpacity(.18),blurRadius:5)]),
-                              padding:const EdgeInsets.all(5),
+                              decoration:BoxDecoration(
+                                color:Colors.white,
+                                shape:BoxShape.circle,
+                                boxShadow:[BoxShadow(color:Colors.black.withOpacity(.20),blurRadius:6,offset:const Offset(0,2))],
+                              ),
+                              padding:const EdgeInsets.all(6),
                               child:Container(decoration:const BoxDecoration(color:Color(0xFF2F80ED),shape:BoxShape.circle)),
                             ),
                           ),
@@ -3057,37 +3035,31 @@ class _TravelPageState extends State<TravelPage> {
                   ),
 
                   Positioned(
-                    top:MediaQuery.of(context).padding.top+14,
-                    left:22,
-                    right:22,
+                    top:topInset+14,
+                    left:22,right:22,
                     child:Material(
                       color:Colors.white,
-                      elevation:3,
-                      borderRadius:BorderRadius.circular(26),
+                      elevation:4,
+                      borderRadius:BorderRadius.circular(30),
                       child:InkWell(
                         onTap:(){
                           final p=position;
                           if(p!=null)_setMapPosition(p,zoom:15);
                         },
-                        borderRadius:BorderRadius.circular(26),
+                        borderRadius:BorderRadius.circular(30),
                         child:Padding(
-                          padding:const EdgeInsets.symmetric(horizontal:16,vertical:11),
+                          padding:const EdgeInsets.symmetric(horizontal:18,vertical:12),
                           child:Row(children:[
-                            const Icon(Icons.location_on,color:Color(0xFF20A56B),size:27),
-                            const SizedBox(width:10),
+                            const Icon(Icons.location_on,color:Color(0xFF20A56B),size:30),
+                            const SizedBox(width:12),
                             Expanded(child:Column(
                               crossAxisAlignment:CrossAxisAlignment.start,
                               children:[
-                                const Text('Current location',maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
-                                Text(
-                                  loading?'Locating…':_locationSubtitle,
-                                  maxLines:1,
-                                  overflow:TextOverflow.ellipsis,
-                                  style:const TextStyle(fontSize:13,color:Color(0xFF68727F)),
-                                ),
+                                const Text('Current location',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),
+                                Text(loading?'Locating…':_locationSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF7A828D))),
                               ],
                             )),
-                            const Icon(Icons.keyboard_arrow_down,size:27),
+                            const Icon(Icons.keyboard_arrow_down,size:29),
                           ]),
                         ),
                       ),
@@ -3095,91 +3067,67 @@ class _TravelPageState extends State<TravelPage> {
                   ),
 
                   Positioned(
-                    right:24,
-                    bottom:72,
-                    child:Material(
-                      color:Colors.white,
-                      elevation:4,
-                      shape:const CircleBorder(),
-                      child:IconButton(
-                        tooltip:'Recenter',
-                        onPressed:position==null?null:()=>_setMapPosition(position!,zoom:15),
-                        icon:const Icon(Icons.my_location,size:25),
-                      ),
+                    right:22,
+                    bottom:94,
+                    child:Column(
+                      mainAxisSize:MainAxisSize.min,
+                      children:[
+                        _zoomButton(
+                          icon:Icons.add,
+                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom+1).clamp(8,19)),
+                        ),
+                        const SizedBox(height:8),
+                        _zoomButton(
+                          icon:Icons.remove,
+                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom-1).clamp(8,19)),
+                        ),
+                        const SizedBox(height:8),
+                        _zoomButton(
+                          icon:Icons.my_location,
+                          onPressed:position==null?(){}:()=>_setMapPosition(position!,zoom:15),
+                        ),
+                      ],
                     ),
                   ),
 
                   Positioned(
-                    left:28,
-                    right:28,
-                    top:mapHeight-27,
-                    child:Row(children:[
-                      Expanded(
-                        child:Material(
-                          color:Colors.white,
-                          elevation:3,
-                          borderRadius:BorderRadius.circular(30),
-                          child:InkWell(
-                            onTap:()=>_openDestinationSearch(),
-                            borderRadius:BorderRadius.circular(30),
-                            child:Padding(
-                              padding:const EdgeInsets.symmetric(horizontal:17,vertical:10),
-                              child:Row(children:[
-                                const Icon(Icons.search,size:29,color:Colors.black),
-                                const SizedBox(width:12),
-                                Expanded(child:TextField(
-                                  controller:_search,
-                                  readOnly:true,
-                                  onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
-                                  decoration:const InputDecoration(
-                                    border:InputBorder.none,
-                                    enabledBorder:InputBorder.none,
-                                    focusedBorder:InputBorder.none,
-                                    disabledBorder:InputBorder.none,
-                                    errorBorder:InputBorder.none,
-                                    focusedErrorBorder:InputBorder.none,
-                                    filled:false,
-                                    isDense:true,
-                                    contentPadding:EdgeInsets.zero,
-                                    hintText:'Where are you going?',
-                                    hintStyle:TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:Color(0xFF68727F)),
-                                  ),
-                                )),
-                              ]),
-                            ),
-                          ),
+                    left:28,right:28,bottom:0,
+                    child:Material(
+                      color:Colors.white,
+                      elevation:4,
+                      borderRadius:BorderRadius.circular(32),
+                      child:InkWell(
+                        onTap:_openDestinationSearch,
+                        borderRadius:BorderRadius.circular(32),
+                        child:Padding(
+                          padding:const EdgeInsets.symmetric(horizontal:18,vertical:13),
+                          child:Row(children:[
+                            const Icon(Icons.search,size:30,color:Colors.black),
+                            const SizedBox(width:14),
+                            Expanded(child:Text(
+                              _search.text.trim().isEmpty?'Where are you going?':_search.text.trim(),
+                              maxLines:1,overflow:TextOverflow.ellipsis,
+                              style:TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124)),
+                            )),
+                          ]),
                         ),
                       ),
-                      const SizedBox(width:10),
-                      Material(
-                        color:const Color(0xFFFFC928),
-                        elevation:3,
-                        shape:const CircleBorder(),
-                        child:InkWell(
-                          onTap:_voiceSearch,
-                          customBorder:const CircleBorder(),
-                          child:SizedBox(
-                            width:66,height:66,
-                            child:Icon(_listening?Icons.stop:Icons.mic,color:Colors.black,size:28),
-                          ),
-                        ),
-                      ),
-                    ]),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            Padding(
-              padding:const EdgeInsets.fromLTRB(28,0,28,0),
-              child:FutureBuilder<List<Map<String,String>>>(
-                future:_recentDestinations(),
-                builder:(context,snapshot){
-                  final recent=snapshot.data??const <Map<String,String>>[];
-                  if(recent.isEmpty)return const SizedBox.shrink();
-                  return Container(
-                    decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24)),
-                    padding:const EdgeInsets.fromLTRB(16,3,10,3),
+            FutureBuilder<List<Map<String,String>>>(
+              future:_recentDestinations(),
+              builder:(context,snapshot){
+                final recent=snapshot.data??const <Map<String,String>>[];
+                if(recent.isEmpty)return const SizedBox(height:18);
+                return Padding(
+                  padding:const EdgeInsets.fromLTRB(28,0,28,0),
+                  child:Container(
+                    decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24),boxShadow:[BoxShadow(color:Colors.black.withOpacity(.04),blurRadius:10,offset:const Offset(0,3))]),
+                    padding:const EdgeInsets.fromLTRB(16,5,8,5),
                     child:Column(
                       children:[
                         ...recent.asMap().entries.map((entry){
@@ -3189,20 +3137,27 @@ class _TravelPageState extends State<TravelPage> {
                           final lat=double.tryParse(item['lat']??'');
                           final lon=double.tryParse(item['lon']??'');
                           return Column(children:[
-                            _recentRow(title:title,subtitle:address,onTap:lat==null||lon==null?null:()=>_openRide('bike',destination:address)),
-                            if(entry.key<recent.length-1)const Divider(height:1,color:Color(0xFFE0E0E0)),
+                            _recentRow(
+                              title:title,
+                              subtitle:address,
+                              onTap:lat==null||lon==null?null:(){
+                                _search.text=title;
+                                try{_travelMapController.move(LatLng(lat,lon),15);}catch(_){}
+                                setState((){});
+                              },
+                            ),
+                            if(entry.key<recent.length-1)const Divider(height:1,indent:42,endIndent:8),
                           ]);
                         }),
                       ],
                     ),
-                  );
-                },
-              )            ),
-
-            const SizedBox(height:22),
+                  ),
+                );
+              },
+            ),
 
             Padding(
-              padding:const EdgeInsets.fromLTRB(28,0,20,10),
+              padding:const EdgeInsets.fromLTRB(28,24,20,10),
               child:Row(
                 children:[
                   const Expanded(child:Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900))),
