@@ -2745,7 +2745,7 @@ class _TravelPageState extends State<TravelPage> {
   }
 
   @override
-  void dispose(){_search.dispose();_speech.stop();super.dispose();}
+  void dispose(){_search.dispose();_speech.stop();_travelMapController.dispose();super.dispose();}
 
   Future<void> _locate() async {
     try{
@@ -2910,7 +2910,7 @@ class _TravelPageState extends State<TravelPage> {
                               icon:const Icon(Icons.add),
                               onPressed:()=>_travelMapController.move(
                                 _travelMapController.camera.center,
-                                (_travelMapController.camera.zoom+1).clamp(10,19),
+                                (_travelMapController.camera.zoom+1).clamp(10,19).toDouble(),
                               ),
                             ),
                             const Divider(height:1),
@@ -2919,7 +2919,7 @@ class _TravelPageState extends State<TravelPage> {
                               icon:const Icon(Icons.remove),
                               onPressed:()=>_travelMapController.move(
                                 _travelMapController.camera.center,
-                                (_travelMapController.camera.zoom-1).clamp(10,19),
+                                (_travelMapController.camera.zoom-1).clamp(10,19).toDouble(),
                               ),
                             ),
                           ],
