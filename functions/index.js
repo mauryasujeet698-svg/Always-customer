@@ -326,17 +326,13 @@ exports.onNotificationBroadcastCreated = onDocumentCreated(
   "notificationBroadcasts/{notificationId}",
   async (event) => {
     const ref = event.data?.ref;
-    const notification = event.data?.data();
-    if (!ref || !notification) return;
-
-    const title = String(notification.title || "ALLways");
-    const body = String(notification.body || "New ALLways update.");
-    const data = notification.data || {};
-    const sent = await sendToAllUsers(title, body, data);
-
+    if (!ref) return;
+    // FCM delivery is intentionally deferred while the Firebase project is on
+    // Spark. Keep the broadcast record auditable without pretending a push was sent.
     await ref.set({
-      status: sent ? "sent" : "failed",
-      sentAt: FieldValue.serverTimestamp(),
+      status: "deferred_until_blaze",
+      delivery: "FCM server delivery requires deployed trusted server code.",
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }
 );
