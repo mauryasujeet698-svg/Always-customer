@@ -2693,14 +2693,56 @@ class TravelPage extends StatefulWidget {
 }
 
 class _TravelPageState extends State<TravelPage> {
+  final MapController _travelMapController=MapController();
   Position? position;
   bool loading=true;
   final TextEditingController _search=TextEditingController();
   final stt.SpeechToText _speech=stt.SpeechToText();
+  final Set<String> _favoriteDestinations=<String>{};
   bool _listening=false;
 
   @override
-  void initState(){super.initState();_locate();}
+  void initState(){super.initState();_locate();_loadTravelFavorites();}
+
+  String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
+
+  Future<void> _loadTravelFavorites() async {
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null)return;
+    try{
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').get();
+      if(!mounted)return;
+      setState((){
+        _favoriteDestinations
+          ..clear()
+          ..addAll(snap.docs.map((d)=>(d.data()['destination']??d.id).toString()));
+      });
+    }catch(_){}
+  }
+
+  Future<void> _toggleTravelFavorite(String destination) async {
+    final clean=destination.trim();
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null){
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in to save favourites.')));
+      return;
+    }
+    if(clean.isEmpty)return;
+    final id=_favoriteId(clean);
+    final ref=FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').doc(id);
+    final adding=!_favoriteDestinations.contains(clean);
+    setState(()=>adding?_favoriteDestinations.add(clean):_favoriteDestinations.remove(clean));
+    try{
+      if(adding){
+        await ref.set({'destination':clean,'createdAt':FieldValue.serverTimestamp()});
+      }else{
+        await ref.delete();
+      }
+    }catch(_){
+      if(mounted)setState(()=>adding?_favoriteDestinations.remove(clean):_favoriteDestinations.add(clean));
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Could not update favourite.')));
+    }
+  }
 
   @override
   void dispose(){_search.dispose();_speech.stop();super.dispose();}
@@ -2790,9 +2832,12 @@ class _TravelPageState extends State<TravelPage> {
             Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
           ])),
           IconButton(
-            tooltip:'Favorite',
-            onPressed:(){},
-            icon:const Icon(Icons.favorite_border,color:Color(0xFF68727F)),
+            tooltip:_favoriteDestinations.contains(title)?'Remove favourite':'Save favourite',
+            onPressed:()=>_toggleTravelFavorite(title),
+            icon:Icon(
+              _favoriteDestinations.contains(title)?Icons.favorite:Icons.favorite_border,
+              color:_favoriteDestinations.contains(title)?const Color(0xFFB3134A):const Color(0xFF68727F),
+            ),
           ),
         ]),
       ),
@@ -2816,7 +2861,13 @@ class _TravelPageState extends State<TravelPage> {
               height:MediaQuery.of(context).size.height*.30,
               child:Stack(children:[
                 FlutterMap(
-                  options:MapOptions(initialCenter:center,initialZoom:15),
+                  mapController:_travelMapController,
+                  options:MapOptions(
+                    initialCenter:center,
+                    initialZoom:15,
+                    minZoom:10,
+                    maxZoom:19,
+                  ),
                   children:[
                     TileLayer(
                       urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -2841,6 +2892,41 @@ class _TravelPageState extends State<TravelPage> {
                       attributions:[TextSourceAttribution('© OpenStreetMap contributors')],
                     ),
                   ],
+                ),
+                Positioned(
+                  right:14,
+                  bottom:14,
+                  child:Column(
+                    mainAxisSize:MainAxisSize.min,
+                    children:[
+                      Material(
+                        color:Colors.white,
+                        elevation:3,
+                        borderRadius:BorderRadius.circular(12),
+                        child:Column(
+                          children:[
+                            IconButton(
+                              tooltip:'Zoom in',
+                              icon:const Icon(Icons.add),
+                              onPressed:()=>_travelMapController.move(
+                                _travelMapController.camera.center,
+                                (_travelMapController.camera.zoom+1).clamp(10,19),
+                              ),
+                            ),
+                            const Divider(height:1),
+                            IconButton(
+                              tooltip:'Zoom out',
+                              icon:const Icon(Icons.remove),
+                              onPressed:()=>_travelMapController.move(
+                                _travelMapController.camera.center,
+                                (_travelMapController.camera.zoom-1).clamp(10,19),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 Positioned(
                   top:MediaQuery.of(context).padding.top+12,
@@ -3192,12 +3278,6 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     if(drop==null){
       await _search();
       if(drop==null)return;
-    }
-    final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
-    if(pin.isNotEmpty&&!await isPincodeServiceable(pin)){
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content:Text('Pincode '+pin+' is not serviceable yet. Other pincodes will be available soon.')));
-      return;
     }
     final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).get();
     final customer=snap.data()??{};
