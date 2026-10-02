@@ -2752,6 +2752,7 @@ class _TravelPageState extends State<TravelPage> {
   mbx.MapboxMap? _mapboxTravelMap;
   Position? position;
   bool loading=true;
+  bool _mapFailed=false;
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
   final stt.SpeechToText _speech=stt.SpeechToText();
@@ -2781,6 +2782,8 @@ class _TravelPageState extends State<TravelPage> {
       await map.setCamera(mbx.CameraOptions(center:_mapPoint(p),zoom:zoom));
     }catch(_){}
   }
+
+  void _onMapLoadError(mbx.MapLoadingErrorEventData event){if(mounted)setState(()=>_mapFailed=true);}
 
   Future<void> _onMapCreated(mbx.MapboxMap map) async {
     _mapboxTravelMap=map;
@@ -2882,21 +2885,40 @@ class _TravelPageState extends State<TravelPage> {
     }
   }
 
-  Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _recentRides() async {
-    final u=FirebaseAuth.instance.currentUser;
-    if(u==null)return [];
-    try{
-      final snap=await FirebaseFirestore.instance.collection('autoRideRequests')
-          .where('customerUid',isEqualTo:u.uid).get();
-      final docs=snap.docs.toList();
-      docs.sort((a,b){
-        final av=a.data()['createdAt'],bv=b.data()['createdAt'];
-        final at=av is Timestamp?av.toDate():DateTime.fromMillisecondsSinceEpoch(0);
-        final bt=bv is Timestamp?bv.toDate():DateTime.fromMillisecondsSinceEpoch(0);
-        return bt.compareTo(at);
-      });
-      return docs.take(3).toList();
-    }catch(_){return [];}
+  Future<List<Map<String,String>>> _recentDestinations() async {
+    final prefs=await SharedPreferences.getInstance();
+    final raw=prefs.getStringList('allways_travel_recent_destinations')??[];
+    final seen=<String>{};
+    final out=<Map<String,String>>[];
+    for(final item in raw){
+      try{
+        final d=Map<String,dynamic>.from(jsonDecode(item) as Map);
+        final name=(d['name']??'').toString().trim();
+        final address=(d['address']??name).toString().trim();
+        final key=(d['lat']??'').toString()+','+(d['lon']??'').toString();
+        if(name.isEmpty||seen.contains(key))continue;
+        seen.add(key);
+        out.add({'name':name,'address':address,'lat':(d['lat']??'').toString(),'lon':(d['lon']??'').toString()});
+        if(out.length>=3)break;
+      }catch(_){}
+    }
+    return out;
+  }
+
+
+  Future<void> _openDestinationSearch() async {
+    final result=await Navigator.push<Map<String,dynamic>>(
+      context,
+      MaterialPageRoute(builder:(_)=>const _DestinationSearchPage()),
+    );
+    if(!mounted||result==null)return;
+    final name=(result['name']??'').toString().trim();
+    final address=(result['address']??name).toString().trim();
+    final lat=double.tryParse((result['lat']??'').toString());
+    final lon=double.tryParse((result['lon']??'').toString());
+    if(name.isEmpty||lat==null||lon==null)return;
+    _search.text=name;
+    _openRide('bike',destination:address);
   }
 
   void _openRide(String type,{String? destination}){
@@ -3051,8 +3073,23 @@ class _TravelPageState extends State<TravelPage> {
                         zoom:14.5,
                       ),
                       onMapCreated:_onMapCreated,
+                      onMapLoadErrorListener:_onMapLoadError,
                     ),
                   ),
+                  if(_mapFailed)
+                    const Positioned.fill(
+                      child:IgnorePointer(
+                        child:Center(
+                          child:DecoratedBox(
+                            decoration:BoxDecoration(color:Colors.white70),
+                            child:Padding(
+                              padding:EdgeInsets.symmetric(horizontal:18,vertical:10),
+                              child:Text('Map is loading…',style:TextStyle(fontWeight:FontWeight.w700)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
                   Positioned(
                     top:MediaQuery.of(context).padding.top+14,
@@ -3118,7 +3155,7 @@ class _TravelPageState extends State<TravelPage> {
                           elevation:3,
                           borderRadius:BorderRadius.circular(30),
                           child:InkWell(
-                            onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
+                            onTap:()=>_openDestinationSearch(),
                             borderRadius:BorderRadius.circular(30),
                             child:Padding(
                               padding:const EdgeInsets.symmetric(horizontal:17,vertical:10),
@@ -3170,40 +3207,32 @@ class _TravelPageState extends State<TravelPage> {
 
             Padding(
               padding:const EdgeInsets.fromLTRB(28,0,28,0),
-              child:FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
-                future:_recentRides(),
+              child:FutureBuilder<List<Map<String,String>>>(
+                future:_recentDestinations(),
                 builder:(context,snapshot){
-                  final rides=snapshot.data??[];
-                  if(rides.isEmpty)return const SizedBox.shrink();
+                  final recent=snapshot.data??const <Map<String,String>>[];
+                  if(recent.isEmpty)return const SizedBox.shrink();
                   return Container(
-                    decoration:BoxDecoration(
-                      color:Colors.white,
-                      borderRadius:BorderRadius.circular(24),
-                    ),
+                    decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24)),
                     padding:const EdgeInsets.fromLTRB(16,3,10,3),
                     child:Column(
                       children:[
-                        ...rides.map((doc){
-                          final d=doc.data();
-                          final destination=(d['destinationAddress']??d['destination']??'Previous destination').toString();
-                          final type=(d['rideType']??'bike').toString().toLowerCase();
-                          final parts=destination.split(',');
-                          final title=parts.isNotEmpty&&parts.first.trim().isNotEmpty?parts.first.trim():'Previous destination';
+                        ...recent.asMap().entries.map((entry){
+                          final item=entry.value;
+                          final title=item['name']??'Previous destination';
+                          final address=item['address']??title;
+                          final lat=double.tryParse(item['lat']??'');
+                          final lon=double.tryParse(item['lon']??'');
                           return Column(children:[
-                            _recentRow(
-                              title:title,
-                              subtitle:destination,
-                              onTap:()=>_openRide(type=='auto'?'auto':type=='car'?'car':'bike',destination:destination),
-                            ),
-                            if(doc!=rides.last)const Divider(height:1,color:Color(0xFFE0E0E0)),
+                            _recentRow(title:title,subtitle:address,onTap:lat==null||lon==null?null:()=>_openRide('bike',destination:address)),
+                            if(entry.key<recent.length-1)const Divider(height:1,color:Color(0xFFE0E0E0)),
                           ]);
                         }),
                       ],
                     ),
                   );
                 },
-              ),
-            ),
+              )            ),
 
             const SizedBox(height:22),
 
@@ -3254,6 +3283,183 @@ class _TravelPageState extends State<TravelPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DestinationSearchPage extends StatefulWidget {
+  const _DestinationSearchPage({super.key});
+  @override State<_DestinationSearchPage> createState()=>_DestinationSearchPageState();
+}
+
+class _DestinationSearchPageState extends State<_DestinationSearchPage> {
+  final _controller=TextEditingController();
+  final _focus=FocusNode();
+  Timer? _debounce;
+  Position? _position;
+  List<Map<String,dynamic>> _results=[];
+  List<Map<String,dynamic>> _recent=[];
+  bool _loading=false;
+  String? _error;
+
+  @override
+  void initState(){super.initState();_controller.addListener(_onChanged);_load();}
+
+  Future<void> _load() async {
+    final prefs=await SharedPreferences.getInstance();
+    final raw=prefs.getStringList('allways_travel_recent_destinations')??[];
+    final seen=<String>{};
+    final recent=<Map<String,dynamic>>[];
+    for(final item in raw){
+      try{
+        final d=Map<String,dynamic>.from(jsonDecode(item) as Map);
+        final key=d['lat'].toString()+','+d['lon'].toString();
+        if(seen.add(key))recent.add(d);
+        if(recent.length>=5)break;
+      }catch(_){}
+    }
+    try{_position=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.low));}catch(_){}
+    if(mounted)setState(()=>_recent=recent);
+    WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_focus.requestFocus();});
+  }
+
+  void _onChanged(){
+    final q=_controller.text.trim();
+    _debounce?.cancel();
+    if(q.length<2){if(mounted)setState(()=>_results=[]);return;}
+    _debounce=Timer(const Duration(milliseconds:350),()=>_search(q));
+  }
+
+  Future<void> _search(String q) async {
+    if(_mapboxPublicToken.trim().isEmpty){
+      if(mounted)setState(()=>_error='Mapbox search is not configured in this build.');
+      return;
+    }
+    if(mounted)setState(()=>_loading=true);
+    try{
+      final params=<String,String>{
+        'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
+        'language':'en','limit':'7','autocomplete':'true',
+      };
+      if(_position!=null)params['proximity']=_position!.longitude.toString()+','+_position!.latitude.toString();
+      final res=await http.get(Uri.https('api.mapbox.com','/search/geocode/v6/forward',params)).timeout(const Duration(seconds:8));
+      if(res.statusCode!=200)throw Exception('Search service returned '+res.statusCode.toString()+'.');
+      final decoded=jsonDecode(res.body);
+      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
+      final results=<Map<String,dynamic>>[];
+      for(final raw in features){
+        if(raw is! Map)continue;
+        final f=Map<String,dynamic>.from(raw);
+        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
+        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
+        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
+        if(coords.length<2)continue;
+        final name=(props['name']??f['text']??'Place').toString();
+        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
+        results.add({'name':name,'address':address,'lat':coords[1],'lon':coords[0]});
+      }
+      if(mounted)setState((){_results=results;_error=null;});
+    }catch(e){
+      if(mounted)setState((){_results=[];_error=e.toString().replaceFirst('Exception: ','');});
+    }finally{if(mounted)setState(()=>_loading=false);}
+  }
+
+  Future<void> _select(Map<String,dynamic> place) async {
+    final name=(place['name']??'').toString().trim();
+    final address=(place['address']??name).toString().trim();
+    final lat=double.tryParse((place['lat']??'').toString());
+    final lon=double.tryParse((place['lon']??'').toString());
+    if(name.isEmpty||lat==null||lon==null)return;
+    final item={'name':name,'address':address,'lat':lat,'lon':lon};
+    final prefs=await SharedPreferences.getInstance();
+    final old=prefs.getStringList('allways_travel_recent_destinations')??[];
+    final encoded=jsonEncode(item);
+    final next=<String>[encoded];
+    for(final value in old){
+      if(value==encoded)continue;
+      try{
+        final d=Map<String,dynamic>.from(jsonDecode(value) as Map);
+        if(d['lat'].toString()+','+d['lon'].toString()==lat.toString()+','+lon.toString())continue;
+      }catch(_){}
+      next.add(value);
+      if(next.length>=5)break;
+    }
+    await prefs.setStringList('allways_travel_recent_destinations',next);
+    if(mounted)Navigator.pop(context,item);
+  }
+
+  Widget _placeRow(Map<String,dynamic> p,{bool recent=false}){
+    final name=(p['name']??'Place').toString();
+    final address=(p['address']??name).toString();
+    return InkWell(
+      onTap:()=>_select(p),
+      child:Padding(
+        padding:const EdgeInsets.symmetric(horizontal:18,vertical:14),
+        child:Row(children:[
+          Icon(recent?Icons.history:Icons.location_on_outlined,color:const Color(0xFF68727F),size:27),
+          const SizedBox(width:14),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+            const SizedBox(height:3),
+            Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Color(0xFF68727F))),
+          ])),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  void dispose(){_debounce?.cancel();_controller.dispose();_focus.dispose();super.dispose();}
+
+  @override
+  Widget build(BuildContext context){
+    final hasQuery=_controller.text.trim().isNotEmpty;
+    return Scaffold(
+      backgroundColor:const Color(0xFFFFFAFC),
+      body:SafeArea(
+        child:Column(children:[
+          Padding(
+            padding:const EdgeInsets.fromLTRB(12,12,12,10),
+            child:Row(children:[
+              IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back,size:28)),
+              Expanded(
+                child:Container(
+                  height:56,
+                  decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(30),boxShadow:[BoxShadow(color:Colors.black.withOpacity(.08),blurRadius:10,offset:const Offset(0,3))]),
+                  child:Row(children:[
+                    const SizedBox(width:17),const Icon(Icons.search,size:27),const SizedBox(width:10),
+                    Expanded(child:TextField(
+                      controller:_controller,focusNode:_focus,
+                      decoration:const InputDecoration(border:InputBorder.none,hintText:'Where are you going?',hintStyle:TextStyle(fontSize:16,color:Color(0xFF68727F)),
+                    )),
+                    if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:const Icon(Icons.close,color:Color(0xFF68727F))),
+                  ]),
+                ),
+              ),
+            ]),
+          ),
+          Expanded(
+            child:ListView(
+              keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,
+              padding:const EdgeInsets.only(bottom:30),
+              children:[
+                if(!hasQuery&&_recent.isNotEmpty)...[
+                  const Padding(padding:EdgeInsets.fromLTRB(24,10,24,6),child:Text('Recent searches',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900))),
+                  ..._recent.map((p)=>Column(children:[_placeRow(p,recent:true),const Divider(height:1,indent:58,endIndent:20)])),
+                ],
+                if(hasQuery)...[
+                  const Padding(padding:EdgeInsets.fromLTRB(24,16,24,8),child:Text('Search results',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900))),
+                  if(_loading)const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator())),
+                  if(!_loading&&_error!=null&&_results.isEmpty)Padding(padding:const EdgeInsets.all(24),child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Color(0xFF68727F))),
+                  if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
+                  ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
+                ],
+                if(!hasQuery&&_recent.isEmpty)const Padding(padding:EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
+              ],
+            ),
+          ),
+        ]),
       ),
     );
   }
