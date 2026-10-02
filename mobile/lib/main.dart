@@ -3043,7 +3043,7 @@ class _TravelPageState extends State<TravelPage> {
                           TextSourceAttribution(_mapboxPublicToken.trim().isNotEmpty?'© Mapbox © OpenStreetMap':'© OpenStreetMap contributors'),
                         ]),
                         MarkerLayer(markers:[
-                          Marker(
+                          if(position!=null)Marker(
                             point:LatLng(position!.latitude,position!.longitude),
                             width:44,height:44,
                             child:Container(
