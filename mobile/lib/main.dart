@@ -3431,7 +3431,11 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                     const SizedBox(width:17),const Icon(Icons.search,size:27),const SizedBox(width:10),
                     Expanded(child:TextField(
                       controller:_controller,focusNode:_focus,
-                      decoration:const InputDecoration(border:InputBorder.none,hintText:'Where are you going?',hintStyle:TextStyle(fontSize:16,color:Color(0xFF68727F)),
+                      decoration:const InputDecoration(
+                        border:InputBorder.none,
+                        hintText:'Where are you going?',
+                        hintStyle:TextStyle(fontSize:16,color:Color(0xFF68727F)),
+                      ),
                     )),
                     if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:const Icon(Icons.close,color:Color(0xFF68727F))),
                   ]),
