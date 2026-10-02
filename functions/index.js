@@ -239,10 +239,8 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
 
   // Atomic claim: another order cannot claim the same available partner at the same time.
   await db.runTransaction(async (tx) => {
-    const [latestOrder, latestPartner] = await Promise.all([
-      tx.get(orderRef),
-      tx.get(partnerRef),
-    ]);
+    const latestOrder = await tx.get(orderRef);
+    const latestPartner = await tx.get(partnerRef);
     const latestOrderData = latestOrder.data() || {};
     const latestPartnerData = latestPartner.data() || {};
     const assigned = String(
