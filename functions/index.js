@@ -26,7 +26,18 @@ async function sendToTopic(topic, title, body, data = {}) {
   }
   await getMessaging().send({
     topic: t,
-    notification: {title: String(title || "ALLways"), body: String(body || "")},
+    notification: {
+      title: String(title || "ALLways"),
+      body: String(body || ""),
+    },
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "allways_updates",
+        priority: "high",
+        sound: "default",
+      },
+    },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
     ),
@@ -37,7 +48,18 @@ async function sendToToken(token, title, body, data = {}) {
   if (!token) return;
   await getMessaging().send({
     token: String(token),
-    notification: {title: String(title || "ALLways"), body: String(body || "")},
+    notification: {
+      title: String(title || "ALLways"),
+      body: String(body || ""),
+    },
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "allways_updates",
+        priority: "high",
+        sound: "default",
+      },
+    },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
     ),
@@ -115,8 +137,20 @@ exports.notifyOrderChange = onDocumentUpdated(
 
     const prevStatus = String(before.status || "").toLowerCase();
     const nextStatus = String(after.status || "").toLowerCase();
-    const prevPartner = String(before.carrierUid || before.deliveryPartnerUid || "");
-    const nextPartner = String(after.carrierUid || after.deliveryPartnerUid || "");
+    const prevPartner = String(
+      before.carrierUid ||
+      before.deliveryPartnerUid ||
+      before.deliveryPartnerId ||
+      before.assignedPartnerId ||
+      ""
+    );
+    const nextPartner = String(
+      after.carrierUid ||
+      after.deliveryPartnerUid ||
+      after.deliveryPartnerId ||
+      after.assignedPartnerId ||
+      ""
+    );
 
     const customerId = String(after.customerId || after.uid || after.userId || "");
     const title = "ALLways order update";
