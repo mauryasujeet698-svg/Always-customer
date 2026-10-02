@@ -37,8 +37,8 @@ jobs:
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
 
-      - name: Deploy Firestore and Storage rules
+      - name: Deploy Firestore rules (Storage remains deferred until Blaze)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
-          firebase deploy --project allways-web --only firestore:rules,storage --non-interactive
+          firebase deploy --project allways-web --only firestore:rules --non-interactive
