@@ -608,7 +608,11 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
           npm install --global firebase-tools@latest
-          firebase deploy --only functions --project allways-web --non-interactive
+          if firebase deploy --only functions --project allways-web --non-interactive; then
+            echo "Firebase Functions deployment completed."
+          else
+            echo "::warning::Firebase Functions deployment failed. APK build will continue; server-side notifications remain pending IAM/API permissions."
+          fi
 
       - name: Get packages
         run: |
