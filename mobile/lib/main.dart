@@ -3488,6 +3488,7 @@ class OnDemandRideTrackingPage extends StatefulWidget {
 
 class _OnDemandRideTrackingPageState extends State<OnDemandRideTrackingPage> {
   Timer? timer;
+  bool _terminalHandled=false;
   @override void initState(){super.initState();timer=Timer.periodic(const Duration(seconds:1),(_){if(mounted)setState((){});});}
   @override void dispose(){timer?.cancel();super.dispose();}
 
@@ -3516,9 +3517,12 @@ class _OnDemandRideTrackingPageState extends State<OnDemandRideTrackingPage> {
       }
       final status=(d['status']??'').toString().trim().toLowerCase();
       if(const {'cancelled','completed','rejected','expired'}.contains(status)){
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if(context.mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
-        });
+        if(!_terminalHandled){
+          _terminalHandled=true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if(context.mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+          });
+        }
         return const SizedBox.shrink();
       }
       if(const {'accepted','assigned','arriving','arrived','started'}.contains(status)){
