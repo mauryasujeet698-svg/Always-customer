@@ -29,10 +29,6 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
-    // Release APK is intentionally arm64-only.
-    ndk {
-        abiFilters += listOf("arm64-v8a")
-    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
