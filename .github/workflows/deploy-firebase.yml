@@ -1,11 +1,10 @@
-name: Deploy ALLways Firebase Backend
+name: Deploy ALLways Firebase Rules
 
 on:
   push:
     branches:
       - allways-android-app
     paths:
-      - "functions/**"
       - "firestore.rules"
       - "storage.rules"
       - "firebase.json"
@@ -17,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  deploy-rules:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -38,12 +37,8 @@ jobs:
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
 
-      - name: Deploy Functions and Firestore rules
+      - name: Deploy Firestore and Storage rules
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
-          # Deploy Cloud Functions here. Firestore rules are intentionally
-          # deployed separately because this CI service account currently lacks
-          # permission to access/enable firestore.googleapis.com.
-          firebase deploy --project allways-web --only functions --non-interactive
-
+          firebase deploy --project allways-web --only firestore:rules,storage --non-interactive
