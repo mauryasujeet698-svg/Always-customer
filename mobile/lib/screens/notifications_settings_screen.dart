@@ -19,8 +19,8 @@ class _NotificationsSettingsScreenState
   bool _orderUpdates = true;
   bool _deliveryUpdates = true;
   bool _travelUpdates = true;
-  bool _offersPromotions = false;
-  bool _announcements = false;
+  bool _offersPromotions = true;
+  bool _announcements = true;
   String _selectedTab = 'All';
 
   @override
@@ -45,33 +45,90 @@ class _NotificationsSettingsScreenState
   Future<void> _setPreference(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
-    // Keep master flag in sync with main.dart FCM logic
+
     if (key == 'allways_notifications_enabled') {
       await prefs.setBool('notifications_enabled', value);
       if (value) {
-        await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true, provisional: false);
+        final status = await FirebaseMessaging.instance.requestPermission(
+          alert: true, badge: true, sound: true, provisional: false,
+        );
+        if (status.authorizationStatus == AuthorizationStatus.denied) {
+          await prefs.setBool('notifications_enabled', false);
+          await prefs.setBool('allways_notifications_enabled', false);
+          if (mounted) setState(() => _allwaysNotifications = false);
+          return;
+        }
+        await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+          alert: true, badge: true, sound: true,
+        );
         await FirebaseMessaging.instance.subscribeToTopic('all_users');
+        await FirebaseMessaging.instance.subscribeToTopic('customers');
+
+        final token = await FirebaseMessaging.instance.getToken();
+        final user = FirebaseAuth.instance.currentUser;
+        if (token != null && token.isNotEmpty && user != null) {
+          await FirebaseFirestore.instance.collection('fcmTokens').doc(user.uid).set({
+            'uid': user.uid,
+            'email': user.email ?? '',
+            'token': token,
+            'notificationsEnabled': true,
+            'notificationPreferences': {
+              'orderUpdates': prefs.getBool('notification_orderUpdates') ?? true,
+              'deliveryUpdates': prefs.getBool('notification_deliveryUpdates') ?? true,
+              'travelUpdates': prefs.getBool('notification_travelUpdates') ?? true,
+              'offers': prefs.getBool('notification_offers') ?? true,
+              'announcements': prefs.getBool('notification_announcements') ?? true,
+            },
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          await FirebaseFirestore.instance.collection('fcmTokens').doc(user.uid).collection('tokens').doc(token).set({
+            'uid': user.uid,
+            'token': token,
+            'notificationsEnabled': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          await prefs.setString('allways_fcm_token', token);
+        }
       } else {
         await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
+        await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final token = await FirebaseMessaging.instance.getToken();
+          await FirebaseFirestore.instance.collection('fcmTokens').doc(user.uid).set({
+            'uid': user.uid,
+            'notificationsEnabled': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          if (token != null && token.isNotEmpty) {
+            await FirebaseFirestore.instance.collection('fcmTokens').doc(user.uid).collection('tokens').doc(token).set({
+              'uid': user.uid,
+              'token': token,
+              'notificationsEnabled': false,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
+        }
       }
     }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
+        final prefsMap = {
+          'orderUpdates': prefs.getBool('notification_orderUpdates') ?? true,
+          'deliveryUpdates': prefs.getBool('notification_deliveryUpdates') ?? true,
+          'travelUpdates': prefs.getBool('notification_travelUpdates') ?? true,
+          'offers': prefs.getBool('notification_offers') ?? true,
+          'announcements': prefs.getBool('notification_announcements') ?? true,
+        };
         await FirebaseFirestore.instance.collection('customers').doc(user.uid).set({
-          'notification_preferences': {key: value},
-          'notificationsEnabled': key == 'allways_notifications_enabled' ? value : null,
+          'notification_preferences': prefsMap,
+          'notificationsEnabled': prefs.getBool('notifications_enabled') ?? true,
         }, SetOptions(merge: true));
-        // Also update fcmTokens doc so Cloud Functions respect preferences
         await FirebaseFirestore.instance.collection('fcmTokens').doc(user.uid).set({
           'uid': user.uid,
-          'notificationPreferences': {
-            'orderUpdates': prefs.getBool('notification_orderUpdates') ?? true,
-            'deliveryUpdates': prefs.getBool('notification_deliveryUpdates') ?? true,
-            'travelUpdates': prefs.getBool('notification_travelUpdates') ?? true,
-            'offers': prefs.getBool('notification_offers') ?? false,
-            'announcements': prefs.getBool('notification_announcements') ?? false,
-          },
+          'notificationPreferences': prefsMap,
           'notificationsEnabled': prefs.getBool('notifications_enabled') ?? true,
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
@@ -80,7 +137,6 @@ class _NotificationsSettingsScreenState
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
