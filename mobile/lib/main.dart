@@ -14,7 +14,6 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mbx;
 import 'package:latlong2/latlong.dart';
 
 // Mapbox public token is injected at build time from GitHub Actions Secrets.
@@ -258,9 +257,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  if (_mapboxPublicToken.trim().isNotEmpty) {
-    mbx.MapboxOptions.setAccessToken(_mapboxPublicToken.trim());
-  }
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   final prefs = await SharedPreferences.getInstance();
   final savedNotifications = prefs.getStringList('allways_notifications') ?? <String>[];
@@ -2746,10 +2742,9 @@ class TravelPage extends StatefulWidget {
 }
 
 class _TravelPageState extends State<TravelPage> {
-  mbx.MapboxMap? _mapboxTravelMap;
+  final MapController _travelMapController=MapController();
   Position? position;
   bool loading=true;
-  bool _mapFailed=false;
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
   final stt.SpeechToText _speech=stt.SpeechToText();
@@ -2761,41 +2756,9 @@ class _TravelPageState extends State<TravelPage> {
 
   String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
 
-  mbx.Point _mapPoint(Position p)=>mbx.Point(
-    coordinates:mbx.Position(p.longitude,p.latitude),
-  );
-
   Future<void> _setMapPosition(Position p,{double zoom=14.5}) async {
-    final map=_mapboxTravelMap;
-    if(map==null)return;
     try{
-      await map.location.updateSettings(
-        mbx.LocationComponentSettings(
-          enabled:true,
-          pulsingEnabled:false,
-          showAccuracyRing:false,
-        ),
-      );
-      await map.setCamera(mbx.CameraOptions(center:_mapPoint(p),zoom:zoom));
-    }catch(_){}
-  }
-
-  void _onMapLoadError(mbx.MapLoadingErrorEventData event){if(mounted)setState(()=>_mapFailed=true);}
-
-  Future<void> _onMapCreated(mbx.MapboxMap map) async {
-    _mapboxTravelMap=map;
-    final p=position;
-    try{
-      await map.location.updateSettings(
-        mbx.LocationComponentSettings(
-          enabled:p!=null,
-          pulsingEnabled:false,
-          showAccuracyRing:false,
-        ),
-      );
-      if(p!=null){
-        await map.setCamera(mbx.CameraOptions(center:_mapPoint(p),zoom:14.5));
-      }
+      _travelMapController.move(LatLng(p.latitude,p.longitude),zoom);
     }catch(_){}
   }
 
@@ -2915,7 +2878,8 @@ class _TravelPageState extends State<TravelPage> {
     final lon=double.tryParse((result['lon']??'').toString());
     if(name.isEmpty||lat==null||lon==null)return;
     _search.text=name;
-    _openRide('bike',destination:address);
+    try{_travelMapController.move(LatLng(lat,lon),15);}catch(_){}
+    setState((){});
   }
 
   void _openRide(String type,{String? destination}){
@@ -2939,7 +2903,6 @@ class _TravelPageState extends State<TravelPage> {
       if(result.recognizedWords.trim().isNotEmpty){
         _search.text=result.recognizedWords.trim();
         if(result.finalResult&&mounted){
-          _openRide('bike',destination:_search.text.trim());
           setState(()=>_listening=false);
         }
       }
@@ -3059,34 +3022,39 @@ class _TravelPageState extends State<TravelPage> {
                   SizedBox(
                     height:mapHeight,
                     width:double.infinity,
-                    child:mbx.MapWidget(
-                      key:const ValueKey('allways-travel-mapbox'),
-                      styleUri:mbx.MapboxStyles.MAPBOX_STREETS,
-                      cameraOptions:mbx.CameraOptions(
-                        center:mbx.Point(coordinates:mbx.Position(
-                          position?.longitude??81.8463,
-                          position?.latitude??25.4358,
-                        )),
-                        zoom:14.5,
+                    child:FlutterMap(
+                      mapController:_travelMapController,
+                      options:MapOptions(
+                        initialCenter:LatLng(position?.latitude??25.4358,position?.longitude??81.8463),
+                        initialZoom:14.5,
+                        minZoom:5,
+                        maxZoom:19,
                       ),
-                      onMapCreated:_onMapCreated,
-                      onMapLoadErrorListener:_onMapLoadError,
-                    ),
-                  ),
-                  if(_mapFailed)
-                    const Positioned.fill(
-                      child:IgnorePointer(
-                        child:Center(
-                          child:DecoratedBox(
-                            decoration:BoxDecoration(color:Colors.white70),
-                            child:Padding(
-                              padding:EdgeInsets.symmetric(horizontal:18,vertical:10),
-                              child:Text('Map is loading…',style:TextStyle(fontWeight:FontWeight.w700)),
+                      children:[
+                        TileLayer(
+                          urlTemplate:_mapboxTilesUrl(),
+                          tileSize:512,
+                          maxZoom:19,
+                          userAgentPackageName:'com.allways.app',
+                        ),
+                        RichAttributionWidget(attributions:[
+                          TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                        ]),
+                        if(position!=null)MarkerLayer(markers:[
+                          Marker(
+                            point:LatLng(position!.latitude,position!.longitude),
+                            width:42,
+                            height:42,
+                            child:Container(
+                              decoration:BoxDecoration(color:Colors.white,shape:BoxShape.circle,boxShadow:[BoxShadow(color:Colors.black.withOpacity(.18),blurRadius:5)]),
+                              padding:const EdgeInsets.all(5),
+                              child:Container(decoration:const BoxDecoration(color:Color(0xFF2F80ED),shape:BoxShape.circle)),
                             ),
                           ),
-                        ),
-                      ),
+                        ]),
+                      ],
                     ),
+                  ),
 
                   Positioned(
                     top:MediaQuery.of(context).padding.top+14,
@@ -3264,7 +3232,7 @@ class _TravelPageState extends State<TravelPage> {
                     subtitle:'Quick & affordable\nbike rides',
                     background:const Color(0xFFEAF3FF),
                     iconBackground:const Color(0xFF2878D8),
-                    onTap:()=>_openRide('bike'),
+                    onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
                   ),
                   const SizedBox(width:12),
                   _travelCard(
@@ -3451,12 +3419,15 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                 ],
                 if(hasQuery)...[
                   const Padding(padding:EdgeInsets.fromLTRB(24,16,24,8),child:Text('Search results',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900))),
-                  if(_loading)const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator())),
-                  if(!_loading&&_error!=null&&_results.isEmpty)
+                  if(_loading)...[
+                    const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator())),
+                  ],
+                  if(!_loading&&_error!=null&&_results.isEmpty)...[
                     Padding(
                       padding:const EdgeInsets.all(24),
                       child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Color(0xFF68727F))),
                     ),
+                  ],
                   if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
                   ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
