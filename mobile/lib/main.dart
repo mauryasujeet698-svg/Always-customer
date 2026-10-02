@@ -793,7 +793,7 @@ class Product {
   const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.imageUrl,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    final image=(j['imageUrl']??j['Image URL']??j['image_url']??j['image']??'').toString().trim();
+    final image=(j['imageUrl']??j['Image URL']??j['image_url']??j['imageUrl']??j['Image']??j['image']??j['photoUrl']??j['Photo URL']??j['photo']??'').toString().trim();
     return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
@@ -1046,7 +1046,8 @@ class _ShellState extends State<Shell> {
       if(snap.docs.isNotEmpty){
         final list=snap.docs.map((d){
           final data=Map<String,dynamic>.from(d.data());
-          data['id']=(data['id']??d.id).toString();
+          data['id']=d.id;
+          data['imageUrl']=(data['imageUrl']??data['Image URL']??data['image_url']??data['Image']??data['image']??data['photoUrl']??data['Photo URL']??'').toString().trim();
           if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
           if(data['available']==false)data['stock']=0;
           return Product.fromJson(data);
@@ -1068,7 +1069,8 @@ class _ShellState extends State<Shell> {
       if(inventorySnap.docs.isNotEmpty){
         final list=inventorySnap.docs.map((d){
           final data=Map<String,dynamic>.from(d.data());
-          data['id']=(data['id']??d.id).toString();
+          data['id']=d.id;
+          data['imageUrl']=(data['imageUrl']??data['Image URL']??data['image_url']??data['Image']??data['image']??data['photoUrl']??data['Photo URL']??'').toString().trim();
           if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
           if(data['available']==false)data['stock']=0;
           return Product.fromJson(data);
@@ -1218,7 +1220,7 @@ class _ShellState extends State<Shell> {
     if(user==null)return;
     try{
       final s=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').orderBy('createdAt',descending:true).get();
-      addresses=s.docs.map((d)=>{'id':d.id,...d.data()}).toList();
+      addresses=s.docs.map((d)=>{...d.data(),'id':d.id}).toList();
       if(mounted)setState((){});
     }catch(_){addresses=[];}
   }
@@ -3088,6 +3090,14 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                   onSelected:(_){setState((){selectedRideType='auto';_fare();});},
                   label:const Row(mainAxisAlignment:MainAxisAlignment.center,children:[
                     Icon(Icons.local_taxi_outlined,size:18),SizedBox(width:6),Text('Auto'),
+                  ]),
+                )),
+                const SizedBox(width:10),
+                Expanded(child:ChoiceChip(
+                  selected:rideType=='car',
+                  onSelected:(_){setState((){selectedRideType='car';_fare();});},
+                  label:const Row(mainAxisAlignment:MainAxisAlignment.center,children:[
+                    Icon(Icons.directions_car_outlined,size:18),SizedBox(width:6),Text('Car'),
                   ]),
                 )),
               ]),
