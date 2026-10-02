@@ -3064,7 +3064,7 @@ class _TravelPageState extends State<TravelPage> {
                     width:double.infinity,
                     child:mbx.MapWidget(
                       key:const ValueKey('allways-travel-mapbox'),
-                      styleUri:mbx.MapboxStyles.STANDARD,
+                      styleUri:mbx.MapboxStyles.MAPBOX_STREETS,
                       cameraOptions:mbx.CameraOptions(
                         center:mbx.Point(coordinates:mbx.Position(
                           position?.longitude??81.8463,
