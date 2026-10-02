@@ -3343,6 +3343,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     )??false;
     if(!confirmed)return;
 
+    final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
     final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
       'customerUid':u.uid,
       'customerName':u.displayName??customer['name']??'ALLways customer',
