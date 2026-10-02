@@ -3455,7 +3455,11 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                 if(hasQuery)...[
                   const Padding(padding:EdgeInsets.fromLTRB(24,16,24,8),child:Text('Search results',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900))),
                   if(_loading)const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator())),
-                  if(!_loading&&_error!=null&&_results.isEmpty)Padding(padding:const EdgeInsets.all(24),child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Color(0xFF68727F))),
+                  if(!_loading&&_error!=null&&_results.isEmpty)
+                    Padding(
+                      padding:const EdgeInsets.all(24),
+                      child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Color(0xFF68727F))),
+                    ),
                   if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
                   ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
