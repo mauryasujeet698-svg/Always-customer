@@ -169,6 +169,128 @@ async function notifyAdmins(title, body, data = {}) {
   }
 }
 
+// Delivery assignment mode is controlled from Admin: settings/deliveryAssignment.mode.
+// Automatic mode creates a pending_acceptance offer for one currently available partner.
+async function autoAssignDeliveryPartner(orderRef, order, orderId) {
+  const settingsSnap = await db.collection("settings").doc("deliveryAssignment").get();
+  const mode = String(settingsSnap.data()?.mode || "manual").toLowerCase();
+  if (mode !== "automatic") return null;
+
+  const current = await orderRef.get();
+  const currentData = current.data() || {};
+  const currentStatus = String(currentData.status || "").toLowerCase();
+  const alreadyAssigned = String(
+    currentData.carrierUid || currentData.deliveryPartnerUid || currentData.assignedPartnerId || ""
+  ).trim();
+  if (alreadyAssigned) return null;
+  if (["cancelled", "delivered", "completed", "rejected", "expired"].includes(currentStatus)) return null;
+
+  const pickupLat = Number(
+    order.customerLatitude ?? order.pickupLatitude ?? order.customerLat ?? order.pickupLat
+  );
+  const pickupLng = Number(
+    order.customerLongitude ?? order.pickupLongitude ?? order.customerLng ?? order.pickupLng
+  );
+
+  const snap = await db.collection("deliveryPartners")
+    .where("approvalStatus", "==", "approved")
+    .where("status", "==", "online")
+    .get();
+
+  const candidates = snap.docs.filter((doc) => {
+    const p = doc.data() || {};
+    return p.availableForDeliveries !== false &&
+      p.isOnline !== false &&
+      !String(p.currentOrderId || "").trim() &&
+      !String(p.pendingOrderId || "").trim();
+  });
+
+  if (!candidates.length) {
+    await orderRef.set({
+      assignmentMethod: "automatic",
+      assignmentStatus: "waiting_for_partner",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return null;
+  }
+
+  let chosen = candidates[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  if (Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+    for (const doc of candidates) {
+      const p = doc.data() || {};
+      const lat = Number(p.deliveryLat ?? p.lastLat ?? p.latitude);
+      const lng = Number(p.deliveryLng ?? p.lastLng ?? p.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const distance = distanceKm(pickupLat, pickupLng, lat, lng);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        chosen = doc;
+      }
+    }
+  }
+
+  const partnerRef = chosen.ref;
+  const partner = chosen.data() || {};
+  const partnerUid = chosen.id;
+  const partnerName = String(partner.name || partner.displayName || partner.email || "ALLways Delivery Partner");
+  const partnerPhone = String(partner.phone || partner.mobileNumber || "");
+  const partnerVehicle = String(partner.vehicleType || "bike");
+
+  // Atomic claim: another order cannot claim the same available partner at the same time.
+  await db.runTransaction(async (tx) => {
+    const [latestOrder, latestPartner] = await Promise.all([
+      tx.get(orderRef),
+      tx.get(partnerRef),
+    ]);
+    const latestOrderData = latestOrder.data() || {};
+    const latestPartnerData = latestPartner.data() || {};
+    const assigned = String(
+      latestOrderData.carrierUid || latestOrderData.deliveryPartnerUid || latestOrderData.assignedPartnerId || ""
+    ).trim();
+    const partnerBusy =
+      latestPartnerData.availableForDeliveries === false ||
+      latestPartnerData.isOnline === false ||
+      String(latestPartnerData.currentOrderId || "").trim() ||
+      String(latestPartnerData.pendingOrderId || "").trim();
+
+    if (assigned || partnerBusy) throw new Error("AUTO_ASSIGN_RETRY");
+
+    tx.update(orderRef, {
+      carrierUid: partnerUid,
+      deliveryPartnerUid: partnerUid,
+      assignedPartnerId: partnerUid,
+      carrierName: partnerName,
+      carrierPhone: partnerPhone,
+      carrierVehicleType: partnerVehicle,
+      carrierAccepted: false,
+      assignmentRejected: false,
+      assignmentMethod: "automatic",
+      assignmentStatus: "pending_acceptance",
+      assignedAt: FieldValue.serverTimestamp(),
+      status: "pending_acceptance",
+      statusNote: "Automatically assigned to an available delivery partner.",
+      customerMessage: "A delivery partner has been assigned and is being notified.",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(partnerRef, {
+      pendingOrderId: orderId,
+      availableForDeliveries: false,
+      dutyStatus: "pending_assignment",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  await sendToUser(
+    partnerUid,
+    "New Delivery Assignment",
+    "Order #" + orderId + " has been assigned to you. Open ALLways to accept it.",
+    { type: "delivery_offer", orderId, status: "pending_acceptance", assignmentMethod: "automatic" },
+    partner.fcmToken || ""
+  );
+  return partnerUid;
+}
+
 // Order creation: notify the real Admin account. Delivery assignment is manual in Admin.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
@@ -176,11 +298,26 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
     const order = event.data?.data();
     if (!order) return;
 
+    const orderRef = event.data.ref;
     await notifyAdmins(
       "New ALLways Order",
       "A new order #" + event.params.orderId + " is waiting for Admin processing.",
       { type: "order_created", orderId: event.params.orderId, status: String(order.status || "New Order") }
     );
+
+    try {
+      await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
+    } catch (error) {
+      if (String(error?.message || error) !== "AUTO_ASSIGN_RETRY") {
+        console.error("Automatic delivery assignment failed:", error);
+        await orderRef.set({
+          assignmentMethod: "automatic",
+          assignmentStatus: "failed",
+          assignmentError: String(error?.message || error),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    }
   }
 );
 
@@ -206,7 +343,7 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
       );
     }
 
-    if (oldStatus === "pending_acceptance" && newStatus === "Assigned" && newPartner) {
+    if ((oldStatus === "pending_acceptance" || oldStatus === "assigned") && newStatus === "Assigned" && newPartner) {
       await db.collection("deliveryPartners").doc(newPartner).set({
         pendingOrderId: null,
         currentOrderId: orderId,
@@ -223,7 +360,7 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
       );
     }
 
-    if (oldStatus === "pending_acceptance" && newStatus === "unassigned" && oldPartner) {
+    if ((oldStatus === "pending_acceptance" || oldStatus === "assigned") && newStatus === "unassigned" && oldPartner) {
       await notifyAdmins(
         "Delivery Offer Rejected",
         "Delivery partner rejected order #" + orderId + ". It is ready for reassignment.",
@@ -237,7 +374,7 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
       }, { merge: true });
     }
 
-    if (oldPartner && (newStatus === "Delivered" || newStatus === "Cancelled")) {
+    if (oldPartner && (newStatus === "Delivered" || newStatus === "Cancelled" || newStatus === "Completed")) {
       await db.collection("deliveryPartners").doc(oldPartner).set({
         pendingOrderId: null,
         currentOrderId: null,
