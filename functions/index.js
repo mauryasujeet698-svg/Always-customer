@@ -270,6 +270,8 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
 
     const rideType = String(ride.rideType || "bike").toLowerCase();
+    const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
+    if (Date.now() - createdMs > 30000) return;
     const pickupLat = Number(ride.pickupLatitude);
     const pickupLng = Number(ride.pickupLongitude);
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
@@ -277,6 +279,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
     const snap = await db.collection("ridePartners")
       .where("status", "==", "online")
       .get();
+    const offerExpiresAt = Date.now() + 30000;
 
     for (const partner of snap.docs) {
       const p = partner.data() || {};
@@ -307,6 +310,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
           distanceKm: distance.toFixed(1),
           pickupAddress: String(ride.pickupAddress || "Nearby pickup"),
           destination: String(ride.destinationAddress || ride.destination || ""),
+          expiresAt: String(offerExpiresAt),
         },
         p.fcmToken || p.fcm_token || p.notificationToken || ""
       );
@@ -580,6 +584,13 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
       }
       await batch.commit();
     }
+    await db.collection("serviceableZones").doc("230502").set({
+      pincode: "230502",
+      status: "serviceable",
+      label: "Pratapgarh pilot zone",
+      updatedAt: FieldValue.serverTimestamp(),
+      source: "ALLways pilot configuration",
+    }, { merge: true });
     await db.collection("settings").doc("catalogSync").set({
       endpoint: CATALOG_SYNC_ENDPOINT, source: "google_sheets", automatic: true,
       schedule: "every 5 minutes", lastSyncAt: FieldValue.serverTimestamp(),
