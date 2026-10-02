@@ -199,6 +199,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /supportRequests/{requestId} {
+      allow create: if signedIn() && request.resource.data.userUid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.userUid == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
     match /notificationBroadcasts/{notificationId} {
       allow create: if isAdmin();
       allow read: if isAdmin();
