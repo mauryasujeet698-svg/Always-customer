@@ -4864,17 +4864,32 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
   @override Widget build(BuildContext context){
     final user=FirebaseAuth.instance.currentUser;
     return Scaffold(appBar:AppBar(title:const Text('Book / Rent a Vehicle')),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection('vehicles').where('status',isEqualTo:'available').snapshots(),
+      // Read the feed without a compound status query so older carrier listings
+      // (Available/Published/Active) continue to appear after migrations.
+      stream:FirebaseFirestore.instance.collection('vehicles').snapshots(),
       builder:(context,snapshot){
-        final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
+        final allDocs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
+        final docs=allDocs.where((doc){
+          final d=doc.data();
+          final status=(d['status']??d['listingStatus']??'available').toString().trim().toLowerCase();
+          final active=d['available'];
+          final explicitlyUnavailable=active is bool && active==false;
+          return !explicitlyUnavailable && const {'available','active','published','listed'}.contains(status);
+        }).toList()
+          ..sort((a,b){
+            final av=a.data()['createdAt'];final bv=b.data()['createdAt'];
+            final at=av is Timestamp?av.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+            final bt=bv is Timestamp?bv.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+            return bt.compareTo(at);
+          });
         return ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
           const SizedBox(height:4),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-          if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please try again later.'),
+          if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please check your connection and Firebase access.'),
           if(!snapshot.hasData)const Padding(padding:EdgeInsets.all(20),child:Center(child:CircularProgressIndicator())),
           if(snapshot.hasData&&docs.isEmpty)const InfoCard(title:'No vehicles listed yet',detail:'Vehicle owners publish and manage vehicles from the ALLways Carrier app.'),
           ...docs.map((doc){final d=doc.data();final allow=d['allowNegotiation']==true;return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Row(children:[const Icon(Icons.directions_car_outlined),const SizedBox(width:10),Expanded(child:Text((d['category']??'Vehicle').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+(d['price']??0).toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
-            const SizedBox(height:6),Text('Owner: '+(d['ownerName']??'').toString()+(d['capacity']!=null&&d['capacity'].toString()!='0'?' • Capacity: '+d['capacity'].toString():'')),
+            Row(children:[const Icon(Icons.directions_car_outlined),const SizedBox(width:10),Expanded(child:Text((d['category']??d['vehicleType']??'Vehicle').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+(d['price']??0).toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
+            const SizedBox(height:6),Text('Owner: '+(d['ownerName']??'ALLways vehicle owner').toString()+(d['capacity']!=null&&d['capacity'].toString()!='0'?' • Capacity: '+d['capacity'].toString():'')),
             const SizedBox(height:4),Text(allow?'Owner allows negotiation':'Fixed owner price',style:const TextStyle(color:Colors.grey)),const SizedBox(height:10),
             Row(children:[Expanded(child:FilledButton(onPressed:()=>_book(doc,negotiate:false),child:const Text('Book'))),if(allow)...[const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_book(doc,negotiate:true),child:const Text('Book & negotiate')))]])
           ])));}),
