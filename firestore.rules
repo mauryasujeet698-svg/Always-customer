@@ -171,6 +171,13 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
+    match /customers/{uid}/notifications/{notificationId} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid;
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
     match /customers/{uid}/wishlist/{itemId} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
