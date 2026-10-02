@@ -2919,7 +2919,8 @@ class _TravelPageState extends State<TravelPage> {
                   ),
                   children:[
                     TileLayer(
-                      urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate:_mapboxTilesUrl(),
+                      tileSize:512,
                       maxZoom:19,
                       userAgentPackageName:'com.allways.app',
                     ),
