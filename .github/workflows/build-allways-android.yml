@@ -604,6 +604,19 @@ jobs:
         run: |
           node --check functions/index.js
           echo "Cloud Functions source is valid. Production deployment is intentionally deferred until Firebase Blaze is enabled."
+      - name: Validate Mapbox build secret
+        env:
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
+        run: |
+          if [ -z "${MAPBOX_PUBLIC_TOKEN}" ]; then
+            echo "ERROR: MAPBOX_PUBLIC_TOKEN GitHub Actions secret is missing."
+            exit 1
+          fi
+          case "${MAPBOX_PUBLIC_TOKEN}" in
+            pk.*) echo "PASS: Mapbox public token is configured." ;;
+            *) echo "ERROR: MAPBOX_PUBLIC_TOKEN must be a Mapbox public pk.* token." ; exit 1 ;;
+          esac
+
       - name: Get packages
         run: |
           cd mobile
@@ -631,7 +644,7 @@ jobs:
       - name: Build release APK
         run: |
           cd mobile
-          flutter build apk --release --target-platform android-arm64,android-x64 --shrink
+          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64,android-x64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
           MAX_SIZE=$((50*1024*1024))
           echo "Release APK size: $APK_SIZE bytes (50 MB CI safety limit; Play Store delivery will use AAB/splits later)"
