@@ -1,12 +1,10 @@
 const { initializeApp } = require("firebase-admin/app");
-const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 
 initializeApp();
 
 const db = getFirestore();
-const auth = getAuth();
 
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -131,17 +129,11 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
     });
   });
 
-  await sendToUser(
-    partnerUid,
-    "New Delivery Assignment",
-    "Order #" + orderId + " has been assigned to you. Open ALLways to accept it.",
-    { type: "delivery_offer", orderId, status: "pending_acceptance", assignmentMethod: "automatic" },
-    partner.fcmToken || ""
-  );
-  return partnerUid;
+  
+return partnerUid;
 }
 
-// Order creation and delivery assignment remain server-side. Notifications are handled outside Cloud Functions while the project stays on Firebase Spark.
+// Order creation and delivery assignment remain server-side. Server-side notification delivery is intentionally disabled while the project stays on Firebase Spark.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
   async (event) => {
@@ -149,13 +141,8 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
     if (!order) return;
 
     const orderRef = event.data.ref;
-    await notifyAdmins(
-      "New ALLways Order",
-      "A new order #" + event.params.orderId + " is waiting for Admin processing.",
-      { type: "order_created", orderId: event.params.orderId, status: String(order.status || "New Order") }
-    );
-
-    try {
+    
+try {
       await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
     } catch (error) {
       if (String(error?.message || error) !== "AUTO_ASSIGN_RETRY") {
@@ -171,7 +158,7 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
   }
 );
 
-// Order updates: partner assignment/acceptance and Customer status notifications.
+// Order updates: partner assignment/acceptance and customer status state remain server-side.
 exports.onAllwaysOrderUpdated = onDocumentUpdated(
   "orders/{orderId}",
   async (event) => {
@@ -184,14 +171,8 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
 
     if (newPartner && newPartner !== oldPartner) {
-      await sendToUser(
-        newPartner,
-        "New Delivery Offer",
-        "Order #" + orderId + " has been assigned to you. Please accept or reject it.",
-        { type: "delivery_offer", orderId, status: newStatus },
-        after.carrier_fcm_token || after.partner_fcm_token
-      );
-    }
+      
+}
 
     if ((oldStatus === "pending_acceptance" || oldStatus === "assigned") && newStatus === "Assigned" && newPartner) {
       await db.collection("deliveryPartners").doc(newPartner).set({
@@ -202,21 +183,12 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      await sendToUser(
-        newPartner,
-        "Delivery Assigned",
-        "Order #" + orderId + " is now assigned to you.",
-        { type: "delivery_assignment", orderId, status: "Assigned" }
-      );
-    }
+      
+}
 
     if ((oldStatus === "pending_acceptance" || oldStatus === "assigned") && newStatus === "unassigned" && oldPartner) {
-      await notifyAdmins(
-        "Delivery Offer Rejected",
-        "Delivery partner rejected order #" + orderId + ". It is ready for reassignment.",
-        { type: "delivery_rejected", orderId, partnerId: oldPartner }
-      );
-      await db.collection("deliveryPartners").doc(oldPartner).set({
+      
+await db.collection("deliveryPartners").doc(oldPartner).set({
         pendingOrderId: null,
         currentOrderId: null,
         availableForDeliveries: true,
@@ -237,19 +209,13 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
       const customerUid = String(after.customerId || after.customerUid || "").trim();
       if (customerUid) {
         const normalized = newStatus.toLowerCase().replace(/\s+/g, "_");
-        await sendToUser(
-          customerUid,
-          "Order Update",
-          "Your ALLways order #" + orderId + " is now " + newStatus + ".",
-          { type: "order_update", orderId, status: newStatus, normalizedStatus: normalized },
-          after.customer_fcm_token || after.fcmToken || ""
-        );
-      }
+        
+}
     }
   }
 );
 
-// New ride request detection remains server-side; notification delivery is intentionally outside Cloud Functions on Spark.
+// New ride request detection remains server-side; notification delivery is outside Cloud Functions on Spark.
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -286,26 +252,12 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
       if (distance > 7) continue;
 
-      await sendToUser(
-        partner.id,
-        "New Ride Request",
-        "A customer nearby is requesting a " + rideType + " ride.",
-        {
-          type: "ride_request",
-          rideId: event.params.requestId,
-          rideType,
-          distanceKm: distance.toFixed(1),
-          pickupAddress: String(ride.pickupAddress || "Nearby pickup"),
-          destination: String(ride.destinationAddress || ride.destination || ""),
-          expiresAt: String(offerExpiresAt),
-        },
-        p.fcmToken || p.fcm_token || p.notificationToken || ""
-      );
-    }
+      
+}
   }
 );
 
-// Ride state changes remain server-side; notification delivery is intentionally outside Cloud Functions on Spark.
+// Ride state changes remain server-side; notification delivery is outside Cloud Functions on Spark.
 exports.onAutoRideRequestUpdated = onDocumentUpdated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -319,59 +271,31 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     if (!customerUid) return;
 
     if (newStatus === "accepted") {
-      await sendToUser(
-        customerUid,
-        "Ride Accepted",
-        "Your ALLways ride request has been accepted.",
-        { type: "ride_update", rideId: event.params.requestId, status: "accepted" }
-      );
-    } else if (newStatus === "rejected") {
-      await sendToUser(
-        customerUid,
-        "Ride Update",
-        "Your ALLways ride request was rejected.",
-        { type: "ride_update", rideId: event.params.requestId, status: "rejected" }
-      );
-    } else if (newStatus === "cancelled") {
-      await sendToUser(
-        customerUid,
-        "Ride Cancelled",
-        "Your ALLways ride request has been cancelled.",
-        { type: "ride_update", rideId: event.params.requestId, status: "cancelled" }
-      );
-    } else if (newStatus === "completed") {
-      await sendToUser(
-        customerUid,
-        "Ride Completed",
-        "Your ALLways ride has been completed.",
-        { type: "ride_update", rideId: event.params.requestId, status: "completed" }
-      );
-    }
+      
+} else if (newStatus === "rejected") {
+      
+} else if (newStatus === "cancelled") {
+      
+} else if (newStatus === "completed") {
+      
+}
   }
 );
 
-// Partner registration/approval state handling remains available; notification delivery is outside Cloud Functions on Spark.
+// Partner registration/approval state remains available; notification delivery is outside Cloud Functions on Spark.
 exports.onRidePartnerCreated = onDocumentCreated(
   "ridePartners/{uid}",
   async (event) => {
     const data = event.data?.data() || {};
-    await notifyAdmins(
-      "New Rider Registration",
-      "A new rider registration is waiting for approval.",
-      { type: "partner_registration", role: "carrier", uid: event.params.uid }
-    );
-  }
+    
+}
 );
 
 exports.onDeliveryPartnerCreated = onDocumentCreated(
   "deliveryPartners/{uid}",
   async (event) => {
-    await notifyAdmins(
-      "New Delivery Partner",
-      "A new delivery partner registration is waiting for approval.",
-      { type: "partner_registration", role: "delivery_partner", uid: event.params.uid }
-    );
-  }
+    
+}
 );
 
 exports.onRidePartnerUpdated = onDocumentUpdated(
@@ -382,13 +306,8 @@ exports.onRidePartnerUpdated = onDocumentUpdated(
     if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
     const status = String(after.approvalStatus || "");
     if (!status) return;
-    await sendToUser(
-      event.params.uid,
-      "Rider Approval Update",
-      "Your ALLways rider account is now " + status + ".",
-      { type: "partner_approval", role: "carrier", status }
-    );
-  }
+    
+}
 );
 
 exports.onDeliveryPartnerUpdated = onDocumentUpdated(
@@ -399,13 +318,8 @@ exports.onDeliveryPartnerUpdated = onDocumentUpdated(
     if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
     const status = String(after.approvalStatus || "");
     if (!status) return;
-    await sendToUser(
-      event.params.uid,
-      "Delivery Partner Approval Update",
-      "Your ALLways delivery partner account is now " + status + ".",
-      { type: "partner_approval", role: "delivery_partner", status }
-    );
-  }
+    
+}
 );
 
 exports.onNotificationBroadcastCreated = onDocumentCreated(
@@ -451,20 +365,8 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
 
     const topic = allowedTopics.has(rawAudience) ? rawAudience : "all_users";
 
-    await messaging.send(
-      notificationMessage(
-        title,
-        body,
-        {
-          type: "announcement",
-          announcementId: event.params.announcementId,
-          topic,
-        },
-        { topic }
-      )
-    );
-
-    await event.data.ref.set(
+    
+await event.data.ref.set(
       {
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),
@@ -483,14 +385,8 @@ exports.onVehicleBookingCreated = onDocumentCreated(
     if(!booking)return;
     const ownerUid=String(booking.ownerUid||"").trim();
     if(!ownerUid)return;
-    await sendToUser(
-      ownerUid,
-      "New Vehicle Booking",
-      String(booking.customerName||"Customer")+" requested your "+String(booking.category||"vehicle")+".",
-      {type:"vehicle_booking",bookingId:event.params.bookingId,status:String(booking.status||"Booked")},
-      booking.ownerFcmToken||""
-    );
-  }
+    
+}
 );
 
 exports.onVehicleBookingUpdated = onDocumentUpdated(
@@ -501,9 +397,8 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
     if(String(before.status||"").toLowerCase()===String(after.status||"").toLowerCase())return;
     const uid=String(after.customerUid||"").trim();
     if(!uid)return;
-    await sendToUser(uid,"Vehicle Booking Update","Your vehicle booking is now "+String(after.status||"updated")+".",
-      {type:"vehicle_booking_update",bookingId:event.params.bookingId,status:String(after.status||"")});
-  }
+    
+}
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.
