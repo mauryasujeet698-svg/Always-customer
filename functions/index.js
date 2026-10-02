@@ -286,7 +286,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       const type = String(p.vehicleType || "bike").toLowerCase();
       const normalizedType = type === "two_wheeler" || type === "motorcycle" || type === "scooter"
         ? "bike"
-        : type;
+        : (type === "cab" || type === "sedan" || type === "hatchback" ? "car" : type);
       if (normalizedType !== rideType) continue;
       if (String(p.approvalStatus || "approved").toLowerCase() !== "approved") continue;
       if (String(p.activeRideId || "").trim()) continue;
@@ -545,6 +545,15 @@ function catalogNumber(value, fallback = 0) {
 exports.syncCatalogFromGoogleSheet = onSchedule(
   { schedule: "every 5 minutes", timeZone: "Asia/Kolkata", region: "asia-south1" },
   async () => {
+    // 230502 is the first explicitly serviceable pilot pincode.
+    await db.collection("serviceableZones").doc("230502").set({
+      pincode: "230502",
+      status: "serviceable",
+      label: "Serviceable",
+      updatedAt: FieldValue.serverTimestamp(),
+      source: "allways_pilot",
+    }, { merge: true });
+
     const response = await fetch(CATALOG_SYNC_ENDPOINT, { redirect: "follow" });
     if (!response.ok) throw new Error("Catalog Apps Script returned HTTP " + response.status);
     const payload = await response.json();
