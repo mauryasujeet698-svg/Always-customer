@@ -1219,10 +1219,19 @@ class _ShellState extends State<Shell> {
   Future<void> loadAddresses() async {
     if(user==null)return;
     try{
-      final s=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').orderBy('createdAt',descending:true).get();
-      addresses=s.docs.map((d)=>{...d.data(),'id':d.id}).toList();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').get();
+      final list=snap.docs.map((d)=>{'id':d.id,...d.data()}).toList();
+      list.sort((a,b){
+        final av=a['createdAt'], bv=b['createdAt'];
+        final at=av is Timestamp?av.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+        final bt=bv is Timestamp?bv.toDate():DateTime.fromMillisecondsSinceEpoch(0);
+        return bt.compareTo(at);
+      });
+      addresses=list;
       if(mounted)setState((){});
-    }catch(_){addresses=[];}
+    }catch(_){
+      if(mounted)setState(()=>addresses=[]);
+    }
   }
   Future<void> saveAddress(String n,String ph,String a,{double? latitude,double? longitude}) async {
     if(user==null)return;
@@ -2913,7 +2922,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
 
   @override void initState(){
     super.initState();
-    selectedRideType=widget.rideType=='auto'?'auto':'bike';
+    selectedRideType=['bike','auto','car'].contains(widget.rideType)?widget.rideType:'bike';
     if(widget.initialDestination!=null)destination.text=widget.initialDestination!.trim();
     _loadPickup();
   }
