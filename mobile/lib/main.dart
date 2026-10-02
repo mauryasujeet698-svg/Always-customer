@@ -3456,7 +3456,7 @@ class _RideTypeListCard extends StatelessWidget{
           Container(
             width:82,height:82,
             decoration:BoxDecoration(
-              color:purple?const Color(0xFF6A1BDE):const Color(0xFF151515),
+              color: purple ? const Color(0xFF6A1BDE) : const Color(0xFF151515),
               borderRadius:BorderRadius.circular(18),
             ),
             child:Icon(icon,color:Colors.white,size:34),
