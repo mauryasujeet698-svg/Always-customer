@@ -254,7 +254,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           final total = d['totalAmount'] ?? d['total'] ?? 0;
           final phone = _phone(d);
           final hasCarrier = _point(d, ['carrier','driver','partner']) != null;
-          final showTracking = status.toLowerCase() == 'out for delivery' || status.toLowerCase() == 'assigned' || hasCarrier;
+          final normalizedStatus = status.toLowerCase();
+          final terminalDelivery = normalizedStatus == 'delivered' || normalizedStatus == 'completed' || normalizedStatus == 'cancelled' || normalizedStatus == 'rejected' || normalizedStatus == 'expired';
+          final showTracking = !terminalDelivery && (normalizedStatus == 'out for delivery' || normalizedStatus == 'assigned' || hasCarrier);
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
             children: [
