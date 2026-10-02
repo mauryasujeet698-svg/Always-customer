@@ -642,6 +642,8 @@ jobs:
           node --check functions/index.js
 
       - name: Build release APK
+        env:
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
         run: |
           cd mobile
           MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64,android-x64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
