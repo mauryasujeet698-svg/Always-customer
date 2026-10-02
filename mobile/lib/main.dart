@@ -16,6 +16,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+
+// Mapbox public token is injected at build time from GitHub Actions Secrets.
+// It is intentionally a public pk.* token; never use a Mapbox sk.* secret in the app.
+const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
+const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=';
+
+String _mapboxTilesUrl() => _mapboxStyleTiles + _mapboxPublicToken;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/services.dart';
@@ -783,7 +790,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             ),
             children:[
               TileLayer(
-                urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate:_mapboxTilesUrl(),
+                tileSize:512,
                 maxZoom:19,
                 userAgentPackageName:'com.allways.app',
               ),
