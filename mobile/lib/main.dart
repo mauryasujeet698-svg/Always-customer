@@ -3895,7 +3895,7 @@ class _NotificationsPageState extends State<NotificationsPage>{
 const vehicleCategories = <String>[
   'Motorcycle','Scooter','E-bike','Auto Rickshaw','E-Rickshaw','Hatchback','Sedan','SUV','MUV',
   'Luxury Car','Taxi / Cab','Tempo Traveller','Van','Mini Bus','Bus','Pickup Truck','Mini Truck (Tata Ace)',
-  'Bolero Pickup','Goods Auto','Cargo Van','Tractor','Tractor Trolley','Trailer','Ambulance','Other / Enter manually',
+  'Bolero Pickup','Goods Auto','Cargo Van','Tractor','Tractor Trolley','Trailer','Ambulance',
 ];
 
 class VehicleBookingPage extends StatefulWidget {
@@ -3904,131 +3904,6 @@ class VehicleBookingPage extends StatefulWidget {
 }
 
 class _VehicleBookingPageState extends State<VehicleBookingPage> {
-  StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? _vehicleBookingSubscription;
-  LiveLocationBroadcaster? _vehicleLocationBroadcaster;
-  String? _broadcastingVehicleBookingId;
-
-  @override
-  void initState(){
-    super.initState();
-    final uid=FirebaseAuth.instance.currentUser?.uid;
-    if(uid!=null){
-      _vehicleBookingSubscription=FirebaseFirestore.instance.collection('vehicleBookings').where('ownerUid',isEqualTo:uid).snapshots().listen((snapshot) async {
-        QueryDocumentSnapshot<Map<String,dynamic>>? active;
-        for(final d in snapshot.docs){
-          final status=(d.data()['status']??'').toString().toLowerCase();
-          if(status!='rejected'&&status!='cancelled'&&status!='delivered'){active=d;break;}
-        }
-        if(active==null){
-          await _vehicleLocationBroadcaster?.stop();
-          _vehicleLocationBroadcaster=null;_broadcastingVehicleBookingId=null;
-          return;
-        }
-        if(_broadcastingVehicleBookingId==active.id)return;
-        await _vehicleLocationBroadcaster?.stop();
-        final broadcaster=LiveLocationBroadcaster();
-        if(!mounted)return;
-        if(!await ensureBackgroundLocationDisclosure(context))return;
-        final started=await broadcaster.start(collection:'vehicleBookings',docId:active.id,prefix:'owner',background:true);
-        if(started){_vehicleLocationBroadcaster=broadcaster;_broadcastingVehicleBookingId=active.id;}
-      });
-    }
-  }
-
-  @override
-  void dispose(){
-    _vehicleBookingSubscription?.cancel();
-    _vehicleLocationBroadcaster?.stop();
-    super.dispose();
-  }
-
-  Future<void> _publishVehicle() async {
-    final user=FirebaseAuth.instance.currentUser;
-    if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
-    final name=TextEditingController(),phone=TextEditingController(),price=TextEditingController(),capacity=TextEditingController(),custom=TextEditingController(),village=TextEditingController(),landmark=TextEditingController(),pincode=TextEditingController();
-    double? vehicleLatitude;
-    double? vehicleLongitude;
-    String category=vehicleCategories.first; bool negotiate=true; XFile? vehiclePhoto; bool uploading=false;
-    try{
-      final ok=await showDialog<bool>(context:context,builder:(dialogContext)=>StatefulBuilder(builder:(context,setDialogState)=>AlertDialog(
-        title:const Text('List your vehicle'),
-        content:SizedBox(width:420,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-          DropdownButtonFormField<String>(initialValue:category,decoration:const InputDecoration(labelText:'Vehicle category'),items:vehicleCategories.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:(v){if(v!=null)setDialogState(()=>category=v);}),
-          if(category=='Other / Enter manually')TextField(controller:custom,decoration:const InputDecoration(labelText:'Enter vehicle type')),
-          TextField(controller:name,decoration:const InputDecoration(labelText:'Owner name')),
-          TextField(controller:phone,keyboardType:TextInputType.phone,decoration:const InputDecoration(labelText:'Mobile number')),
-          const SizedBox(height:10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: uploading ? null : () async {
-                final image = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 600);
-                if (image != null) setDialogState(() => vehiclePhoto = image);
-              },
-              icon: const Icon(Icons.camera_alt),
-              label: Text(vehiclePhoto == null ? 'Upload vehicle photo' : 'Vehicle photo selected'),
-            ),
-          ),
-          const Align(alignment:Alignment.centerLeft,child:Text('Vehicle photo is required.',style:TextStyle(color:Colors.grey,fontSize:12))),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: uploading ? null : () async {
-                try {
-                  if (!await Geolocator.isLocationServiceEnabled()) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turn on GPS first.')));
-                    return;
-                  }
-                  var permission=await Geolocator.checkPermission();
-                  if(permission==LocationPermission.denied) permission=await Geolocator.requestPermission();
-                  if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever){
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission was not granted.')));
-                    return;
-                  }
-                  final pos=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high)).timeout(const Duration(seconds:10));
-                  setDialogState((){vehicleLatitude=pos.latitude;vehicleLongitude=pos.longitude;});
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Current GPS location captured.')));
-                } catch(e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not capture GPS location: $e')));
-                }
-              },
-              icon: const Icon(Icons.my_location),
-              label: Text(vehicleLatitude==null?'Use current location':'Current location captured'),
-            ),
-          ),
-          TextField(controller:village,decoration:const InputDecoration(labelText:'Village / Town / City Name')),
-          TextField(controller:landmark,decoration:const InputDecoration(labelText:'Landmark / Main Road')),
-          TextField(controller:pincode,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Pincode')),
-          TextField(controller:capacity,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Seats / capacity')),
-          TextField(controller:price,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Your price (₹)')),
-          SwitchListTile(contentPadding:EdgeInsets.zero,title:const Text('Allow negotiation'),value:negotiate,onChanged:(v)=>setDialogState(()=>negotiate=v)),
-          const Align(alignment:Alignment.centerLeft,child:Text('You choose the price. ALLways does not set a fixed vehicle-booking price.',style:TextStyle(color:Colors.grey,fontSize:12))),
-        ]))),
-        actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('Publish'))],
-      )))??false;
-      if(!ok)return;
-      final cleanPhone=phone.text.replaceAll(RegExp(r'\D'),''); final cleanPrice=num.tryParse(price.text.trim())??0;
-      if(name.text.trim().isEmpty||cleanPhone.length!=10||cleanPrice<=0||vehiclePhoto==null||village.text.trim().isEmpty||landmark.text.trim().isEmpty||pincode.text.trim().isEmpty){
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter owner name, valid 10-digit mobile number, price and upload a vehicle photo.')));return;
-      }
-      final type=category=='Other / Enter manually'?custom.text.trim():category;
-      if(type.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter the vehicle type.')));return;}
-      try {
-        uploading = true;
-        final vehiclePhotoUrl = await uploadImageToCloudinary(vehiclePhoto!, folder: 'vehicles/' + user.uid);
-        await FirebaseFirestore.instance.collection('vehicles').add({
-          'ownerUid':user.uid,'ownerName':name.text.trim(),'ownerPhone':cleanPhone,'category':type,
-          'capacity':int.tryParse(capacity.text.trim())??0,'price':cleanPrice,'allowNegotiation':negotiate,
-          'vehiclePhotoUrl':vehiclePhotoUrl,'status':'available','latitude':vehicleLatitude,'longitude':vehicleLongitude,'manual_location':{'villageTownCity':village.text.trim(),'landmarkMainRoad':landmark.text.trim(),'pincode':pincode.text.trim()},'createdAt':FieldValue.serverTimestamp()
-        });
-      } catch(e) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Vehicle photo upload failed: '+e.toString())));
-        return;
-      }
-      if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Vehicle published successfully.')));
-    }finally{name.dispose();phone.dispose();price.dispose();capacity.dispose();custom.dispose();village.dispose();landmark.dispose();pincode.dispose();}
-  }
-
   Future<void> _book(DocumentSnapshot<Map<String,dynamic>> doc,{required bool negotiate}) async {
     final user=FirebaseAuth.instance.currentUser;
     if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
