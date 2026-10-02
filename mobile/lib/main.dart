@@ -2748,6 +2748,7 @@ class _TravelPageState extends State<TravelPage> {
   final MapController _travelMapController=MapController();
   Position? position;
   bool loading=true;
+  String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
   final stt.SpeechToText _speech=stt.SpeechToText();
   final Set<String> _favoriteDestinations=<String>{};
@@ -2811,10 +2812,30 @@ class _TravelPageState extends State<TravelPage> {
         if(mounted)setState(()=>loading=false);
         return;
       }
+
       final current=await Geolocator.getCurrentPosition(
         locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
       );
-      if(mounted)setState((){position=current;loading=false;});
+
+      var subtitle='Pratapgarh, Uttar Pradesh';
+      try{
+        final marks=await placemarkFromCoordinates(current.latitude,current.longitude);
+        if(marks.isNotEmpty){
+          final m=marks.first;
+          final primary=(m.locality??m.subAdministrativeArea??m.administrativeArea??'').trim();
+          final secondary=(m.administrativeArea??'').trim();
+          final parts=<String>[];
+          if(primary.isNotEmpty)parts.add(primary);
+          if(secondary.isNotEmpty&&secondary!=primary)parts.add(secondary);
+          if(parts.isNotEmpty)subtitle=parts.join(', ');
+        }
+      }catch(_){}
+
+      if(mounted)setState((){
+        position=current;
+        _locationSubtitle=subtitle;
+        loading=false;
+      });
     }catch(_){
       if(mounted)setState(()=>loading=false);
     }
@@ -2868,27 +2889,31 @@ class _TravelPageState extends State<TravelPage> {
   Widget _recentRow({
     required String title,
     required String subtitle,
-    required IconData icon,
     VoidCallback? onTap,
   }){
     return InkWell(
       onTap:onTap,
+      borderRadius:BorderRadius.circular(18),
       child:Padding(
-        padding:const EdgeInsets.symmetric(vertical:12),
+        padding:const EdgeInsets.symmetric(vertical:13),
         child:Row(children:[
-          Icon(icon,color:const Color(0xFF68727F),size:30),
+          const Icon(Icons.history,color:Color(0xFF68727F),size:30),
           const SizedBox(width:14),
-          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-            Text(title,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
-            const SizedBox(height:3),
-            Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
-          ])),
+          Expanded(child:Column(
+            crossAxisAlignment:CrossAxisAlignment.start,
+            children:[
+              Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+              const SizedBox(height:3),
+              Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
+            ],
+          )),
           IconButton(
             tooltip:_favoriteDestinations.contains(title)?'Remove favourite':'Save favourite',
             onPressed:()=>_toggleTravelFavorite(title),
             icon:Icon(
               _favoriteDestinations.contains(title)?Icons.favorite:Icons.favorite_border,
-              color:_favoriteDestinations.contains(title)?const Color(0xFFB3134A):const Color(0xFF68727F),
+              color:_favoriteDestinations.contains(title)?const Color(0xFFE51B5E):const Color(0xFF68727F),
+              size:28,
             ),
           ),
         ]),
@@ -2896,8 +2921,62 @@ class _TravelPageState extends State<TravelPage> {
     );
   }
 
+  Widget _travelCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color background,
+    required Color iconBackground,
+    required VoidCallback onTap,
+  }){
+    return Expanded(
+      child:Material(
+        color:background,
+        borderRadius:BorderRadius.circular(22),
+        child:InkWell(
+          onTap:onTap,
+          borderRadius:BorderRadius.circular(22),
+          child:Padding(
+            padding:const EdgeInsets.fromLTRB(16,16,12,14),
+            child:SizedBox(
+              height:154,
+              child:Column(
+                crossAxisAlignment:CrossAxisAlignment.start,
+                children:[
+                  Container(
+                    width:52,height:52,
+                    decoration:BoxDecoration(
+                      color:iconBackground,
+                      borderRadius:BorderRadius.circular(16),
+                    ),
+                    child:Icon(icon,color:Colors.white,size:28),
+                  ),
+                  const Spacer(),
+                  Text(title,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:4),
+                  Expanded(
+                    child:Row(
+                      crossAxisAlignment:CrossAxisAlignment.end,
+                      children:[
+                        Expanded(child:Text(subtitle,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Color(0xFF68727F),height:1.25))),
+                        const SizedBox(width:4),
+                        const Icon(Icons.chevron_right,size:25),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context){
+    final size=MediaQuery.of(context).size;
+    final mapHeight=size.height*.41;
     final center=position==null
       ?const LatLng(25.4358,81.8463)
       :LatLng(position!.latitude,position!.longitude);
@@ -2910,226 +2989,251 @@ class _TravelPageState extends State<TravelPage> {
           padding:const EdgeInsets.only(bottom:24),
           children:[
             SizedBox(
-              height:MediaQuery.of(context).size.height*.30,
-              child:Stack(children:[
-                FlutterMap(
-                  mapController:_travelMapController,
-                  options:MapOptions(
-                    initialCenter:center,
-                    initialZoom:15,
-                    minZoom:10,
-                    maxZoom:19,
-                  ),
-                  children:[
-                    TileLayer(
-                      urlTemplate:_mapboxTilesUrl(),
-                      tileSize:512,
-                      maxZoom:19,
-                      userAgentPackageName:'com.allways.app',
-                    ),
-                    RichAttributionWidget(attributions:[
-                      TextSourceAttribution('© Mapbox © OpenStreetMap'),
-                    ]),
-                    if(position!=null)
-                      MarkerLayer(markers:[
-                        Marker(
-                          point:center,width:46,height:46,
-                          child:Container(
-                            decoration:BoxDecoration(
-                              color:const Color(0xFF20A56B),
-                              shape:BoxShape.circle,
-                              border:Border.all(color:Colors.white,width:4),
-                            ),
-                            child:const Icon(Icons.location_on,color:Colors.white,size:23),
-                          ),
-                        ),
-                      ]),
-                    const RichAttributionWidget(
-                      attributions:[TextSourceAttribution('© OpenStreetMap contributors')],
-                    ),
-                  ],
-                ),
-                Positioned(
-                  right:14,
-                  bottom:14,
-                  child:Column(
-                    mainAxisSize:MainAxisSize.min,
-                    children:[
-                      Material(
-                        color:Colors.white,
-                        elevation:3,
-                        borderRadius:BorderRadius.circular(12),
-                        child:Column(
-                          children:[
-                            IconButton(
-                              tooltip:'Zoom in',
-                              icon:const Icon(Icons.add),
-                              onPressed:()=>_travelMapController.move(
-                                _travelMapController.camera.center,
-                                (_travelMapController.camera.zoom+1).clamp(10,19).toDouble(),
-                              ),
-                            ),
-                            const Divider(height:1),
-                            IconButton(
-                              tooltip:'Zoom out',
-                              icon:const Icon(Icons.remove),
-                              onPressed:()=>_travelMapController.move(
-                                _travelMapController.camera.center,
-                                (_travelMapController.camera.zoom-1).clamp(10,19).toDouble(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  top:MediaQuery.of(context).padding.top+12,
-                  left:28,right:28,
-                  child:Card(
-                    margin:EdgeInsets.zero,
-                    elevation:3,
-                    shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),
-                    child:Padding(
-                      padding:const EdgeInsets.symmetric(horizontal:14,vertical:9),
-                      child:Row(children:[
-                        const Icon(Icons.location_on,color:Color(0xFF20A56B),size:22),
-                        const SizedBox(width:10),
-                        Expanded(child:Text(
-                          loading?'Locating you…':position==null?'Location unavailable':'Current location',
-                          maxLines:1,overflow:TextOverflow.ellipsis,
-                          style:const TextStyle(fontSize:15,fontWeight:FontWeight.w700),
-                        )),
-                      ]),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
-            Container(
-              transform:Matrix4.translationValues(0,-20,0),
-              decoration:const BoxDecoration(
-                color:Color(0xFFFFFAFC),
-                borderRadius:BorderRadius.vertical(top:Radius.circular(28)),
-              ),
-              padding:const EdgeInsets.fromLTRB(28,18,28,28),
-              child:Column(
-                crossAxisAlignment:CrossAxisAlignment.start,
+              height:mapHeight+58,
+              child:Stack(
+                clipBehavior:Clip.none,
                 children:[
-                  Row(children:[
-                    Expanded(
-                      child:Material(
-                        color:Colors.white,
-                        elevation:2,
-                        borderRadius:BorderRadius.circular(32),
-                        child:InkWell(
-                          borderRadius:BorderRadius.circular(32),
-                          onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
-                          child:Padding(
-                            padding:const EdgeInsets.symmetric(horizontal:18,vertical:14),
-                            child:Row(children:[
-                              const Icon(Icons.search,size:28,color:Colors.black),
-                              const SizedBox(width:12),
-                              Expanded(child:TextField(
-                                controller:_search,
-                                readOnly:true,
-                                onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
-                                decoration:InputDecoration(
-                                  border:InputBorder.none,
-                                  isDense:true,
-                                  hintText:'Where are you going?',
-                                  hintStyle:const TextStyle(fontSize:18,fontWeight:FontWeight.w800,color:Colors.black),
-                                  suffixIcon:_search.text.trim().isEmpty?null:IconButton(
-                                    tooltip:'Clear',
-                                    icon:const Icon(Icons.close,size:20),
-                                    onPressed:()=>setState(()=>_search.clear()),
-                                  ),
-                                ),
-                              )),
-                            ]),
-                          ),
-                        ),
+                  SizedBox(
+                    height:mapHeight,
+                    width:double.infinity,
+                    child:FlutterMap(
+                      mapController:_travelMapController,
+                      options:MapOptions(
+                        initialCenter:center,
+                        initialZoom:14.5,
+                        minZoom:10,
+                        maxZoom:19,
+                        onMapReady:(){
+                          if(position!=null){
+                            _travelMapController.move(center,14.5);
+                          }
+                        },
                       ),
+                      children:[
+                        TileLayer(
+                          urlTemplate:_mapboxTilesUrl(),
+                          tileSize:512,
+                          maxZoom:19,
+                          userAgentPackageName:'com.allways.app',
+                        ),
+                        RichAttributionWidget(attributions:[
+                          TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                        ]),
+                        if(position!=null)
+                          MarkerLayer(markers:[
+                            Marker(
+                              point:center,
+                              width:28,
+                              height:28,
+                              child:Container(
+                                decoration:BoxDecoration(
+                                  color:const Color(0xFF2D8CFF),
+                                  shape:BoxShape.circle,
+                                  border:Border.all(color:Colors.white,width:5),
+                                  boxShadow:const [
+                                    BoxShadow(color:Color(0x332D8CFF),blurRadius:12,spreadRadius:4),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ]),
+                      ],
                     ),
-                    const SizedBox(width:10),
-                    Material(
-                      color:const Color(0xFFFFC928),
-                      elevation:2,
-                      borderRadius:BorderRadius.circular(32),
+                  ),
+
+                  Positioned(
+                    top:MediaQuery.of(context).padding.top+14,
+                    left:22,
+                    right:22,
+                    child:Material(
+                      color:Colors.white,
+                      elevation:3,
+                      borderRadius:BorderRadius.circular(26),
                       child:InkWell(
-                        onTap:_voiceSearch,
-                        borderRadius:BorderRadius.circular(32),
-                        child:SizedBox(
-                          width:76,height:58,
-                          child:Row(mainAxisAlignment:MainAxisAlignment.center,children:[
-                            Icon(_listening?Icons.stop:Icons.mic,color:Colors.black),
-                            if(_listening)const SizedBox(width:4),
-                            if(_listening)const Text('बोलें',style:TextStyle(fontWeight:FontWeight.w800)),
+                        onTap:(){
+                          if(position!=null)_travelMapController.move(center,15);
+                        },
+                        borderRadius:BorderRadius.circular(26),
+                        child:Padding(
+                          padding:const EdgeInsets.symmetric(horizontal:16,vertical:11),
+                          child:Row(children:[
+                            const Icon(Icons.location_on,color:Color(0xFF20A56B),size:27),
+                            const SizedBox(width:10),
+                            Expanded(child:Column(
+                              crossAxisAlignment:CrossAxisAlignment.start,
+                              children:[
+                                const Text('Current location',maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+                                Text(
+                                  loading?'Locating…':_locationSubtitle,
+                                  maxLines:1,
+                                  overflow:TextOverflow.ellipsis,
+                                  style:const TextStyle(fontSize:13,color:Color(0xFF68727F)),
+                                ),
+                              ],
+                            )),
+                            const Icon(Icons.keyboard_arrow_down,size:27),
                           ]),
                         ),
                       ),
                     ),
-                  ]),
-                  const SizedBox(height:22),
-                  FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
-                    future:_recentRides(),
-                    builder:(context,snapshot){
-                      final rides=snapshot.data??[];
-                      if(rides.isEmpty){
-                        return const SizedBox.shrink();
-                      }
-                      return Column(children:[
+                  ),
+
+                  Positioned(
+                    right:24,
+                    bottom:72,
+                    child:Material(
+                      color:Colors.white,
+                      elevation:4,
+                      shape:const CircleBorder(),
+                      child:IconButton(
+                        tooltip:'Recenter',
+                        onPressed:position==null?null:()=>_travelMapController.move(center,15),
+                        icon:const Icon(Icons.my_location,size:25),
+                      ),
+                    ),
+                  ),
+
+                  Positioned(
+                    left:28,
+                    right:28,
+                    top:mapHeight-27,
+                    child:Row(children:[
+                      Expanded(
+                        child:Material(
+                          color:Colors.white,
+                          elevation:3,
+                          borderRadius:BorderRadius.circular(30),
+                          child:InkWell(
+                            onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
+                            borderRadius:BorderRadius.circular(30),
+                            child:Padding(
+                              padding:const EdgeInsets.symmetric(horizontal:17,vertical:10),
+                              child:Row(children:[
+                                const Icon(Icons.search,size:29,color:Colors.black),
+                                const SizedBox(width:12),
+                                Expanded(child:TextField(
+                                  controller:_search,
+                                  readOnly:true,
+                                  onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
+                                  decoration:InputDecoration(
+                                    border:InputBorder.none,
+                                    isDense:true,
+                                    hintText:'Where are you going?',
+                                    hintStyle:const TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:Color(0xFF68727F)),
+                                    suffixIcon:_search.text.trim().isEmpty?null:IconButton(
+                                      tooltip:'Clear',
+                                      padding:EdgeInsets.zero,
+                                      constraints:const BoxConstraints(minWidth:34,minHeight:34),
+                                      icon:const Icon(Icons.close,size:20),
+                                      onPressed:()=>setState(()=>_search.clear()),
+                                    ),
+                                  ),
+                                )),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width:10),
+                      Material(
+                        color:const Color(0xFFFFC928),
+                        elevation:3,
+                        shape:const CircleBorder(),
+                        child:InkWell(
+                          onTap:_voiceSearch,
+                          customBorder:const CircleBorder(),
+                          child:SizedBox(
+                            width:66,height:66,
+                            child:Icon(_listening?Icons.stop:Icons.mic,color:Colors.black,size:28),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+
+            Padding(
+              padding:const EdgeInsets.fromLTRB(28,0,28,0),
+              child:FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
+                future:_recentRides(),
+                builder:(context,snapshot){
+                  final rides=snapshot.data??[];
+                  if(rides.isEmpty)return const SizedBox.shrink();
+                  return Container(
+                    decoration:BoxDecoration(
+                      color:Colors.white,
+                      borderRadius:BorderRadius.circular(24),
+                    ),
+                    padding:const EdgeInsets.fromLTRB(16,4,10,4),
+                    child:Column(
+                      children:[
                         ...rides.map((doc){
                           final d=doc.data();
                           final destination=(d['destinationAddress']??d['destination']??'Previous destination').toString();
                           final type=(d['rideType']??'bike').toString().toLowerCase();
+                          final parts=destination.split(',');
+                          final title=parts.isNotEmpty&&parts.first.trim().isNotEmpty?parts.first.trim():'Previous destination';
                           return Column(children:[
                             _recentRow(
-                              title:destination.split(',').first.trim().isEmpty?'Previous destination':destination.split(',').first.trim(),
+                              title:title,
                               subtitle:destination,
-                              icon:Icons.history,
                               onTap:()=>_openRide(type=='auto'?'auto':type=='car'?'car':'bike',destination:destination),
                             ),
-                            if(doc!=rides.last)const Divider(height:1,color:Color(0xFFD8DDE3)),
+                            if(doc!=rides.last)const Divider(height:1,color:Color(0xFFE0E0E0)),
                           ]);
                         }),
-                      ]);
-                    },
-                  ),
-                  const SizedBox(height:16),
-                  const Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
-                  const SizedBox(height:10),
-                  Card(
-                    margin:EdgeInsets.zero,
-                    shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(20)),
-                    child:InkWell(
-                      borderRadius:BorderRadius.circular(20),
-                      onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
-                      child:Padding(
-                        padding:const EdgeInsets.fromLTRB(14,14,12,14),
-                        child:Row(children:[
-                          Container(
-                            width:82,height:82,
-                            decoration:BoxDecoration(
-                              color:const Color(0xFF151515),
-                              borderRadius:BorderRadius.circular(18),
-                            ),
-                            child:const Icon(Icons.directions_car_outlined,color:Colors.white,size:34),
-                          ),
-                          const SizedBox(width:16),
-                          const Expanded(child:Column(
-                            crossAxisAlignment:CrossAxisAlignment.start,
-                            children:[
-                              Text('Book / Rent a Vehicle',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-                              SizedBox(height:4),
-                              Text('Find available vehicles, see the price and booking terms, then book directly.',style:TextStyle(fontSize:13,color:Colors.grey,height:1.25)),
-                            ],
-                          )),
-                          const Icon(Icons.chevron_right,size:28),
-                        ]),
-                      ),
+                      ],
                     ),
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height:26),
+
+            Padding(
+              padding:const EdgeInsets.fromLTRB(28,0,20,10),
+              child:Row(
+                children:[
+                  const Expanded(child:Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900))),
+                  TextButton(
+                    onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
+                    child:const Row(
+                      mainAxisSize:MainAxisSize.min,
+                      children:[
+                        Text('See all',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:Color(0xFF68727F))),
+                        SizedBox(width:2),
+                        Icon(Icons.chevron_right,size:22,color:Color(0xFF68727F)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Padding(
+              padding:const EdgeInsets.fromLTRB(28,0,28,10),
+              child:Row(
+                crossAxisAlignment:CrossAxisAlignment.start,
+                children:[
+                  _travelCard(
+                    icon:Icons.two_wheeler,
+                    title:'Book a Bike',
+                    subtitle:'Quick & affordable bike rides',
+                    background:const Color(0xFFEAF3FF),
+                    iconBackground:const Color(0xFF2878D8),
+                    onTap:()=>_openRide('bike'),
+                  ),
+                  const SizedBox(width:12),
+                  _travelCard(
+                    icon:Icons.directions_car_filled,
+                    title:'Rent a Vehicle',
+                    subtitle:'Find vehicles for your trips',
+                    background:const Color(0xFFEAF8EF),
+                    iconBackground:const Color(0xFF18A661),
+                    onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
                   ),
                 ],
               ),
@@ -3444,8 +3548,10 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                 options:MapOptions(initialCenter:center,initialZoom:14.5),
                 children:[
                   TileLayer(
-                    urlTemplate:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    maxZoom:19,userAgentPackageName:'com.allways.app'),
+                    urlTemplate:_mapboxTilesUrl(),
+                    tileSize:512,
+                    maxZoom:19,
+                    userAgentPackageName:'com.allways.app'),
                   if(route.length>1)PolylineLayer(polylines:[
                     Polyline(points:route,strokeWidth:5,color:const Color(0xFF5B1ACF)),
                   ]),
