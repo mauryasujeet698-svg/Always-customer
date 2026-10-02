@@ -3074,17 +3074,17 @@ class _TravelPageState extends State<TravelPage> {
                       children:[
                         _zoomButton(
                           icon:Icons.add,
-                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom+1).clamp(8,19)),
+                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom+1).clamp(8.0,19.0).toDouble()),
                         ),
                         const SizedBox(height:8),
                         _zoomButton(
                           icon:Icons.remove,
-                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom-1).clamp(8,19)),
+                          onPressed:()=>_travelMapController.move(_travelMapController.camera.center,(_travelMapController.camera.zoom-1).clamp(8.0,19.0).toDouble()),
                         ),
                         const SizedBox(height:8),
                         _zoomButton(
                           icon:Icons.my_location,
-                          onPressed:position==null?(){}:()=>_setMapPosition(position!,zoom:15),
+                          onPressed:()=>position==null?_locate():_setMapPosition(position!,zoom:15),
                         ),
                       ],
                     ),
