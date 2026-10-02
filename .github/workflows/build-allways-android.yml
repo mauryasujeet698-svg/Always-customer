@@ -1,4 +1,5 @@
 # ALLways Android build workflow - signing verification
+# Release build uses arm64 with the official Mapbox Maps SDK.
 # Catalog and Travel fixes and syntax verification are built automatically on the allways-android-app branch.
 name: Build ALLways Android APK
 
