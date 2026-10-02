@@ -20,7 +20,7 @@ import 'package:latlong2/latlong.dart';
 // Mapbox public token is injected at build time from GitHub Actions Secrets.
 // It is intentionally a public pk.* token; never use a Mapbox sk.* secret in the app.
 const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
-const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=';
+const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}?access_token=';
 
 String _mapboxTilesUrl() => _mapboxStyleTiles + _mapboxPublicToken;
 import 'package:google_fonts/google_fonts.dart';
@@ -795,6 +795,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 maxZoom:19,
                 userAgentPackageName:'com.allways.app',
               ),
+              RichAttributionWidget(attributions:[
+                TextSourceAttribution('© Mapbox © OpenStreetMap'),
+              ]),
               if(_routePoints.isNotEmpty)PolylineLayer(
                 polylines:[Polyline(points:_routePoints,color:const Color(0xFF673AB7),strokeWidth:5)],
               ),
@@ -2924,6 +2927,9 @@ class _TravelPageState extends State<TravelPage> {
                       maxZoom:19,
                       userAgentPackageName:'com.allways.app',
                     ),
+                    RichAttributionWidget(attributions:[
+                      TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                    ]),
                     if(position!=null)
                       MarkerLayer(markers:[
                         Marker(
