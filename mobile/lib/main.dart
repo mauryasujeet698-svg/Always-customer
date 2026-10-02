@@ -2868,7 +2868,7 @@ class _TravelPageState extends State<TravelPage> {
                         ),
                       ),
                     ),
-                  ),
+                  ]),
                   const SizedBox(height:22),
                   FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
                     future:_recentRides(),
