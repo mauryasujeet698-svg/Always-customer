@@ -276,7 +276,8 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
     tx.update(partnerRef, {
       pendingOrderId: orderId,
       availableForDeliveries: false,
-      dutyStatus: "pending_assignment",
+      // Keep the partner online so the app can display and accept this pending offer.
+      dutyStatus: "online",
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
