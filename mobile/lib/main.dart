@@ -2748,6 +2748,10 @@ class _TravelPageState extends State<TravelPage> {
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
   final Set<String> _favoriteDestinations=<String>{};
+  LatLng? _selectedDestination;
+  List<LatLng> _travelRoute=[];
+  double _travelDistanceKm=0;
+  int _travelEtaMinutes=0;
 
   @override
   void initState(){super.initState();_locate();_loadTravelFavorites();}
@@ -2870,8 +2874,30 @@ class _TravelPageState extends State<TravelPage> {
     final lon=double.tryParse((result['lon']??'').toString());
     if(name.isEmpty||lat==null||lon==null)return;
     _search.text=name;
-    try{_travelMapController.move(LatLng(lat,lon),15);}catch(_){}
-    setState((){});
+    _selectedDestination=LatLng(lat,lon);
+    try{_travelMapController.move(_selectedDestination!,15);}catch(_){}
+    await _loadTravelRoute(_selectedDestination!);
+    if(mounted)setState((){});
+  }
+
+  Future<void> _loadTravelRoute(LatLng destination) async {
+    final p=position;
+    if(p==null)return;
+    try{
+      final url='https://router.project-osrm.org/route/v1/driving/'+p.longitude.toString()+','+p.latitude.toString()+';'+destination.longitude.toString()+','+destination.latitude.toString()+'?overview=full&geometries=geojson';
+      final res=await http.get(Uri.parse(url),headers:const {'User-Agent':'ALLways/1.5 (ALLways)'}).timeout(const Duration(seconds:12));
+      if(res.statusCode!=200)return;
+      final decoded=jsonDecode(res.body);
+      final routes=decoded is Map?decoded['routes']:null;
+      if(routes is! List||routes.isEmpty)return;
+      final first=Map<String,dynamic>.from(routes.first as Map);
+      final distance=((first['distance'] as num?)?.toDouble()??0)/1000;
+      final eta=math.max(1,(((first['duration'] as num?)?.toDouble()??0)/60).round());
+      final points=<LatLng>[];
+      final coordinates=(first['geometry'] is Map)?(first['geometry'] as Map)['coordinates']:null;
+      if(coordinates is List)for(final pair in coordinates){if(pair is List&&pair.length>=2)points.add(LatLng((pair[1] as num).toDouble(),(pair[0] as num).toDouble()));}
+      if(mounted)setState((){_travelRoute=points;_travelDistanceKm=distance;_travelEtaMinutes=eta;});
+    }catch(_){}
   }
 
   void _openRide(String type,{String? destination}){
@@ -3012,10 +3038,11 @@ class _TravelPageState extends State<TravelPage> {
                           maxZoom:19,
                           userAgentPackageName:'com.allways.app',
                         ),
+                        if(_travelRoute.length>1)PolylineLayer(polylines:[Polyline(points:_travelRoute,strokeWidth:5,color:const Color(0xFF5B1ACF))]),
                         RichAttributionWidget(attributions:[
                           TextSourceAttribution(_mapboxPublicToken.trim().isNotEmpty?'© Mapbox © OpenStreetMap':'© OpenStreetMap contributors'),
                         ]),
-                        if(position!=null)MarkerLayer(markers:[
+                        MarkerLayer(markers:[
                           Marker(
                             point:LatLng(position!.latitude,position!.longitude),
                             width:44,height:44,
@@ -3029,6 +3056,7 @@ class _TravelPageState extends State<TravelPage> {
                               child:Container(decoration:const BoxDecoration(color:Color(0xFF2F80ED),shape:BoxShape.circle)),
                             ),
                           ),
+                          if(_selectedDestination!=null)Marker(point:_selectedDestination!,width:44,height:44,child:const Icon(Icons.location_on,color:Colors.red,size:38)),
                         ]),
                       ],
                     ),
@@ -3091,7 +3119,7 @@ class _TravelPageState extends State<TravelPage> {
                   ),
 
                   Positioned(
-                    left:28,right:28,bottom:0,
+                    left:28,right:28,bottom:_selectedDestination==null?0:64,
                     child:Material(
                       color:Colors.white,
                       elevation:4,
@@ -3114,10 +3142,23 @@ class _TravelPageState extends State<TravelPage> {
                       ),
                     ),
                   ),
+                  if(_selectedDestination!=null)
+                    Positioned(
+                      left:28,right:28,bottom:4,
+                      child:SizedBox(
+                        height:52,
+                        child:FilledButton.icon(
+                          onPressed:()=>_openRide('bike',destination:_search.text.trim()),
+                          icon:const Icon(Icons.two_wheeler),
+                          label:Text(_travelDistanceKm>0?'Book a Bike • '+_travelDistanceKm.toStringAsFixed(1)+' km • '+_travelEtaMinutes.toString()+' min':'Book a Bike',style:const TextStyle(fontWeight:FontWeight.w800)),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
 
+            if(_selectedDestination==null)
             FutureBuilder<List<Map<String,String>>>(
               future:_recentDestinations(),
               builder:(context,snapshot){
@@ -3142,7 +3183,9 @@ class _TravelPageState extends State<TravelPage> {
                               subtitle:address,
                               onTap:lat==null||lon==null?null:(){
                                 _search.text=title;
-                                try{_travelMapController.move(LatLng(lat,lon),15);}catch(_){}
+                                _selectedDestination=LatLng(lat,lon);
+                                try{_travelMapController.move(_selectedDestination!,15);}catch(_){}
+                                _loadTravelRoute(_selectedDestination!);
                                 setState((){});
                               },
                             ),
@@ -3700,7 +3743,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                 children:[
                   TileLayer(
                     urlTemplate:_mapboxTilesUrl(),
-                    tileSize:512,
+                    tileSize:256,
                     maxZoom:19,
                     userAgentPackageName:'com.allways.app'),
                   if(route.length>1)PolylineLayer(polylines:[
