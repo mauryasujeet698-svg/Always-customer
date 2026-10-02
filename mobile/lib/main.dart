@@ -1487,7 +1487,11 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
       builder:(context,s){
         final docs=(s.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[]).where((d){
           final st=(d.data()['status']??'').toString().toLowerCase();
-          return st=='searching'||st=='accepted'||st=='arrived'||st=='started';
+          final terminalTimestamp=d.data()['cancelledAt']??d.data()['completedAt']??d.data()['endedAt']??d.data()['rejectedAt'];
+          final hasAssignmentToOther=(d.data()['assignedPartnerId']??'').toString().isNotEmpty &&
+              (d.data()['assignedPartnerId']??'').toString()!=user.uid;
+          return (st=='searching'||st=='accepted'||st=='arrived'||st=='started') &&
+              terminalTimestamp==null && !hasAssignmentToOther;
         }).toList();
         if(docs.isEmpty)return const SizedBox.shrink();
         docs.sort((a,b){
@@ -2630,77 +2634,131 @@ class StatusView extends StatelessWidget{final String status;const StatusView({s
 
 class TravelPage extends StatefulWidget {
   const TravelPage({super.key});
-  @override State<TravelPage> createState() => _TravelPageState();
+  @override State<TravelPage> createState()=>_TravelPageState();
 }
 
 class _TravelPageState extends State<TravelPage> {
   Position? position;
-  bool loading = true;
+  bool loading=true;
+  final TextEditingController _search=TextEditingController();
+  final stt.SpeechToText _speech=stt.SpeechToText();
+  bool _listening=false;
 
-  @override void initState() { super.initState(); _locate(); }
+  @override
+  void initState(){super.initState();_locate();}
+
+  @override
+  void dispose(){_search.dispose();_speech.stop();super.dispose();}
 
   Future<void> _locate() async {
-    try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) setState(() => loading = false);
+    try{
+      if(!await Geolocator.isLocationServiceEnabled()){
+        if(mounted)setState(()=>loading=false);
         return;
       }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (mounted) setState(() => loading = false);
+      var permission=await Geolocator.checkPermission();
+      if(permission==LocationPermission.denied)permission=await Geolocator.requestPermission();
+      if(permission==LocationPermission.denied||permission==LocationPermission.deniedForever){
+        if(mounted)setState(()=>loading=false);
         return;
       }
-      final current = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      final current=await Geolocator.getCurrentPosition(
+        locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
       );
-      if (mounted) setState(() { position = current; loading = false; });
-    } catch (_) {
-      if (mounted) setState(() => loading = false);
+      if(mounted)setState((){position=current;loading=false;});
+    }catch(_){
+      if(mounted)setState(()=>loading=false);
     }
   }
 
   Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _recentRides() async {
-    final u = FirebaseAuth.instance.currentUser;
-    if (u == null) return [];
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('autoRideRequests')
-          .where('customerUid', isEqualTo: u.uid)
-          .get();
-      final docs = snap.docs.toList();
-      docs.sort((a,b) {
-        final av=a.data()['createdAt'], bv=b.data()['createdAt'];
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null)return [];
+    try{
+      final snap=await FirebaseFirestore.instance.collection('autoRideRequests')
+          .where('customerUid',isEqualTo:u.uid).get();
+      final docs=snap.docs.toList();
+      docs.sort((a,b){
+        final av=a.data()['createdAt'],bv=b.data()['createdAt'];
         final at=av is Timestamp?av.toDate():DateTime.fromMillisecondsSinceEpoch(0);
         final bt=bv is Timestamp?bv.toDate():DateTime.fromMillisecondsSinceEpoch(0);
         return bt.compareTo(at);
       });
       return docs.take(3).toList();
-    } catch (_) { return []; }
+    }catch(_){return [];}
   }
 
-  void _openRide(String type, {String? destination}) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) =>
-      OnDemandRidePage(rideType:type, initialDestination:destination)));
+  void _openRide(String type,{String? destination}){
+    Navigator.push(context,MaterialPageRoute(builder:(_)=>
+      OnDemandRidePage(rideType:type,initialDestination:destination)));
   }
 
-  @override Widget build(BuildContext context) {
-    final scheme=Theme.of(context).colorScheme;
+  Future<void> _voiceSearch() async {
+    if(_listening){
+      await _speech.stop();
+      if(mounted)setState(()=>_listening=false);
+      return;
+    }
+    final ready=await _speech.initialize(
+      onStatus:(status){if(mounted&&status=='done')setState(()=>_listening=false);},
+      onError:(_){if(mounted)setState(()=>_listening=false);},
+    );
+    if(!ready)return;
+    if(mounted)setState(()=>_listening=true);
+    await _speech.listen(onResult:(result){
+      if(result.recognizedWords.trim().isNotEmpty){
+        _search.text=result.recognizedWords.trim();
+        if(result.finalResult&&mounted){
+          _openRide('bike',destination:_search.text.trim());
+          setState(()=>_listening=false);
+        }
+      }
+    },localeId:'hi_IN');
+  }
+
+  Widget _recentRow({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    VoidCallback? onTap,
+  }){
+    return InkWell(
+      onTap:onTap,
+      child:Padding(
+        padding:const EdgeInsets.symmetric(vertical:12),
+        child:Row(children:[
+          Icon(icon,color:const Color(0xFF68727F),size:30),
+          const SizedBox(width:14),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(title,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
+            const SizedBox(height:3),
+            Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF68727F))),
+          ])),
+          IconButton(
+            tooltip:'Favorite',
+            onPressed:(){},
+            icon:const Icon(Icons.favorite_border,color:Color(0xFF68727F)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context){
     final center=position==null
-        ? const LatLng(25.4358,81.8463)
-        : LatLng(position!.latitude,position!.longitude);
+      ?const LatLng(25.4358,81.8463)
+      :LatLng(position!.latitude,position!.longitude);
+
     return Scaffold(
-      backgroundColor:scheme.surface,
+      backgroundColor:const Color(0xFFFFFAFC),
       body:SafeArea(
         top:false,
         child:ListView(
           padding:const EdgeInsets.only(bottom:24),
           children:[
             SizedBox(
-              height:MediaQuery.of(context).size.height*.34,
+              height:MediaQuery.of(context).size.height*.30,
               child:Stack(children:[
                 FlutterMap(
                   options:MapOptions(initialCenter:center,initialZoom:15),
@@ -2713,14 +2771,14 @@ class _TravelPageState extends State<TravelPage> {
                     if(position!=null)
                       MarkerLayer(markers:[
                         Marker(
-                          point:center,width:50,height:50,
+                          point:center,width:46,height:46,
                           child:Container(
                             decoration:BoxDecoration(
-                              color:const Color(0xFF5B1ACF),
+                              color:const Color(0xFF20A56B),
                               shape:BoxShape.circle,
                               border:Border.all(color:Colors.white,width:4),
                             ),
-                            child:const Icon(Icons.navigation,color:Colors.white,size:22),
+                            child:const Icon(Icons.location_on,color:Colors.white,size:23),
                           ),
                         ),
                       ]),
@@ -2731,134 +2789,151 @@ class _TravelPageState extends State<TravelPage> {
                 ),
                 Positioned(
                   top:MediaQuery.of(context).padding.top+12,
-                  left:16,right:16,
+                  left:28,right:28,
                   child:Card(
-                    elevation:4,
-                    child:ListTile(
-                      leading:const Icon(Icons.location_on_outlined),
-                      title:Text(
-                        loading?'Locating you…':
-                        position==null?'Location unavailable':'Current location',
-                        style:const TextStyle(fontWeight:FontWeight.w700),
-                      ),
-                      trailing:IconButton(onPressed:_locate,icon:const Icon(Icons.my_location)),
+                    margin:EdgeInsets.zero,
+                    elevation:3,
+                    shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),
+                    child:Padding(
+                      padding:const EdgeInsets.symmetric(horizontal:14,vertical:9),
+                      child:Row(children:[
+                        const Icon(Icons.location_on,color:Color(0xFF20A56B),size:22),
+                        const SizedBox(width:10),
+                        Expanded(child:Text(
+                          loading?'Locating you…':position==null?'Location unavailable':'Current location',
+                          maxLines:1,overflow:TextOverflow.ellipsis,
+                          style:const TextStyle(fontSize:15,fontWeight:FontWeight.w700),
+                        )),
+                      ]),
                     ),
                   ),
                 ),
               ]),
             ),
-            Transform.translate(
-              offset:const Offset(0,-18),
-              child:Padding(
-                padding:const EdgeInsets.symmetric(horizontal:16),
-                child:Card(
-                  elevation:4,
-                  shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(26)),
-                  child:InkWell(
-                    borderRadius:BorderRadius.circular(26),
-                    onTap:()=>_openRide('bike'),
-                    child:const Padding(
-                      padding:EdgeInsets.fromLTRB(20,18,20,18),
-                      child:Row(children:[
-                        Icon(Icons.search,size:28),
-                        SizedBox(width:12),
-                        Expanded(child:Text('Where are you going?',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800))),
-                        Icon(Icons.arrow_forward_ios,size:16),
-                      ]),
-                    ),
-                  ),
-                ),
+            Container(
+              transform:Matrix4.translationValues(0,-20,0),
+              decoration:const BoxDecoration(
+                color:Color(0xFFFFFAFC),
+                borderRadius:BorderRadius.vertical(top:Radius.circular(28)),
               ),
-            ),
-            Padding(
-              padding:const EdgeInsets.fromLTRB(16,0,16,18),
+              padding:const EdgeInsets.fromLTRB(28,18,28,28),
               child:Column(
                 crossAxisAlignment:CrossAxisAlignment.start,
                 children:[
-                  const Text('Ride with ALLways',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
-                  const SizedBox(height:10),
-                  SingleChildScrollView(
-                    scrollDirection:Axis.horizontal,
-                    child:Row(children:[
-                      SizedBox(width:154,child:_RideTypeCard(
-                        icon:Icons.two_wheeler,title:'Bike',subtitle:'Quick local ride',
-                        onTap:()=>_openRide('bike'),
-                      )),
-                      const SizedBox(width:10),
-                      SizedBox(width:154,child:_RideTypeCard(
-                        icon:Icons.local_taxi_outlined,title:'Auto',subtitle:'Affordable local ride',
-                        onTap:()=>_openRide('auto'),
-                      )),
-                      const SizedBox(width:10),
-                      SizedBox(width:154,child:_RideTypeCard(
-                        icon:Icons.directions_car_outlined,title:'Cab',subtitle:'Comfortable ride',
-                        onTap:()=>_openRide('car'),
-                      )),
-                    ]),
-                  ),
-                  const SizedBox(height:18),
-                  StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-                    stream:FirebaseAuth.instance.currentUser==null
-                        ? null
-                        : FirebaseFirestore.instance.collection('autoRideRequests')
-                            .where('customerUid',isEqualTo:FirebaseAuth.instance.currentUser!.uid)
-                            .snapshots(),
-                    builder:(context,snapshot){
-                      final docs=snapshot.data?.docs??[];
-                      QueryDocumentSnapshot<Map<String,dynamic>>? active;
-                      for(final doc in docs){
-                        final status=(doc.data()['status']??'').toString().toLowerCase();
-                        if(status=='searching'||status=='accepted'||status=='arrived'||status=='started'){
-                          active=doc;break;
-                        }
-                      }
-                      if(active==null)return const SizedBox.shrink();
-                      final d=active.data();
-                      final type=(d['rideType']??'bike').toString().toLowerCase();
-                      final destination=(d['destinationAddress']??d['destination']??'Your destination').toString();
-                      final status=(d['status']??'searching').toString();
-                      return Card(
-                        child:ListTile(
-                          leading:CircleAvatar(child:Icon(type=='bike'?Icons.two_wheeler:type=='car'?Icons.directions_car_outlined:Icons.local_taxi_outlined)),
-                          title:const Text('Active ride',style:TextStyle(fontWeight:FontWeight.w900)),
-                          subtitle:Text(status+' • '+destination,maxLines:1,overflow:TextOverflow.ellipsis),
-                          trailing:const Icon(Icons.chevron_right),
-                          onTap:()=>Navigator.push(context,MaterialPageRoute(
-                            builder:(_)=>OnDemandRideTrackingPage(requestId:active!.id,rideType:type),
-                          )),
+                  Row(children:[
+                    Expanded(
+                      child:Material(
+                        color:Colors.white,
+                        elevation:2,
+                        borderRadius:BorderRadius.circular(32),
+                        child:InkWell(
+                          borderRadius:BorderRadius.circular(32),
+                          onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
+                          child:Padding(
+                            padding:const EdgeInsets.symmetric(horizontal:18,vertical:14),
+                            child:Row(children:[
+                              const Icon(Icons.search,size:28,color:Colors.black),
+                              const SizedBox(width:12),
+                              Expanded(child:TextField(
+                                controller:_search,
+                                readOnly:true,
+                                onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
+                                decoration:const InputDecoration(
+                                  border:InputBorder.none,
+                                  isDense:true,
+                                  hintText:'Where are you going?',
+                                  hintStyle:TextStyle(fontSize:18,fontWeight:FontWeight.w800,color:Colors.black),
+                                ),
+                              )),
+                            ]),
+                          ),
                         ),
-                      );
-                    },
+                      ),
+                    ),
+                    const SizedBox(width:10),
+                    Material(
+                      color:const Color(0xFFFFC928),
+                      elevation:2,
+                      borderRadius:BorderRadius.circular(32),
+                      child:InkWell(
+                        onTap:_voiceSearch,
+                        borderRadius:BorderRadius.circular(32),
+                        child:SizedBox(
+                          width:76,height:58,
+                          child:Row(mainAxisAlignment:MainAxisAlignment.center,children:[
+                            Icon(_listening?Icons.stop:Icons.mic,color:Colors.black),
+                            if(_listening)const SizedBox(width:4),
+                            if(_listening)const Text('बोलें',style:TextStyle(fontWeight:FontWeight.w800)),
+                          ]),
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height:18),
-                  const Text('Recent rides',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
-                  const SizedBox(height:6),
+                  const SizedBox(height:22),
                   FutureBuilder<List<QueryDocumentSnapshot<Map<String,dynamic>>>>(
                     future:_recentRides(),
                     builder:(context,snapshot){
                       final rides=snapshot.data??[];
                       if(rides.isEmpty){
-                        return const Card(child:ListTile(
-                          leading:Icon(Icons.history),
-                          title:Text('Your recent rides will appear here.'),
-                          subtitle:Text('Book a ride to get started.'),
-                        ));
+                        return const SizedBox.shrink();
                       }
-                      return Column(children:rides.map((doc){
-                        final d=doc.data();
-                        final destination=(d['destinationAddress']??d['destination']??'Previous destination').toString();
-                        final type=(d['rideType']??'bike').toString();
-                        final status=(d['status']??'').toString();
-                        return Card(child:ListTile(
-                          leading:Icon(type=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),
-                          title:Text(destination,maxLines:1,overflow:TextOverflow.ellipsis),
-                          subtitle:Text(status.isEmpty?type.toUpperCase():status),
-                          trailing:const Icon(Icons.chevron_right),
-                          onTap:()=>_openRide(type=='auto'?'auto':'bike',destination:destination),
-                        ));
-                      }).toList());
+                      return Column(children:[
+                        ...rides.map((doc){
+                          final d=doc.data();
+                          final destination=(d['destinationAddress']??d['destination']??'Previous destination').toString();
+                          final type=(d['rideType']??'bike').toString().toLowerCase();
+                          return Column(children:[
+                            _recentRow(
+                              title:destination.split(',').first.trim().isEmpty?'Previous destination':destination.split(',').first.trim(),
+                              subtitle:destination,
+                              icon:Icons.history,
+                              onTap:()=>_openRide(type=='auto'?'auto':type=='car'?'car':'bike',destination:destination),
+                            ),
+                            if(doc!=rides.last)const Divider(height:1,color:Color(0xFFD8DDE3)),
+                          ]);
+                        }),
+                      ]);
                     },
                   ),
+                  const SizedBox(height:16),
+                  const Text('Ride with ALLways',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:12),
+                  Card(
+                    margin:EdgeInsets.zero,
+                    color:const Color(0xFFFFC928),
+                    shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(24)),
+                    child:Padding(
+                      padding:const EdgeInsets.fromLTRB(22,22,22,20),
+                      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                        const Row(children:[
+                          Icon(Icons.two_wheeler,size:32,color:Colors.black),
+                          SizedBox(width:10),
+                          Text('ALLways Mobility',style:TextStyle(fontSize:25,fontWeight:FontWeight.w900)),
+                        ]),
+                        const SizedBox(height:12),
+                        const Text('Fast local bike and auto rides with upfront estimates, nearby partner matching and live tracking.',style:TextStyle(fontSize:16,height:1.35)),
+                        const SizedBox(height:16),
+                        FilledButton(
+                          style:FilledButton.styleFrom(
+                            backgroundColor:Colors.black,
+                            foregroundColor:Colors.white,
+                            padding:const EdgeInsets.symmetric(horizontal:28,vertical:15),
+                            shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(30)),
+                          ),
+                          onPressed:()=>_openRide('bike'),
+                          child:const Text('Book a bike ride',style:TextStyle(fontSize:16)),
+                        ),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height:22),
+                  const Text('Ride with ALLways',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:12),
+                  _RideTypeListCard(icon:Icons.two_wheeler,title:'Bike ride',subtitle:'Quick point-to-point ride. Upfront estimate and live tracking after acceptance.',onTap:()=>_openRide('bike'),purple:true),
+                  const SizedBox(height:14),
+                  _RideTypeListCard(icon:Icons.local_taxi_outlined,title:'Auto ride',subtitle:'Affordable local auto ride with partner acceptance and live tracking.',onTap:()=>_openRide('auto')),
+                  const SizedBox(height:14),
+                  _RideTypeListCard(icon:Icons.directions_car_outlined,title:'Car ride',subtitle:'Comfortable local ride with partner acceptance and live tracking.',onTap:()=>_openRide('car')),
                 ],
               ),
             ),
@@ -2869,29 +2944,34 @@ class _TravelPageState extends State<TravelPage> {
   }
 }
 
-class _RideTypeCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  const _RideTypeCard({required this.icon,required this.title,required this.subtitle,required this.onTap});
-
+class _RideTypeListCard extends StatelessWidget{
+  final IconData icon;final String title;final String subtitle;final VoidCallback onTap;final bool purple;
+  const _RideTypeListCard({required this.icon,required this.title,required this.subtitle,required this.onTap,this.purple=false});
   @override Widget build(BuildContext context)=>Card(
+    margin:EdgeInsets.zero,
+    shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(22)),
     child:InkWell(
+      borderRadius:BorderRadius.circular(22),
       onTap:onTap,
-      borderRadius:BorderRadius.circular(18),
       child:Padding(
-        padding:const EdgeInsets.all(16),
-        child:Column(
-          crossAxisAlignment:CrossAxisAlignment.start,
-          children:[
-            Icon(icon,size:30),
-            const SizedBox(height:10),
-            Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-            const SizedBox(height:3),
-            Text(subtitle,style:const TextStyle(color:Colors.grey)),
-          ],
-        ),
+        padding:const EdgeInsets.fromLTRB(20,20,14,20),
+        child:Row(children:[
+          Container(
+            width:104,height:104,
+            decoration:BoxDecoration(
+              color:purple?const Color(0xFF6A1BDE):const Color(0xFF151515),
+              borderRadius:BorderRadius.circular(22),
+            ),
+            child:Icon(icon,color:Colors.white,size:42),
+          ),
+          const SizedBox(width:22),
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+            Text(title,style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
+            const SizedBox(height:5),
+            Text(subtitle,style:const TextStyle(fontSize:15,color:Colors.grey,height:1.25)),
+          ])),
+          const Icon(Icons.chevron_right,size:30),
+        ]),
       ),
     ),
   );
@@ -3971,26 +4051,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
       builder:(context,snapshot){
         final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
         return ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
-          Card(child:ListTile(leading:const Icon(Icons.add_business_outlined),title:const Text('Offer your vehicle',style:TextStyle(fontWeight:FontWeight.w900)),subtitle:const Text('Vehicle owners choose their own price and can allow negotiation.'),trailing:const Icon(Icons.chevron_right),onTap:user==null?null:_publishVehicle)),
-          if(user!=null)
-            StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-              stream:FirebaseFirestore.instance.collection('vehicleBookings').where('ownerUid',isEqualTo:user.uid).snapshots(),
-              builder:(context,snapshot){
-                final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
-                final active=docs.where((d){final st=(d.data()['status']??'').toString().toLowerCase();return st!='rejected'&&st!='cancelled'&&st!='delivered';}).toList();
-                if(active.isEmpty)return const SizedBox.shrink();
-                return Card(child:ExpansionTile(
-                  leading:const Icon(Icons.assignment_outlined),
-                  title:const Text('Vehicle booking requests',style:TextStyle(fontWeight:FontWeight.w900)),
-                  children:active.take(10).map((doc){final d=doc.data();return ListTile(
-                    title:Text((d['customerName']??'Customer').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
-                    subtitle:Text((d['status']??'Booking').toString()+' • ₹'+(d['listedPrice']??0).toString()),
-                    trailing:OutlinedButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:'vehicleBookings',docId:doc.id,title:'Live vehicle tracking',mode:'vehicle',readOnly:true)),),child:const Text('Track')),
-                  );}).toList(),
-                ));
-              },
-            ),
-          const SizedBox(height:10),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
+          const SizedBox(height:4),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),,style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
           if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please try again later.'),
           if(!snapshot.hasData)const Padding(padding:EdgeInsets.all(20),child:Center(child:CircularProgressIndicator())),
           if(snapshot.hasData&&docs.isEmpty)const InfoCard(title:'No vehicles listed yet',detail:'Vehicle owners can publish a vehicle from “Offer your vehicle”.'),
