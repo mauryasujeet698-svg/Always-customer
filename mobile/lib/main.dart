@@ -4051,7 +4051,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
       builder:(context,snapshot){
         final docs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
         return ListView(padding:const EdgeInsets.fromLTRB(16,8,16,28),children:[
-          const SizedBox(height:4),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),,style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
+          const SizedBox(height:4),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
           if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please try again later.'),
           if(!snapshot.hasData)const Padding(padding:EdgeInsets.all(20),child:Center(child:CircularProgressIndicator())),
           if(snapshot.hasData&&docs.isEmpty)const InfoCard(title:'No vehicles listed yet',detail:'Vehicle owners can publish a vehicle from “Offer your vehicle”.'),
