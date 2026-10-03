@@ -2858,7 +2858,7 @@ class _TravelPageState extends State<TravelPage> {
   Future<void> _openDestinationSearch() async {
     final result=await Navigator.push<Map<String,dynamic>>(
       context,
-      MaterialPageRoute(builder:(_)=>_DestinationSearchPage(initialPosition:position)),
+      MaterialPageRoute(builder:(_)=>const _DestinationSearchPage()),
     );
     if(!mounted||result==null)return;
     final name=(result['name']??'').toString().trim();
@@ -2907,13 +2907,9 @@ class _TravelPageState extends State<TravelPage> {
     }catch(_){}
   }
 
-  void _openRide(String type,{String? destination,LatLng? destinationPoint}){
+  void _openRide(String type,{String? destination}){
     Navigator.push(context,MaterialPageRoute(builder:(_)=>
-      OnDemandRidePage(
-        rideType:type,
-        initialDestination:destination,
-        initialDestinationPoint:destinationPoint,
-      )));
+      OnDemandRidePage(rideType:type,initialDestination:destination)));
   }
 
   Widget _recentRow({required String title,required String subtitle,VoidCallback? onTap}){
@@ -3162,7 +3158,7 @@ class _TravelPageState extends State<TravelPage> {
                       child:SizedBox(
                         height:52,
                         child:FilledButton.icon(
-                          onPressed:()=>_openRide('bike',destination:_search.text.trim(),destinationPoint:_selectedDestination),
+                          onPressed:()=>_openRide('bike',destination:_search.text.trim()),
                           icon:const Icon(Icons.two_wheeler),
                           label:Text(_travelDistanceKm>0?'Book a Bike • '+_travelDistanceKm.toStringAsFixed(1)+' km • '+_travelEtaMinutes.toString()+' min':'Book a Bike',style:const TextStyle(fontWeight:FontWeight.w800)),
                         ),
@@ -3205,11 +3201,7 @@ class _TravelPageState extends State<TravelPage> {
                     subtitle:'Quick & affordable\nbike rides',
                     background:const Color(0xFFEAF3FF),
                     iconBackground:const Color(0xFF2878D8),
-                    onTap:()=>_openRide(
-                      'bike',
-                      destination:_search.text.trim().isEmpty?null:_search.text.trim(),
-                      destinationPoint:_selectedDestination,
-                    ),
+                    onTap:()=>_openRide('bike',destination:_search.text.trim().isEmpty?null:_search.text.trim()),
                   ),
                   const SizedBox(width:12),
                   _travelCard(
@@ -3246,8 +3238,7 @@ class _PickupPointerPainter extends CustomPainter {
 }
 
 class _DestinationSearchPage extends StatefulWidget {
-  final Position? initialPosition;
-  const _DestinationSearchPage({super.key,this.initialPosition});
+  const _DestinationSearchPage({super.key});
   @override State<_DestinationSearchPage> createState()=>_DestinationSearchPageState();
 }
 
@@ -3277,14 +3268,7 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
         if(recent.length>=5)break;
       }catch(_){}
     }
-    _position=widget.initialPosition;
-    if(_position==null){
-      try{
-        _position=await Geolocator.getCurrentPosition(
-          locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
-        );
-      }catch(_){}
-    }
+    try{_position=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.low));}catch(_){}
     if(mounted)setState(()=>_recent=recent);
     WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_focus.requestFocus();});
   }
@@ -3305,7 +3289,7 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
     try{
       final params=<String,String>{
         'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en','limit':'10','autocomplete':'true',
+        'language':'en','limit':'7','autocomplete':'true',
       };
       if(_position!=null)params['proximity']=_position!.longitude.toString()+','+_position!.latitude.toString();
       final res=await http.get(Uri.https('api.mapbox.com','/search/geocode/v6/forward',params)).timeout(const Duration(seconds:8));
@@ -3322,35 +3306,8 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
         if(coords.length<2)continue;
         final name=(props['name']??f['text']??'Place').toString();
         final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=_position==null
-            ? double.infinity
-            : Geolocator.distanceBetween(
-                _position!.latitude,_position!.longitude,lat,lon,
-              )/1000;
-        results.add({
-          'name':name,
-          'address':address,
-          'lat':lat,
-          'lon':lon,
-          '_distanceKm':distanceKm,
-        });
+        results.add({'name':name,'address':address,'lat':coords[1],'lon':coords[0]});
       }
-      final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
-      int matchRank(Map<String,dynamic> item){
-        final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
-        if(name==normalizedQuery)return 0;
-        if(name.startsWith(normalizedQuery))return 1;
-        return 2;
-      }
-      results.sort((a,b){
-        final rank=matchRank(a).compareTo(matchRank(b));
-        if(rank!=0)return rank;
-        final ad=(a['_distanceKm'] as num?)?.toDouble()??double.infinity;
-        final bd=(b['_distanceKm'] as num?)?.toDouble()??double.infinity;
-        return ad.compareTo(bd);
-      });
       if(mounted)setState((){_results=results;_error=null;});
     }catch(e){
       if(mounted)setState((){_results=[];_error=e.toString().replaceFirst('Exception: ','');});
@@ -3529,13 +3486,7 @@ class _RideTypeListCard extends StatelessWidget{
 class OnDemandRidePage extends StatefulWidget {
   final String rideType;
   final String? initialDestination;
-  final LatLng? initialDestinationPoint;
-  const OnDemandRidePage({
-    super.key,
-    required this.rideType,
-    this.initialDestination,
-    this.initialDestinationPoint,
-  });
+  const OnDemandRidePage({super.key,required this.rideType,this.initialDestination});
   @override State<OnDemandRidePage> createState()=>_OnDemandRidePageState();
 }
 
@@ -3584,13 +3535,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
           pickupPincode=m.postalCode;
         }
       }catch(_){}
-      if(widget.initialDestinationPoint!=null){
-        drop=widget.initialDestinationPoint;
-        if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty){
-          destination.text=widget.initialDestination!.trim();
-        }
-        await _route();
-      }else if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty){
+      if(widget.initialDestination!=null&&widget.initialDestination!.trim().isNotEmpty){
         await _search(showMessage:false);
       }
     }catch(_){}
@@ -3606,62 +3551,16 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     }
     setState(()=>searching=true);
     try{
-      if(_mapboxPublicToken.trim().isEmpty)throw Exception('Mapbox search is not configured in this build.');
-      final params=<String,String>{
-        'q':q,
-        'access_token':_mapboxPublicToken.trim(),
-        'country':'IN',
-        'language':'en',
-        'limit':'10',
-        'autocomplete':'true',
-      };
-      if(pickup!=null){
-        params['proximity']=pickup!.longitude.toString()+','+pickup!.latitude.toString();
-      }
-      final res=await http.get(
-        Uri.https('api.mapbox.com','/search/geocode/v6/forward',params),
-        headers:const {'User-Agent':'ALLways/1.5 (ALLways)'},
-      ).timeout(const Duration(seconds:10));
+      final uri=Uri.https('nominatim.openstreetmap.org','/search',{
+        'q':q,'format':'jsonv2','limit':'5','countrycodes':'in','addressdetails':'1',
+      });
+      final res=await http.get(uri,headers:const {'User-Agent':'ALLways/1.5 (ALLways)'})
+          .timeout(const Duration(seconds:10));
       if(res.statusCode!=200)throw Exception('Search unavailable');
       final decoded=jsonDecode(res.body);
-      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
-      places=[];
-      for(final raw in features){
-        if(raw is! Map)continue;
-        final f=Map<String,dynamic>.from(raw);
-        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
-        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
-        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
-        if(coords.length<2)continue;
-        final name=(props['name']??f['text']??'Place').toString();
-        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=pickup==null
-            ? double.infinity
-            : Geolocator.distanceBetween(pickup!.latitude,pickup!.longitude,lat,lon)/1000;
-        places.add({
-          'name':name,
-          'display_name':address,
-          'lat':lat,
-          'lon':lon,
-          '_distanceKm':distanceKm,
-        });
-      }
-      final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
-      int matchRank(Map<String,dynamic> item){
-        final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
-        if(name==normalizedQuery)return 0;
-        if(name.startsWith(normalizedQuery))return 1;
-        return 2;
-      }
-      places.sort((a,b){
-        final rank=matchRank(a).compareTo(matchRank(b));
-        if(rank!=0)return rank;
-        final ad=(a['_distanceKm'] as num?)?.toDouble()??double.infinity;
-        final bd=(b['_distanceKm'] as num?)?.toDouble()??double.infinity;
-        return ad.compareTo(bd);
-      });
+      places=decoded is List
+          ? decoded.whereType<Map>().map((x)=>Map<String,dynamic>.from(x)).toList()
+          : [];
       if(places.isEmpty)throw Exception('No matching places found.');
     }catch(e){
       places=[];
@@ -3745,20 +3644,6 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       await _search();
       if(drop==null)return;
     }
-
-    try{
-      final fresh=await Geolocator.getCurrentPosition(
-        locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
-      );
-      pickup=fresh;
-      if(drop!=null)await _route();
-    }catch(_){}
-
-    if(pickup==null){
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Could not get your exact pickup location.')));
-      return;
-    }
-
     final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).get();
     final customer=snap.data()??{};
     final phone=(u.phoneNumber??customer['phone']??customer['mobileNumber']??'').toString();
@@ -3966,9 +3851,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                       onSelected:(_){
                         if(rideType!='bike')Navigator.pushReplacement(
                           context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
-                            rideType:'bike',
-                            initialDestination:destination.text.trim(),
-                            initialDestinationPoint:drop)));
+                            rideType:'bike',initialDestination:destination.text.trim())));
                       },
                     ),
                     const SizedBox(width:8),
@@ -3979,9 +3862,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                       onSelected:(_){
                         if(rideType!='auto')Navigator.pushReplacement(
                           context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
-                            rideType:'auto',
-                            initialDestination:destination.text.trim(),
-                            initialDestinationPoint:drop)));
+                            rideType:'auto',initialDestination:destination.text.trim())));
                       },
                     ),
                     const SizedBox(width:8),
@@ -3992,9 +3873,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                       onSelected:(_){
                         if(rideType!='car')Navigator.pushReplacement(
                           context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(
-                            rideType:'car',
-                            initialDestination:destination.text.trim(),
-                            initialDestinationPoint:drop)));
+                            rideType:'car',initialDestination:destination.text.trim())));
                       },
                     ),
                   ]),
