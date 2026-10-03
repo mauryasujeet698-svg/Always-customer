@@ -2753,9 +2753,44 @@ class _TravelPageState extends State<TravelPage> {
   List<LatLng> _travelRoute=[];
   double _travelDistanceKm=0;
   int _travelEtaMinutes=0;
+  String _pickupAddress='Current location';
+  String? _pickupPincode;
+  Position? _lastPickupGeocodePosition;
 
   @override
-  void initState(){super.initState();_locate();_loadTravelFavorites();_startTravelLocationStream();}
+  void initState(){
+    super.initState();
+    _locate();
+    _loadPickupAddress();
+    _loadTravelFavorites();
+    _startTravelLocationStream();
+  }
+
+  Future<void> _loadPickupAddress([Position? source]) async {
+    final p=source??position;
+    if(p==null)return;
+    if(_lastPickupGeocodePosition!=null &&
+       Geolocator.distanceBetween(
+         _lastPickupGeocodePosition!.latitude,
+         _lastPickupGeocodePosition!.longitude,
+         p.latitude,
+         p.longitude,
+       )<100) return;
+    try{
+      final marks=await placemarkFromCoordinates(p.latitude,p.longitude);
+      if(marks.isEmpty)return;
+      final m=marks.first;
+      final values=[
+        m.name,m.street,m.subLocality,m.locality,m.subAdministrativeArea,m.administrativeArea,m.postalCode
+      ].whereType<String>().map((x)=>x.trim()).where((x)=>x.isNotEmpty).toSet().toList();
+      if(!mounted)return;
+      setState((){
+        _pickupAddress=values.isEmpty?'Current location':values.join(', ');
+        _pickupPincode=m.postalCode;
+        _lastPickupGeocodePosition=p;
+      });
+    }catch(_){}
+  }
 
   String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
 
@@ -2814,6 +2849,7 @@ class _TravelPageState extends State<TravelPage> {
     ).listen((p){
       if(!mounted)return;
       setState(()=>position=p);
+      _loadPickupAddress(p);
       if(_selectedDestination!=null){
         _loadTravelRoute(_selectedDestination!,fitRoute:false);
       }else if(_followCurrentLocation){
@@ -2832,6 +2868,7 @@ class _TravelPageState extends State<TravelPage> {
         locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
       );
       if(mounted)setState(()=>position=current);
+      await _loadPickupAddress(current);
       await _setMapPosition(current,zoom:17);
     }catch(_){}
   }
@@ -3127,54 +3164,83 @@ class _TravelPageState extends State<TravelPage> {
                     ),
                   ),
 
-                  Positioned(
-                    left:28,right:28,bottom:_selectedDestination==null?0:64,
-                    child:Material(
-                      color:Colors.white,
-                      elevation:4,
-                      borderRadius:BorderRadius.circular(32),
-                      child:InkWell(
-                        onTap:_openDestinationSearch,
-                        borderRadius:BorderRadius.circular(32),
-                        child:Padding(
-                          padding:const EdgeInsets.symmetric(horizontal:18,vertical:13),
-                          child:Row(children:[
-                            const Icon(Icons.search,size:30,color:Colors.black),
-                            const SizedBox(width:14),
-                            Expanded(child:Text(
-                              _search.text.trim().isEmpty
-                                  ? 'Where are you going?'
-                                  : 'To: '+_search.text.trim(),
-                              maxLines:1,overflow:TextOverflow.ellipsis,
-                              style:TextStyle(
-                                fontSize:17,
-                                fontWeight:FontWeight.w700,
-                                color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124),
-                              ),
-                            )),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if(_selectedDestination!=null)
-                    Positioned(
-                      left:28,right:28,bottom:4,
-                      child:SizedBox(
-                        height:52,
-                        child:FilledButton.icon(
-                          onPressed:()=>_openRide('bike',destination:_search.text.trim(),destinationPoint:_selectedDestination),
-                          icon:const Icon(Icons.two_wheeler),
-                          label:Text(_travelDistanceKm>0?'Book a Bike • '+_travelDistanceKm.toStringAsFixed(1)+' km • '+_travelEtaMinutes.toString()+' min':'Book a Bike',style:const TextStyle(fontWeight:FontWeight.w800)),
-                        ),
-                      ),
-                    ),
+
                 ],
               ),
             ),
 
 
 
+            Padding(
+              padding:const EdgeInsets.fromLTRB(28,12,28,0),
+              child:Container(
+                padding:const EdgeInsets.fromLTRB(16,12,10,12),
+                decoration:BoxDecoration(
+                  color:Colors.white,
+                  borderRadius:BorderRadius.circular(18),
+                  boxShadow:[BoxShadow(color:Colors.black.withOpacity(.08),blurRadius:10,offset:const Offset(0,3))],
+                ),
+                child:Row(children:[
+                  Container(
+                    width:40,height:40,
+                    decoration:const BoxDecoration(color:Color(0xFFE8F7F0),shape:BoxShape.circle),
+                    child:const Icon(Icons.location_on,color:Color(0xFF20A56B),size:22),
+                  ),
+                  const SizedBox(width:10),
+                  Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                    const Text('Pickup Point',style:TextStyle(fontSize:12,color:Color(0xFF68727F),fontWeight:FontWeight.w700)),
+                    const SizedBox(height:2),
+                    Text(_pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,fontWeight:FontWeight.w800)),
+                  ])),
+                  IconButton(
+                    tooltip:'Use current location',
+                    onPressed:_locate,
+                    icon:const Icon(Icons.my_location,color:Color(0xFF20A56B)),
+                  ),
+                ]),
+              ),
+            ),
+            Padding(
+              padding:const EdgeInsets.fromLTRB(28,10,28,0),
+              child:Material(
+                color:Colors.white,
+                elevation:4,
+                borderRadius:BorderRadius.circular(32),
+                child:InkWell(
+                  onTap:_openDestinationSearch,
+                  borderRadius:BorderRadius.circular(32),
+                  child:Padding(
+                    padding:const EdgeInsets.symmetric(horizontal:18,vertical:13),
+                    child:Row(children:[
+                      const Icon(Icons.search,size:30,color:Colors.black),
+                      const SizedBox(width:14),
+                      Expanded(child:Text(
+                        _search.text.trim().isEmpty?'Where are you going?':'To: '+_search.text.trim(),
+                        maxLines:1,overflow:TextOverflow.ellipsis,
+                        style:TextStyle(fontSize:17,fontWeight:FontWeight.w700,
+                          color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124)),
+                      )),
+                      if(_selectedDestination!=null)const Icon(Icons.chevron_right,color:Color(0xFF68727F)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+            if(_selectedDestination!=null)
+              Padding(
+                padding:const EdgeInsets.fromLTRB(28,10,28,0),
+                child:SizedBox(
+                  height:52,
+                  child:FilledButton.icon(
+                    onPressed:()=>_openRide('bike',destination:_search.text.trim(),destinationPoint:_selectedDestination),
+                    icon:const Icon(Icons.two_wheeler),
+                    label:Text(_travelDistanceKm>0
+                      ?'Book a Bike • '+_travelDistanceKm.toStringAsFixed(1)+' km • '+_travelEtaMinutes.toString()+' min'
+                      :'Book a Bike',
+                      style:const TextStyle(fontWeight:FontWeight.w800)),
+                  ),
+                ),
+              ),
             Padding(
               padding:const EdgeInsets.fromLTRB(28,24,20,10),
               child:Row(
@@ -3538,6 +3604,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
   String pickupAddress='Current location';
   String? pickupPincode;
   String? destinationPincode;
+  Map<String,dynamic> _ridePricing={};
   late String selectedRideType;
   List<Map<String,dynamic>> places=[];
   List<LatLng> route=[];
@@ -3553,8 +3620,30 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     selectedRideType=['bike','auto','car'].contains(widget.rideType)?widget.rideType:'bike';
     if(widget.initialDestination!=null)destination.text=widget.initialDestination!.trim();
     _loadPickup();
+    _loadRidePricing();
   }
   void _destinationChanged(){if(mounted)setState((){});}
+
+  Future<void> _loadRidePricing() async {
+    try{
+      final snap=await FirebaseFirestore.instance.collection('settings').doc('ridePricing').get();
+      final data=snap.data();
+      if(data==null||data['enabled']==false)return;
+      if(!mounted)return;
+      setState(()=>_ridePricing=Map<String,dynamic>.from(data));
+      _fare();
+    }catch(_){}
+  }
+
+  double _pricingValue(dynamic value,double fallback){
+    if(value is num)return value.toDouble();
+    return double.tryParse((value??'').toString())??fallback;
+  }
+
+  Map<String,dynamic> _pricingForType(String type){
+    final raw=_ridePricing[type];
+    return raw is Map?Map<String,dynamic>.from(raw):<String,dynamic>{};
+  }
   @override void dispose(){destination.removeListener(_destinationChanged);destination.dispose();super.dispose();}
 
   Future<void> _loadPickup() async {
@@ -3704,10 +3793,17 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
   }
 
   void _fare(){
-    final base=rideType=='bike'?20.0:rideType=='auto'?30.0:50.0;
-    final per=rideType=='bike'?8.0:rideType=='auto'?12.0:16.0;
-    final minimum=rideType=='bike'?30.0:rideType=='auto'?40.0:60.0;
-    fare=km<=0?minimum:math.max(minimum,base+km*per);
+    final legacyBase=rideType=='bike'?20.0:rideType=='auto'?30.0:50.0;
+    final legacyPer=rideType=='bike'?8.0:rideType=='auto'?12.0:16.0;
+    final legacyMinimum=rideType=='bike'?30.0:rideType=='auto'?40.0:60.0;
+    final configured=_pricingForType(rideType);
+    if(configured.isNotEmpty){
+      final within5=_pricingValue(configured['within5Km'],legacyMinimum);
+      final above5=_pricingValue(configured['above5KmRate'],legacyPer);
+      fare=km<=5?within5:within5+((km-5)*above5);
+      return;
+    }
+    fare=km<=0?legacyMinimum:math.max(legacyMinimum,legacyBase+km*legacyPer);
   }
 
   Future<void> _requestRide() async {
@@ -3729,6 +3825,16 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
         locationSettings:const LocationSettings(accuracy:LocationAccuracy.high),
       );
       pickup=fresh;
+      try{
+        final marks=await placemarkFromCoordinates(fresh.latitude,fresh.longitude);
+        if(marks.isNotEmpty){
+          final m=marks.first;
+          final values=[m.name,m.street,m.subLocality,m.locality,m.subAdministrativeArea,m.administrativeArea,m.postalCode]
+            .whereType<String>().map((x)=>x.trim()).where((x)=>x.isNotEmpty).toSet().toList();
+          if(values.isNotEmpty)pickupAddress=values.join(', ');
+          pickupPincode=m.postalCode;
+        }
+      }catch(_){}
       if(drop!=null)await _route();
     }catch(_){}
     if(pickup==null){
@@ -3818,6 +3924,9 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       'distanceKm':km,
       'etaMinutes':eta,
       'estimatedFare':fare,
+      'pricingModel':_ridePricing.isNotEmpty?'admin_tiered_5km':'legacy_fallback',
+      'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
+      'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
       'rejectedBy':<String>[],
       'createdAt':FieldValue.serverTimestamp(),
       'updatedAt':FieldValue.serverTimestamp(),
