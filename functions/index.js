@@ -532,7 +532,14 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
     if(String(before.status||"").toLowerCase()===String(after.status||"").toLowerCase())return;
     const uid=String(after.customerUid||"").trim();
     if(!uid)return;
-    
+    const status=String(after.status||"");
+    await sendToUser(
+      uid,
+      "Vehicle booking update",
+      "Your vehicle booking status is " + status + ".",
+      { type: "vehicle_booking_status", bookingId: event.params.bookingId, status },
+      "customer"
+    );
 }
 );
 
