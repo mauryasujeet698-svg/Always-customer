@@ -1,6 +1,8 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const crypto = require("crypto");
 
 initializeApp();
 
@@ -214,6 +216,15 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
 return partnerUid;
 }
 
+function newConfirmationPin() {
+  return String(crypto.randomInt(0, 10000)).padStart(4, "0");
+}
+
+function ensureConfirmationPin(data) {
+  const existing = String(data?.confirmationPin || "").trim();
+  return /^\\d{4}$/.test(existing) ? existing : newConfirmationPin();
+}
+
 // Order creation, delivery assignment and push notifications are server-side. Deploy these functions on a Firebase plan that supports Cloud Functions.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
@@ -223,6 +234,14 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
 
     const orderRef = event.data.ref;
     
+    if (!/^\\d{4}$/.test(String(order.confirmationPin || ""))) {
+      await orderRef.set({
+        confirmationPin: newConfirmationPin(),
+        deliveryPinVerified: false,
+        deliveryPinVerifiedAt: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
 try {
       const partnerUid = await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
       if (partnerUid) {
@@ -332,6 +351,14 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   async (event) => {
     const ride = event.data?.data();
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
+    if (!/^\\d{4}$/.test(String(ride.confirmationPin || ""))) {
+      await event.data.ref.set({
+        confirmationPin: newConfirmationPin(),
+        ridePinVerified: false,
+        ridePinVerifiedAt: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
 
     const rideType = String(ride.rideType || "bike").toLowerCase();
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
@@ -401,6 +428,72 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     }
   }
 );
+
+
+// Secure confirmation PIN verification. Only the assigned carrier/delivery partner can
+// advance the protected state, and the PIN itself is never returned by this function.
+exports.verifyConfirmationPin = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const type = String(request.data?.type || "").toLowerCase();
+  const id = String(request.data?.id || "").trim();
+  const pin = String(request.data?.pin || "").trim();
+
+  if (!["ride", "delivery"].includes(type) || !id || !/^\\d{4}$/.test(pin)) {
+    throw new HttpsError("invalid-argument", "A valid 4-digit confirmation PIN is required.");
+  }
+
+  const collection = type === "ride" ? "autoRideRequests" : "orders";
+  const ref = db.collection(collection).doc(id);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "The request could not be found.");
+
+    const data = snap.data() || {};
+    const assignedUid = type === "ride"
+      ? String(data.driverUid || data.carrierUid || "").trim()
+      : String(data.carrierUid || data.deliveryPartnerUid || data.assignedPartnerId || "").trim();
+
+    if (assignedUid !== uid) {
+      throw new HttpsError("permission-denied", "You are not assigned to this request.");
+    }
+
+    const expected = String(data.confirmationPin || "").trim();
+    if (!expected || expected !== pin) {
+      throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+    }
+
+    if (type === "ride") {
+      const status = String(data.status || "").toLowerCase();
+      if (!["accepted", "arrived"].includes(status)) {
+        if (status === "started") return { verified: true, alreadyStarted: true };
+        throw new HttpsError("failed-precondition", "The ride is not ready to start.");
+      }
+      tx.update(ref, {
+        status: "started",
+        ridePinVerified: true,
+        ridePinVerifiedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      const status = String(data.status || "").toLowerCase();
+      if (status !== "out for delivery") {
+        if (status === "delivered") return { verified: true, alreadyDelivered: true };
+        throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
+      }
+      tx.update(ref, {
+        status: "Delivered",
+        deliveryPinVerified: true,
+        deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return { verified: true };
+  });
+});
 
 // Partner registration and approval changes notify the relevant partner.
 exports.onRidePartnerCreated = onDocumentCreated(
