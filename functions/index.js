@@ -6,6 +6,87 @@ initializeApp();
 
 const db = getFirestore();
 
+const { getMessaging } = require("firebase-admin/messaging");
+
+function notificationChannelForRole(role) {
+  const r = String(role || "").toLowerCase();
+  if (r === "carrier" || r === "delivery_partner") return "allways_urgent_v2";
+  if (r === "admin") return "allways_updates_v2";
+  return "allways_updates";
+}
+
+async function tokensForUser(uid) {
+  const ref = db.collection("fcmTokens").doc(uid);
+  const tokens = new Set();
+  const root = await ref.get();
+  const rootToken = String(root.data()?.token || "").trim();
+  if (rootToken) tokens.add(rootToken);
+  const snap = await ref.collection("tokens").get();
+  for (const doc of snap.docs) {
+    const token = String(doc.data()?.token || doc.id || "").trim();
+    if (token) tokens.add(token);
+  }
+  return [...tokens];
+}
+
+async function sendToUser(uid, title, body, data = {}, role = "") {
+  const tokens = await tokensForUser(uid);
+  if (!tokens.length) return { successCount: 0, failureCount: 0 };
+  const channelId = notificationChannelForRole(role);
+  const urgent = channelId === "allways_urgent_v2";
+  const messageBase = {
+    notification: { title: String(title || "ALLways"), body: String(body || "") },
+    data: Object.fromEntries(Object.entries({ ...data, title: String(title || "ALLways"), body: String(body || "") }).map(([k, v]) => [k, String(v ?? "")])),
+    android: {
+      priority: "high",
+      notification: {
+        channelId,
+        sound: "default",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+        vibrateTimingsMillis: urgent ? [0, 450, 180, 450, 180, 700] : [0, 250, 120, 250],
+        priority: urgent ? "max" : "high",
+      },
+    },
+  };
+  const result = await getMessaging().sendEachForMulticast({ ...messageBase, tokens });
+  const invalid = [];
+  result.responses.forEach((response, index) => {
+    if (!response.success) {
+      const code = response.error?.code || "";
+      if (code.includes("registration-token-not-registered") || code.includes("invalid-registration-token")) {
+        invalid.push(tokens[index]);
+      }
+    }
+  });
+  if (invalid.length) {
+    const batch = db.batch();
+    for (const token of invalid) batch.delete(ref.collection("tokens").doc(token));
+    await batch.commit();
+  }
+  return { successCount: result.successCount, failureCount: result.failureCount };
+}
+
+async function sendToTopic(topic, title, body, data = {}) {
+  const channelId = "allways_updates";
+  return getMessaging().send({
+    topic,
+    notification: { title: String(title || "ALLways"), body: String(body || "") },
+    data: Object.fromEntries(Object.entries({ ...data, title: String(title || "ALLways"), body: String(body || "") }).map(([k, v]) => [k, String(v ?? "")])),
+    android: {
+      priority: "high",
+      notification: {
+        channelId,
+        sound: "default",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+        vibrateTimingsMillis: [0, 250, 120, 250],
+        priority: "high",
+      },
+    },
+  });
+}
+
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -133,7 +214,7 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
 return partnerUid;
 }
 
-// Order creation and delivery assignment remain server-side. Server-side notification delivery is intentionally disabled while the project stays on Firebase Spark.
+// Order creation, delivery assignment and push notifications are server-side. Deploy these functions on a Firebase plan that supports Cloud Functions.
 exports.onAllwaysOrderCreated = onDocumentCreated(
   "orders/{orderId}",
   async (event) => {
@@ -143,7 +224,16 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
     const orderRef = event.data.ref;
     
 try {
-      await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
+      const partnerUid = await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
+      if (partnerUid) {
+        await sendToUser(
+          partnerUid,
+          "New delivery assignment",
+          "A new ALLways delivery order is waiting for your acceptance.",
+          { type: "delivery_assignment", orderId: event.params.orderId },
+          "delivery_partner"
+        );
+      }
     } catch (error) {
       if (String(error?.message || error) !== "AUTO_ASSIGN_RETRY") {
         console.error("Automatic delivery assignment failed:", error);
@@ -172,6 +262,13 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
 
     if (newPartner && newPartner !== oldPartner) {
       
+      await sendToUser(
+        partner.id,
+        "New ride request",
+        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to accept it.",
+        { type: "ride_request", requestId: event.params.requestId, rideType },
+        "carrier"
+      );
 }
 
     if ((oldStatus === "pending_acceptance" || oldStatus === "assigned") && newStatus === "Assigned" && newPartner) {
@@ -209,13 +306,28 @@ await db.collection("deliveryPartners").doc(oldPartner).set({
       const customerUid = String(after.customerId || after.customerUid || "").trim();
       if (customerUid) {
         const normalized = newStatus.toLowerCase().replace(/\s+/g, "_");
-        
-}
+        await sendToUser(
+          customerUid,
+          "ALLways order update",
+          String(after.customerMessage || after.statusNote || ("Order status: " + newStatus)),
+          { type: "order_status", orderId, status: normalized },
+          "customer"
+        );
+      }
+      if (newPartner) {
+        await sendToUser(
+          newPartner,
+          "Delivery status updated",
+          String(after.customerMessage || after.statusNote || ("Order status: " + newStatus)),
+          { type: "delivery_status", orderId, status: newStatus },
+          "delivery_partner"
+        );
+      }
     }
   }
 );
 
-// New ride request detection remains server-side; notification delivery is outside Cloud Functions on Spark.
+// New ride requests are pushed directly to nearby eligible carrier devices.
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -257,7 +369,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   }
 );
 
-// Ride state changes remain server-side; notification delivery is outside Cloud Functions on Spark.
+// Ride state changes also notify the relevant customer/partner devices.
 exports.onAutoRideRequestUpdated = onDocumentUpdated(
   "autoRideRequests/{requestId}",
   async (event) => {
@@ -271,18 +383,21 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     if (!customerUid) return;
 
     if (newStatus === "accepted") {
-      
-} else if (newStatus === "rejected") {
-      
-} else if (newStatus === "cancelled") {
-      
-} else if (newStatus === "completed") {
-      
-}
+      await sendToUser(customerUid, "Ride accepted", "Your ALLways ride has been accepted by a carrier.", { type: "ride_status", requestId: event.params.requestId, status: newStatus }, "customer");
+      const carrierUid = String(after.driverUid || after.carrierUid || "").trim();
+      if (carrierUid) await sendToUser(carrierUid, "Ride accepted", "You have accepted this ALLways ride.", { type: "ride_status", requestId: event.params.requestId, status: newStatus }, "carrier");
+    } else if (newStatus === "rejected") {
+      await sendToUser(customerUid, "Ride update", "The carrier could not accept this ride. ALLways is checking for another available carrier.", { type: "ride_status", requestId: event.params.requestId, status: newStatus }, "customer");
+    } else if (newStatus === "cancelled") {
+      const carrierUid = String(after.driverUid || after.carrierUid || "").trim();
+      if (carrierUid) await sendToUser(carrierUid, "Ride cancelled", "The customer cancelled the ALLways ride.", { type: "ride_status", requestId: event.params.requestId, status: newStatus }, "carrier");
+    } else if (newStatus === "completed") {
+      await sendToUser(customerUid, "Ride completed", "Your ALLways ride has been completed.", { type: "ride_status", requestId: event.params.requestId, status: newStatus }, "customer");
+    }
   }
 );
 
-// Partner registration/approval state remains available; notification delivery is outside Cloud Functions on Spark.
+// Partner registration and approval changes notify the relevant partner.
 exports.onRidePartnerCreated = onDocumentCreated(
   "ridePartners/{uid}",
   async (event) => {
@@ -306,7 +421,13 @@ exports.onRidePartnerUpdated = onDocumentUpdated(
     if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
     const status = String(after.approvalStatus || "");
     if (!status) return;
-    
+    await sendToUser(
+      event.params.uid,
+      "Carrier application update",
+      status.toLowerCase() === "approved" ? "Your ALLways Carrier account is approved." : "Your ALLways Carrier application status is " + status + ".",
+      { type: "approval", status },
+      "carrier"
+    );
 }
 );
 
@@ -318,7 +439,13 @@ exports.onDeliveryPartnerUpdated = onDocumentUpdated(
     if (String(before.approvalStatus || "") === String(after.approvalStatus || "")) return;
     const status = String(after.approvalStatus || "");
     if (!status) return;
-    
+    await sendToUser(
+      event.params.uid,
+      "Delivery partner application update",
+      status.toLowerCase() === "approved" ? "Your ALLways Delivery Partner account is approved." : "Your ALLways Delivery Partner application status is " + status + ".",
+      { type: "approval", status },
+      "delivery_partner"
+    );
 }
 );
 
@@ -327,11 +454,18 @@ exports.onNotificationBroadcastCreated = onDocumentCreated(
   async (event) => {
     const ref = event.data?.ref;
     if (!ref) return;
-    // FCM delivery is intentionally deferred while the Firebase project is on
-    // Spark. Keep the broadcast record auditable without pretending a push was sent.
+    const data = event.data.data() || {};
+    const title = String(data.title || "ALLways");
+    const body = String(data.body || data.message || "");
+    const topic = String(data.topic || data.targetAudience || "all_users").toLowerCase();
+    if (!body) return;
+    const allowed = new Set(["all_users", "customers", "admins", "carriers", "delivery_partners"]);
+    const safeTopic = allowed.has(topic) ? topic : "all_users";
+    await sendToTopic(safeTopic, title, body, { type: "broadcast", notificationId: event.params.notificationId });
     await ref.set({
-      status: "deferred_until_blaze",
-      delivery: "FCM server delivery requires deployed trusted server code.",
+      status: "sent",
+      sentTopic: safeTopic,
+      sentAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }
@@ -361,8 +495,8 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
 
     const topic = allowedTopics.has(rawAudience) ? rawAudience : "all_users";
 
-    
-await event.data.ref.set(
+    await sendToTopic(topic, title, body, { type: "announcement", announcementId: event.params.announcementId });
+    await event.data.ref.set(
       {
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),
