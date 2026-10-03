@@ -34,7 +34,8 @@ service cloud.firestore {
             request.resource.data.carrierUid == request.auth.uid ||
             (request.resource.data.status == 'unassigned' && request.resource.data.carrierUid == null)
           )
-          && request.resource.data.status in ['pending_acceptance','Assigned','Confirmed','Picked up','Out for delivery','Delivered','unassigned'])
+          && request.resource.data.status in ['pending_acceptance','Assigned','Confirmed','Picked up','Out for delivery','Delivered','unassigned']
+          && (request.resource.data.status != 'Delivered' || resource.data.deliveryPinVerified == true))
         || (signedIn() && resource.data.customerId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
@@ -115,7 +116,8 @@ service cloud.firestore {
             'driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','updatedAt',
             'cancelledBy','cancellationReason','cancelledAt'
           ])
-          && request.resource.data.status in ['accepted','started','completed','cancelled'])
+          && request.resource.data.status in ['accepted','started','completed','cancelled']
+          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true))
         || (onlineRidePartner()
           && resource.data.status == 'searching'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejectedBy','updatedAt'])
@@ -126,7 +128,8 @@ service cloud.firestore {
           && request.resource.data.status == 'accepted'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status','driverUid','driverName','driverPhone','driverVehicleType','acceptedAt','updatedAt'
-          ]));
+          ])
+          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true));
 
       allow delete: if false;
     }
