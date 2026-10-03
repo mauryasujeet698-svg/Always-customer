@@ -37,6 +37,7 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   double _markerRotation = 0.0;
   String _contactPhone = '';
   String _rideStatus = 'searching';
+  String _confirmationPin = '';
   bool _cameraFitted = false;
   bool _mapReady = false;
   StreamSubscription<Position>? _customerLocationSubscription;
@@ -99,6 +100,7 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
 
       setState(() {
         _rideStatus = (data['status'] ?? 'searching').toString();
+        _confirmationPin = (data['confirmationPin'] ?? '').toString().trim();
         _contactPhone = widget.isRider ? (data['customerPhone'] ?? '').toString() : (data['driverPhone'] ?? '').toString();
         _pickupLocation = newPickup;
         _destinationLocation = newDestination;
@@ -380,6 +382,11 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
                     Text(widget.isRider ? 'Blue person = customer • Purple bike = you' : 'Purple bike = partner • Blue person = you', style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w700)),
                     if (_distanceToOtherKm != null)
                       Text((widget.isRider ? 'Customer' : 'Partner') + ' • ' + (_distanceToOtherKm! < 1 ? (_distanceToOtherKm! * 1000).round().toString() + ' m' : _distanceToOtherKm!.toStringAsFixed(1) + ' km') + ' away • ETA ' + _etaText, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                    if (!widget.isRider && _confirmationPin.length == 4 && ['accepted','arrived','started'].contains(_rideStatus.toLowerCase()))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 7),
+                        child: Text('Confirmation number: $_confirmationPin • Share with your carrier', style: const TextStyle(color: Color(0xFF8E5A73), fontSize: 13, fontWeight: FontWeight.w800)),
+                      ),
                   ])),
                   TextButton(onPressed: () => _triggerPhoneCall(_contactPhone), child: const Text('Call', style: TextStyle(color: Color(0xFF8E5A73)))),
                 ],
