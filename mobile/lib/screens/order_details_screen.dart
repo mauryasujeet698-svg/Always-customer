@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../allways_design.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -14,8 +18,131 @@ class OrderDetailsScreen extends StatefulWidget {
 
 class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final MapController _mapController = MapController();
+  StreamSubscription<DocumentSnapshot<Map<String,dynamic>>>? _trackingOrderSubscription;
+  StreamSubscription<Position>? _customerLocationSubscription;
+  bool _customerTrackingStarted = false;
   LatLng? _customer, _carrier, _destination;
   bool _mapReady = false, _cameraFitted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchDeliveryTracking();
+  }
+
+  @override
+  void dispose() {
+    _trackingOrderSubscription?.cancel();
+    _customerLocationSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _watchDeliveryTracking() async {
+    _trackingOrderSubscription = FirebaseFirestore.instance
+        .collection('orders')
+        .doc(widget.orderId)
+        .snapshots()
+        .listen((snap) async {
+      final d = snap.data();
+      if (d == null) return;
+      final status = (d['status'] ?? '').toString().toLowerCase().replaceAll('_', ' ');
+      final active = status == 'out for delivery';
+      final terminal = {'delivered', 'completed', 'cancelled', 'rejected', 'expired'}.contains(status);
+      if (active && !_customerTrackingStarted) {
+        await _startCustomerTracking();
+      } else if (terminal) {
+        await _stopCustomerTracking();
+      }
+    });
+  }
+
+  Future<bool> _trackingDisclosure() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('allways_order_location_disclosure_shown') == true) return true;
+    if (!mounted) return false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Live delivery tracking'),
+        content: const Text(
+          'While your order is out for delivery, ALLways can share your live location with your assigned delivery partner so they can find you accurately. Location sharing stops when the delivery is completed or cancelled.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Continue')),
+        ],
+      ),
+    ) ?? false;
+    if (accepted) await prefs.setBool('allways_order_location_disclosure_shown', true);
+    return accepted;
+  }
+
+  Future<void> _startCustomerTracking() async {
+    if (_customerTrackingStarted || !mounted) return;
+    if (!await _trackingDisclosure()) return;
+    _customerTrackingStarted = true;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _customerTrackingStarted = false;
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _customerTrackingStarted = false;
+        return;
+      }
+
+      final LocationSettings settings = Platform.isAndroid
+          ? AndroidSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10,
+              intervalDuration: const Duration(seconds: 10),
+              foregroundNotificationConfig: const ForegroundNotificationConfig(
+                notificationTitle: 'ALLways delivery tracking',
+                notificationText: 'ALLways is sharing your live location for your active delivery.',
+                notificationChannelName: 'ALLways Delivery Tracking',
+                enableWakeLock: true,
+                setOngoing: true,
+              ),
+            )
+          : const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10,
+            );
+
+      final first = await Geolocator.getCurrentPosition(locationSettings: settings);
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).set({
+        'customerLat': first.latitude,
+        'customerLng': first.longitude,
+        'customerLocationUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      _customerLocationSubscription?.cancel();
+      _customerLocationSubscription = Geolocator.getPositionStream(
+        locationSettings: settings,
+      ).listen((position) async {
+        try {
+          await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).set({
+            'customerLat': position.latitude,
+            'customerLng': position.longitude,
+            'customerLocationUpdatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (_) {}
+      });
+    } catch (_) {
+      _customerTrackingStarted = false;
+    }
+  }
+
+  Future<void> _stopCustomerTracking() async {
+    await _customerLocationSubscription?.cancel();
+    _customerLocationSubscription = null;
+    _customerTrackingStarted = false;
+  }
 
   double? _n(dynamic v) => v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '');
   LatLng? _point(Map<String,dynamic> d, List<String> prefixes) {
