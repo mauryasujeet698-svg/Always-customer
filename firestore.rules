@@ -234,6 +234,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /settings/ridePricing {
+      // Ride fares are public so the customer can calculate/display the price
+      // before submitting a ride request. Only the Admin can change them.
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Public catalog data. Product writes remain Admin-only.
     match /products/{productId} {
       allow read: if true;
