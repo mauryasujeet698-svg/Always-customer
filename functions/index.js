@@ -222,7 +222,7 @@ function newConfirmationPin() {
 
 function ensureConfirmationPin(data) {
   const existing = String(data?.confirmationPin || "").trim();
-  return /^\\d{4}$/.test(existing) ? existing : newConfirmationPin();
+  return /^\d{4}$/.test(existing) ? existing : newConfirmationPin();
 }
 
 // Order creation, delivery assignment and push notifications are server-side. Deploy these functions on a Firebase plan that supports Cloud Functions.
@@ -234,7 +234,7 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
 
     const orderRef = event.data.ref;
     
-    if (!/^\\d{4}$/.test(String(order.confirmationPin || ""))) {
+    if (!/^\d{4}$/.test(String(order.confirmationPin || ""))) {
       await orderRef.set({
         confirmationPin: newConfirmationPin(),
         deliveryPinVerified: false,
@@ -351,7 +351,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   async (event) => {
     const ride = event.data?.data();
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
-    if (!/^\\d{4}$/.test(String(ride.confirmationPin || ""))) {
+    if (!/^\d{4}$/.test(String(ride.confirmationPin || ""))) {
       await event.data.ref.set({
         confirmationPin: newConfirmationPin(),
         ridePinVerified: false,
@@ -440,7 +440,7 @@ exports.verifyConfirmationPin = onCall(async (request) => {
   const id = String(request.data?.id || "").trim();
   const pin = String(request.data?.pin || "").trim();
 
-  if (!["ride", "delivery"].includes(type) || !id || !/^\\d{4}$/.test(pin)) {
+  if (!["ride", "delivery"].includes(type) || !id || !/^\d{4}$/.test(pin)) {
     throw new HttpsError("invalid-argument", "A valid 4-digit confirmation PIN is required.");
   }
 
