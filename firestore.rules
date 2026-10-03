@@ -109,7 +109,8 @@ service cloud.firestore {
             'status','cancelledBy','cancellationReason','cancelledAt',
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
           ])
-          && request.resource.data.status in ['searching','accepted','started','cancelled','completed'])
+          && request.resource.data.status in ['searching','accepted','started','cancelled','completed']
+          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true))
         || (signedIn() && resource.data.driverUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status','driverUid','driverName','driverPhone','driverVehicleType','acceptedAt',
