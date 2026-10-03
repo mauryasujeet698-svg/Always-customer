@@ -3036,7 +3036,6 @@ class _TravelPageState extends State<TravelPage> {
   @override
   Widget build(BuildContext context){
     final size=MediaQuery.of(context).size;
-    final topInset=MediaQuery.of(context).padding.top;
     final mapHeight=(size.height*.42).clamp(340.0,620.0);
     final mapUrl=_mapboxPublicToken.trim().isNotEmpty
         ? _mapboxTilesUrl()
@@ -3082,15 +3081,35 @@ class _TravelPageState extends State<TravelPage> {
                         MarkerLayer(markers:[
                           if(position!=null)Marker(
                             point:LatLng(position!.latitude,position!.longitude),
-                            width:44,height:44,
-                            child:Container(
-                              decoration:BoxDecoration(
-                                color:Colors.white,
-                                shape:BoxShape.circle,
-                                boxShadow:[BoxShadow(color:Colors.black.withOpacity(.20),blurRadius:6,offset:const Offset(0,2))],
-                              ),
-                              padding:const EdgeInsets.all(6),
-                              child:Container(decoration:const BoxDecoration(color:Color(0xFF2F80ED),shape:BoxShape.circle)),
+                            width:150,height:86,
+                            alignment:Alignment.topCenter,
+                            child:Column(
+                              mainAxisSize:MainAxisSize.min,
+                              children:[
+                                Container(
+                                  padding:const EdgeInsets.symmetric(horizontal:18,vertical:7),
+                                  decoration:BoxDecoration(
+                                    color:const Color(0xFF20A56B),
+                                    borderRadius:BorderRadius.circular(22),
+                                    boxShadow:[BoxShadow(color:Colors.black.withOpacity(.18),blurRadius:8,offset:const Offset(0,3))],
+                                  ),
+                                  child:const Text('Pickup Point',style:TextStyle(color:Colors.white,fontSize:14,fontWeight:FontWeight.w800)),
+                                ),
+                                CustomPaint(
+                                  size:const Size(18,10),
+                                  painter:_PickupPointerPainter(),
+                                ),
+                                Container(
+                                  width:26,height:26,
+                                  decoration:BoxDecoration(
+                                    color:const Color(0xFF20A56B),
+                                    shape:BoxShape.circle,
+                                    border:Border.all(color:Colors.white,width:4),
+                                    boxShadow:[BoxShadow(color:Colors.black.withOpacity(.20),blurRadius:6,offset:const Offset(0,2))],
+                                  ),
+                                  child:const Icon(Icons.location_on,color:Colors.white,size:15),
+                                ),
+                              ],
                             ),
                           ),
                           if(_selectedDestination!=null)Marker(point:_selectedDestination!,width:44,height:44,child:const Icon(Icons.location_on,color:Colors.red,size:38)),
@@ -3099,37 +3118,7 @@ class _TravelPageState extends State<TravelPage> {
                     ),
                   ),
 
-                  Positioned(
-                    top:topInset+14,
-                    left:22,right:22,
-                    child:Material(
-                      color:Colors.white,
-                      elevation:4,
-                      borderRadius:BorderRadius.circular(30),
-                      child:InkWell(
-                        onTap:(){
-                          final p=position;
-                          if(p!=null){_followCurrentLocation=true;_setMapPosition(p,zoom:16);}
-                        },
-                        borderRadius:BorderRadius.circular(30),
-                        child:Padding(
-                          padding:const EdgeInsets.symmetric(horizontal:18,vertical:12),
-                          child:Row(children:[
-                            const Icon(Icons.location_on,color:Color(0xFF20A56B),size:30),
-                            const SizedBox(width:12),
-                            Expanded(child:Column(
-                              crossAxisAlignment:CrossAxisAlignment.start,
-                              children:[
-                                const Text('Current location',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),
-                                Text(loading?'Locating…':_locationSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF7A828D))),
-                              ],
-                            )),
-                            const Icon(Icons.keyboard_arrow_down,size:29),
-                          ]),
-                        ),
-                      ),
-                    ),
-                  ),
+
 
                   Positioned(
                     right:22,
@@ -3175,9 +3164,15 @@ class _TravelPageState extends State<TravelPage> {
                             const Icon(Icons.search,size:30,color:Colors.black),
                             const SizedBox(width:14),
                             Expanded(child:Text(
-                              _search.text.trim().isEmpty?'Where are you going?':_search.text.trim(),
+                              _search.text.trim().isEmpty
+                                  ? 'Where are you going?'
+                                  : 'To: '+_search.text.trim(),
                               maxLines:1,overflow:TextOverflow.ellipsis,
-                              style:TextStyle(fontSize:17,fontWeight:FontWeight.w600,color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124)),
+                              style:TextStyle(
+                                fontSize:17,
+                                fontWeight:FontWeight.w700,
+                                color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124),
+                              ),
                             )),
                           ]),
                         ),
@@ -3252,6 +3247,21 @@ class _TravelPageState extends State<TravelPage> {
       ),
     );
   }
+}
+
+class _PickupPointerPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas,Size size){
+    final paint=Paint()..color=const Color(0xFF20A56B);
+    final path=Path()
+      ..moveTo(size.width/2, size.height)
+      ..lineTo(0,size.height/2)
+      ..lineTo(size.width,size.height/2)
+      ..close();
+    canvas.drawPath(path,paint);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate)=>false;
 }
 
 class _DestinationSearchPage extends StatefulWidget {
@@ -3414,8 +3424,33 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
               keyboardDismissBehavior:ScrollViewKeyboardDismissBehavior.onDrag,
               padding:const EdgeInsets.only(bottom:30),
               children:[
+                if(!hasQuery)Padding(
+                  padding:const EdgeInsets.fromLTRB(24,4,24,12),
+                  child:Container(
+                    padding:const EdgeInsets.symmetric(horizontal:16,vertical:13),
+                    decoration:BoxDecoration(
+                      color:const Color(0xFFEAF8EF),
+                      borderRadius:BorderRadius.circular(18),
+                    ),
+                    child:const Row(
+                      children:[
+                        Icon(Icons.my_location,color:Color(0xFF20A56B),size:22),
+                        SizedBox(width:10),
+                        Expanded(
+                          child:Text(
+                            'Your pickup point is your current location',
+                            style:TextStyle(fontSize:14,fontWeight:FontWeight.w700,color:Color(0xFF26724F)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if(!hasQuery&&_recent.isNotEmpty)...[
-                  const Padding(padding:EdgeInsets.fromLTRB(24,10,24,6),child:Text('Recent searches',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900))),
+                  const Padding(
+                    padding:EdgeInsets.fromLTRB(24,12,24,8),
+                    child:Text('Recent searches',style:TextStyle(fontSize:16,fontWeight:FontWeight.w900)),
+                  ),
                   ..._recent.map((p)=>Column(children:[_placeRow(p,recent:true),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
                 if(hasQuery)...[
