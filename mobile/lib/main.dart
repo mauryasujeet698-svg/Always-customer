@@ -1608,7 +1608,13 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             child:ListTile(
               leading:CircleAvatar(backgroundColor:const Color(0x1A5B1ACF),child:Icon(accepted?Icons.navigation:Icons.search,color:const Color(0xFF5B1ACF))),
               title:Text(accepted?'Your ride is confirmed':'Ride request is active',style:const TextStyle(fontWeight:FontWeight.w900)),
-              subtitle:Text(accepted?'Partner accepted • Tap to track live':'Searching for a nearby partner…'),
+              subtitle:Text(
+                accepted
+                    ? ((x['confirmationPin'] ?? '').toString().length == 4
+                        ? 'Confirmation number: ${x['confirmationPin']} • Share it with your carrier'
+                        : 'Partner accepted • Tap to track live')
+                    : 'Searching for a nearby partner…',
+              ),
               trailing:accepted?Wrap(
                 spacing:0,
                 children:[
@@ -3961,6 +3967,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
       'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
       'rejectedBy':<String>[],
+      'ridePinVerified':false,
       'createdAt':FieldValue.serverTimestamp(),
       'updatedAt':FieldValue.serverTimestamp(),
     });
