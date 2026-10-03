@@ -3415,6 +3415,26 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
     }finally{if(mounted)setState(()=>_loading=false);}
   }
 
+  Future<void> _openPlaceMap(Map<String,dynamic> place) async {
+    final lat=double.tryParse((place['lat']??'').toString());
+    final lon=double.tryParse((place['lon']??'').toString());
+    if(lat==null||lon==null)return;
+    final uri=Uri.parse('https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=17/$lat/$lon');
+    await launchUrl(uri,mode:LaunchMode.externalApplication);
+  }
+
+  Future<void> _sharePlaceOnWhatsApp(Map<String,dynamic> place) async {
+    final name=(place['name']??'Location').toString();
+    final address=(place['address']??name).toString();
+    final lat=double.tryParse((place['lat']??'').toString());
+    final lon=double.tryParse((place['lon']??'').toString());
+    if(lat==null||lon==null)return;
+    final map='https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=17/$lat/$lon';
+    final message=Uri.encodeComponent('Location: $name\n$address\n$map');
+    final uri=Uri.parse('https://wa.me/?text=$message');
+    await launchUrl(uri,mode:LaunchMode.externalApplication);
+  }
+
   Future<void> _select(Map<String,dynamic> place) async {
     final name=(place['name']??'').toString().trim();
     final address=(place['address']??name).toString().trim();
@@ -3454,6 +3474,19 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
             const SizedBox(height:3),
             Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Color(0xFF68727F))),
           ])),
+          PopupMenuButton<String>(
+            tooltip:'Location options',
+            onSelected:(value){
+              if(value=='book')_select(p);
+              if(value=='map')_openPlaceMap(p);
+              if(value=='whatsapp')_sharePlaceOnWhatsApp(p);
+            },
+            itemBuilder:(_)=>const[
+              PopupMenuItem(value:'book',child:Text('Book a ride here')),
+              PopupMenuItem(value:'map',child:Text('Open location')),
+              PopupMenuItem(value:'whatsapp',child:Text('Share on WhatsApp')),
+            ],
+          ),
         ]),
       ),
     );
