@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -637,7 +638,18 @@ jobs:
             });
           }
           EOF
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+          set +e
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee /tmp/allways-analyze.log
+          analyze_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$analyze_status" -ne 0 ]; then
+            echo "Flutter analyze failed; publishing temporary diagnostic issue."
+            body="$(cat /tmp/allways-analyze.log)"
+            gh issue create --title "TEMP analyzer diagnostics run $GITHUB_RUN_NUMBER" --body "```text
+$body
+```" || true
+            exit "$analyze_status"
+          fi
           flutter test
           cd ..
           node --check functions/index.js
