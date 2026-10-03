@@ -2748,17 +2748,19 @@ class _TravelPageState extends State<TravelPage> {
   String _locationSubtitle='Pratapgarh, Uttar Pradesh';
   final TextEditingController _search=TextEditingController();
   final Set<String> _favoriteDestinations=<String>{};
+  StreamSubscription<Position>? _travelPositionSubscription;
+  bool _followCurrentLocation=true;
   LatLng? _selectedDestination;
   List<LatLng> _travelRoute=[];
   double _travelDistanceKm=0;
   int _travelEtaMinutes=0;
 
   @override
-  void initState(){super.initState();_locate();_loadTravelFavorites();}
+  void initState(){super.initState();_locate();_loadTravelFavorites();_startTravelLocationStream();}
 
   String _favoriteId(String destination)=>base64Url.encode(utf8.encode(destination.trim())).replaceAll('=','');
 
-  Future<void> _setMapPosition(Position p,{double zoom=14.5}) async {
+  Future<void> _setMapPosition(Position p,{double zoom=16}) async {
     try{_travelMapController.move(LatLng(p.latitude,p.longitude),zoom);}catch(_){}
   }
 
@@ -2801,7 +2803,25 @@ class _TravelPageState extends State<TravelPage> {
   }
 
   @override
-  void dispose(){_search.dispose();super.dispose();}
+  void dispose(){_travelPositionSubscription?.cancel();_search.dispose();super.dispose();}
+
+  void _startTravelLocationStream(){
+    _travelPositionSubscription?.cancel();
+    _travelPositionSubscription=Geolocator.getPositionStream(
+      locationSettings:const LocationSettings(
+        accuracy:LocationAccuracy.high,
+        distanceFilter:10,
+      ),
+    ).listen((p){
+      if(!mounted)return;
+      setState(()=>position=p);
+      if(_selectedDestination!=null){
+        _loadTravelRoute(_selectedDestination!,fitRoute:false);
+      }else if(_followCurrentLocation){
+        _setMapPosition(p,zoom:16);
+      }
+    });
+  }
 
   Future<void> _locate() async {
     try{
@@ -2875,12 +2895,12 @@ class _TravelPageState extends State<TravelPage> {
     if(name.isEmpty||lat==null||lon==null)return;
     _search.text=name;
     _selectedDestination=LatLng(lat,lon);
-    try{_travelMapController.move(_selectedDestination!,15);}catch(_){}
-    await _loadTravelRoute(_selectedDestination!);
+    _followCurrentLocation=false;
+    await _loadTravelRoute(_selectedDestination!,fitRoute:true);
     if(mounted)setState((){});
   }
 
-  Future<void> _loadTravelRoute(LatLng destination) async {
+  Future<void> _loadTravelRoute(LatLng destination,{bool fitRoute=true}) async {
     final p=position;
     if(p==null)return;
     try{
@@ -2897,6 +2917,20 @@ class _TravelPageState extends State<TravelPage> {
       final coordinates=(first['geometry'] is Map)?(first['geometry'] as Map)['coordinates']:null;
       if(coordinates is List)for(final pair in coordinates){if(pair is List&&pair.length>=2)points.add(LatLng((pair[1] as num).toDouble(),(pair[0] as num).toDouble()));}
       if(mounted)setState((){_travelRoute=points;_travelDistanceKm=distance;_travelEtaMinutes=eta;});
+      if(fitRoute && points.length>1){
+        WidgetsBinding.instance.addPostFrameCallback((_){
+          if(!mounted)return;
+          try{
+            _travelMapController.fitCamera(
+              CameraFit.bounds(
+                bounds:LatLngBounds.fromPoints(points),
+                padding:const EdgeInsets.fromLTRB(55,110,55,135),
+                maxZoom:16,
+              ),
+            );
+          }catch(_){}
+        });
+      }
     }catch(_){}
   }
 
@@ -3026,9 +3060,12 @@ class _TravelPageState extends State<TravelPage> {
                       mapController:_travelMapController,
                       options:MapOptions(
                         initialCenter:LatLng(position?.latitude??25.4358,position?.longitude??81.8463),
-                        initialZoom:14.5,
+                        initialZoom:16,
                         minZoom:8,
                         maxZoom:19,
+                        onPositionChanged:(mapPosition,hasGesture){
+                          if(hasGesture)_followCurrentLocation=false;
+                        },
                         interactionOptions:const InteractionOptions(flags:InteractiveFlag.all),
                       ),
                       children:[
@@ -3072,7 +3109,7 @@ class _TravelPageState extends State<TravelPage> {
                       child:InkWell(
                         onTap:(){
                           final p=position;
-                          if(p!=null)_setMapPosition(p,zoom:15);
+                          if(p!=null){_followCurrentLocation=true;_setMapPosition(p,zoom:16);}
                         },
                         borderRadius:BorderRadius.circular(30),
                         child:Padding(
@@ -3112,7 +3149,12 @@ class _TravelPageState extends State<TravelPage> {
                         const SizedBox(height:8),
                         _zoomButton(
                           icon:Icons.my_location,
-                          onPressed:()=>position==null?_locate():_setMapPosition(position!,zoom:15),
+                          onPressed:(){
+                            final p=position;
+                            if(p==null){_locate();return;}
+                            _followCurrentLocation=true;
+                            _setMapPosition(p,zoom:16);
+                          },
                         ),
                       ],
                     ),
@@ -3158,46 +3200,7 @@ class _TravelPageState extends State<TravelPage> {
               ),
             ),
 
-            if(_selectedDestination==null)
-            FutureBuilder<List<Map<String,String>>>(
-              future:_recentDestinations(),
-              builder:(context,snapshot){
-                final recent=snapshot.data??const <Map<String,String>>[];
-                if(recent.isEmpty)return const SizedBox(height:18);
-                return Padding(
-                  padding:const EdgeInsets.fromLTRB(28,0,28,0),
-                  child:Container(
-                    decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24),boxShadow:[BoxShadow(color:Colors.black.withOpacity(.04),blurRadius:10,offset:const Offset(0,3))]),
-                    padding:const EdgeInsets.fromLTRB(16,5,8,5),
-                    child:Column(
-                      children:[
-                        ...recent.asMap().entries.map((entry){
-                          final item=entry.value;
-                          final title=item['name']??'Previous destination';
-                          final address=item['address']??title;
-                          final lat=double.tryParse(item['lat']??'');
-                          final lon=double.tryParse(item['lon']??'');
-                          return Column(children:[
-                            _recentRow(
-                              title:title,
-                              subtitle:address,
-                              onTap:lat==null||lon==null?null:(){
-                                _search.text=title;
-                                _selectedDestination=LatLng(lat,lon);
-                                try{_travelMapController.move(_selectedDestination!,15);}catch(_){}
-                                _loadTravelRoute(_selectedDestination!);
-                                setState((){});
-                              },
-                            ),
-                            if(entry.key<recent.length-1)const Divider(height:1,indent:42,endIndent:8),
-                          ]);
-                        }),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+
 
             Padding(
               padding:const EdgeInsets.fromLTRB(28,24,20,10),
