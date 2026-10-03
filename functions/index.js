@@ -261,13 +261,12 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
 
     if (newPartner && newPartner !== oldPartner) {
-      
       await sendToUser(
-        partner.id,
-        "New ride request",
-        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to accept it.",
-        { type: "ride_request", requestId: event.params.requestId, rideType },
-        "carrier"
+        newPartner,
+        "New delivery assignment",
+        "A new ALLways delivery order is waiting for your acceptance.",
+        { type: "delivery_assignment", orderId },
+        "delivery_partner"
       );
 }
 
@@ -364,7 +363,13 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
       if (distance > 7) continue;
 
-      
+      await sendToUser(
+        partner.id,
+        "New ride request",
+        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to accept it.",
+        { type: "ride_request", requestId: event.params.requestId, rideType },
+        "carrier"
+      );
 }
   }
 );
