@@ -28,14 +28,14 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'carrierUid','assignedPartnerId','carrierName','carrierPhone','carrierAccepted','assignmentRejected',
             'assignmentAttempts','status','statusNote','customerMessage','carrierLat',
-            'carrierLng','carrierLocationUpdatedAt','deliveryOtpVerified','updatedAt'
+            'carrierLng','carrierLocationUpdatedAt','deliveryOtpVerified','deliveryPinVerified','deliveryPinVerifiedAt','updatedAt'
           ])
           && (
             request.resource.data.carrierUid == request.auth.uid ||
             (request.resource.data.status == 'unassigned' && request.resource.data.carrierUid == null)
           )
           && request.resource.data.status in ['pending_acceptance','Assigned','Confirmed','Picked up','Out for delivery','Delivered','unassigned']
-          && (request.resource.data.status != 'Delivered' || resource.data.deliveryPinVerified == true))
+          && (request.resource.data.status != 'Delivered' || resource.data.deliveryPinVerified == true || (request.resource.data.deliveryPinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin)))
         || (signedIn() && resource.data.customerId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
@@ -110,11 +110,11 @@ service cloud.firestore {
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
           ])
           && request.resource.data.status in ['searching','accepted','started','cancelled','completed']
-          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true))
+          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true || (request.resource.data.ridePinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin))
         || (signedIn() && resource.data.driverUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status','driverUid','driverName','driverPhone','driverVehicleType','acceptedAt',
-            'driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','updatedAt',
+            'driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','ridePinVerified','ridePinVerifiedAt','updatedAt',
             'cancelledBy','cancellationReason','cancelledAt'
           ])
           && request.resource.data.status in ['accepted','started','completed','cancelled']
