@@ -3945,6 +3945,9 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     if(!confirmed)return;
 
     final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
+    // Generate the customer-visible ride confirmation PIN at booking time.
+    // This keeps the PIN available even before Cloud Functions are deployed.
+    final rideConfirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
     final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
       'customerUid':u.uid,
       'customerName':u.displayName??customer['name']??'ALLways customer',
@@ -3967,6 +3970,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
       'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
       'rejectedBy':<String>[],
+      'confirmationPin':rideConfirmationPin,
       'ridePinVerified':false,
       'createdAt':FieldValue.serverTimestamp(),
       'updatedAt':FieldValue.serverTimestamp(),
