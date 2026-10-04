@@ -3983,6 +3983,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       'rejectedBy':<String>[],
       'confirmationPin':rideConfirmationPin,
       'ridePinVerified':false,
+      'customerActive':true,
       'createdAt':FieldValue.serverTimestamp(),
       'updatedAt':FieldValue.serverTimestamp(),
     });
@@ -4210,7 +4211,7 @@ class _OnDemandRideTrackingPageState extends State<OnDemandRideTrackingPage> {
         if(d['customerUid']!=user.uid)return;
         final st=(d['status']??'').toString().toLowerCase();
         if(st=='searching'||st=='accepted'||st=='arrived'||st=='started'){
-          tx.update(ref,{'status':'cancelled','cancelledBy':'customer','cancellationReason':reason,'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+          tx.update(ref,{'status':'cancelled','cancelledBy':'customer','customerActive':false,'cancellationReason':reason,'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
         }
       });
       if(context.mounted)Navigator.pop(context);
