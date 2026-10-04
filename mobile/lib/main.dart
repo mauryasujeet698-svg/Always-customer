@@ -117,7 +117,7 @@ Future<String> uploadImageToCloudinary(XFile image, {String? folder}) async {
 const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-v1.5.0.apk';
 
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
-const updateManifestUrl='https://raw.githubusercontent.com/mauryasujeet698-svg/Always-website/allways-android-app/mobile/update.json';
+const updateManifestUrl='https://api.github.com/repos/mauryasujeet698-svg/Always-website/releases/tags/allways-latest';
 
 const Map<String,dynamic> _defaultDeliverySettings = {
   'deliveryEnabled': true,
@@ -861,7 +861,7 @@ class _ShellState extends State<Shell> {
 
   @override void initState(){
     super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); checkForUpdate();
-    timer=Timer.periodic(const Duration(seconds:30),(_)=>loadInventory(silent:true));
+    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);checkForUpdate();});
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
       setState(() { user=u; });
@@ -1028,13 +1028,22 @@ class _ShellState extends State<Shell> {
       if(r.statusCode!=200)return;
       final data=jsonDecode(r.body);
       if(data is! Map)return;
-      final remote=(data['version']??'').toString();
-      final url=(data['apkUrl']??'').toString();
+      final name=(data['name']??'').toString();
+      final match=RegExp(r'(\\d+\\.\\d+\\.\\d+)').firstMatch(name);
+      final remote=match?.group(1)??'';
+      final assets=data['assets'] is List ? data['assets'] as List : const [];
+      String url='';
+      for(final raw in assets){
+        if(raw is Map && (raw['name']??'').toString()=='allways-latest.apk'){
+          url=(raw['browser_download_url']??'').toString();
+          break;
+        }
+      }
       if(remote.isEmpty||url.isEmpty)return;
       final info=await PackageInfo.fromPlatform();
       if(_versionGreater(remote,info.version)){
         if(!mounted)return;
-        setState((){updateVersion=remote;updateUrl=url;updateNotes=(data['notes']??'').toString();});
+        setState((){updateVersion=remote;updateUrl=url;updateNotes=(data['body']??'').toString();});
       }
     }catch(_){}
   }
@@ -1395,6 +1404,8 @@ class _ShellState extends State<Shell> {
       'deliveryZoneId':pincode.isNotEmpty?'pincode_'+pincode:'pilot_zone','deliveryZoneName':pincode.isNotEmpty?'PIN '+pincode:'ALLways Pilot Zone','deliveryPincode':pincode,
       'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
       'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
+      'confirmationPin':math.Random.secure().nextInt(10000).toString().padLeft(4,'0'),
+      'deliveryPinVerified':false,'deliveryPinVerifiedAt':null,
       'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
       'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
       'customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
