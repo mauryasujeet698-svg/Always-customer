@@ -10,6 +10,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
+const _mapboxTilesUrl = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=' + _mapboxPublicToken;
+
 import 'package:url_launcher/url_launcher.dart';
 
 class LiveRideTrackingScreen extends StatefulWidget {
@@ -309,7 +312,7 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: _mapboxTilesUrl,
                 maxZoom: 19,
                 userAgentPackageName: 'com.allways.app',
               ),
