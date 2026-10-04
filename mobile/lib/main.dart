@@ -1029,7 +1029,7 @@ class _ShellState extends State<Shell> {
       final data=jsonDecode(r.body);
       if(data is! Map)return;
       final name=(data['name']??'').toString();
-      final match=RegExp(r'(\\d+\\.\\d+\\.\\d+)').firstMatch(name);
+      final match=RegExp(r'(\d+\.\d+\.\d+)').firstMatch(name);
       final remote=match?.group(1)??'';
       final assets=data['assets'] is List ? data['assets'] as List : const [];
       String url='';
