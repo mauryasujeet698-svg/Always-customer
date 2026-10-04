@@ -118,7 +118,7 @@ service cloud.firestore {
             'cancelledBy','cancellationReason','cancelledAt'
           ])
           && request.resource.data.status in ['accepted','started','completed','cancelled']
-          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true))
+          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true || (request.resource.data.ridePinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin)))
         || (onlineRidePartner()
           && resource.data.status == 'searching'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejectedBy','updatedAt'])
