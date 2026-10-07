@@ -834,6 +834,7 @@ async function setupWebNotifications(user){
   if(!firebaseReady || !("Notification" in window) || !firebase.messaging) return;
   if(!WEB_PUSH_VAPID_KEY) return;
   try{
+    if("serviceWorker" in navigator) await navigator.serviceWorker.register("/firebase-messaging-sw.js");
     const permission=await Notification.requestPermission();
     if(permission!=="granted") return;
     const messaging=firebase.messaging();
