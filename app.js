@@ -796,12 +796,13 @@ async function requestRide(){
         if(r.ok){const x=await r.json();if(x&&x[0]){dlat=Number(x[0].lat);dlng=Number(x[0].lon);destinationAddress=x[0].display_name||destination;}}
       }catch(_){}
       const ref=db.collection("autoRideRequests").doc();
+       const confirmationPin=String(Math.floor(1000+Math.random()*9000));
       await ref.set({
         customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerEmail:currentUser.email||"",
         pickupAddress,destinationAddress,pickupLatitude:lat,pickupLongitude:lng,destinationLatitude:dlat,destinationLongitude:dlng,
-        rideType:type,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+        rideType:type,confirmationPin,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       });
-      closeModal();showSection("orders");alert("Ride requested. ALLways is finding a carrier.");
+      closeModal();showSection("orders");alert("Ride requested. Your 4-digit confirmation number is: "+confirmationPin+"\\n\\nShare this number with your assigned carrier only when they arrive.");
     }catch(e){if(btn)btn.disabled=false;if(msg)msg.textContent="Could not request the ride. Please try again.";}
   },function(){if(btn)btn.disabled=false;if(msg)msg.textContent="Location permission is required to request a ride.";},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
