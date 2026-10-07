@@ -27,6 +27,10 @@ async function sendToTopic(topic, title, body, data = {}) {
   }
   await getMessaging().send({
     topic: t,
+    android: {
+      priority: "high",
+      notification: { priority: "high", sound: "default" },
+    },
     notification: {
       title: String(title || "ALLways"),
       body: String(body || ""),
@@ -41,6 +45,10 @@ async function sendToToken(token, title, body, data = {}) {
   if (!token) return;
   await getMessaging().send({
     token: String(token),
+    android: {
+      priority: "high",
+      notification: { priority: "high", sound: "default" },
+    },
     notification: {
       title: String(title || "ALLways"),
       body: String(body || ""),
