@@ -1,5 +1,6 @@
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -26,17 +27,13 @@ async function sendToTopic(topic, title, body, data = {}) {
   }
   await getMessaging().send({
     topic: t,
+    android: {
+      priority: "high",
+      notification: { priority: "high", sound: "default" },
+    },
     notification: {
       title: String(title || "ALLways"),
       body: String(body || ""),
-    },
-    android: {
-      priority: "high",
-      notification: {
-        channelId: "allways_updates",
-        priority: "high",
-        sound: "default",
-      },
     },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
@@ -48,17 +45,13 @@ async function sendToToken(token, title, body, data = {}) {
   if (!token) return;
   await getMessaging().send({
     token: String(token),
+    android: {
+      priority: "high",
+      notification: { priority: "high", sound: "default" },
+    },
     notification: {
       title: String(title || "ALLways"),
       body: String(body || ""),
-    },
-    android: {
-      priority: "high",
-      notification: {
-        channelId: "allways_updates",
-        priority: "high",
-        sound: "default",
-      },
     },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
@@ -235,6 +228,115 @@ exports.notifyRideRequest = onDocumentCreated(
     }
   }
 );
+
+/** Authoritative 4-digit passenger confirmation. */
+exports.verifyConfirmationPin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.id || request.data?.rideId || "").trim();
+  const pin = String(request.data?.pin || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "Ride ID is required.");
+  if (!/^\\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "Enter the 4-digit confirmation number.");
+
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+
+  const data = snap.data() || {};
+  if (String(data.driverUid || "") !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This ride is not assigned to you.");
+  }
+  const status = String(data.status || "").toLowerCase();
+  if (!["accepted", "arrived"].includes(status)) {
+    throw new HttpsError("failed-precondition", "Ride is not waiting for passenger confirmation.");
+  }
+  if (String(data.confirmationPin || "").trim() !== pin) {
+    throw new HttpsError("permission-denied", "Incorrect confirmation number.");
+  }
+
+  await ref.update({
+    status: "started",
+    ridePinVerified: true,
+    ridePinVerifiedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    startedBy: request.auth.uid,
+  });
+  await db.collection("ridePartners").doc(request.auth.uid).set({
+    status: "on_trip",
+    availableForRides: false,
+    activeRideId: rideId,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {ok: true, rideId};
+});
+
+/** Authoritative ride completion. Carrier cannot mark an unrelated ride completed. */
+exports.completeRide = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.rideId || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "rideId is required.");
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+  const data = snap.data() || {};
+  if (String(data.driverUid || "") !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This ride is not assigned to you.");
+  }
+  if (String(data.status || "").toLowerCase() !== "started") {
+    throw new HttpsError("failed-precondition", "Ride must be started before completion.");
+  }
+  await ref.update({
+    status: "completed",
+    completedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    completedBy: request.auth.uid,
+  });
+  await db.collection("ridePartners").doc(request.auth.uid).set({
+    status: "online",
+    availableForRides: true,
+    activeRideId: null,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+  return {ok: true};
+});
+
+
+/** Support tickets -> notify Admin and requester when status changes */
+exports.notifySupportTicket = onDocumentCreated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const data = event.data ? event.data.data() || {} : {};
+    const ticketId = event.params.ticketId;
+    const subject = String(data.subject || data.category || "Support request");
+    await sendToTopic("admins", "New support request", subject, {
+      type: "support_ticket",
+      ticketId,
+      queue: String(data.queue || "Customer Support"),
+    }).catch(() => {});
+  }
+);
+
+exports.notifySupportTicketUpdate = onDocumentUpdated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    const statusBefore = String(before.status || "");
+    const statusAfter = String(after.status || "");
+    if (statusBefore === statusAfter) return;
+    const requesterId = String(after.requesterId || after.customerId || "");
+    if (!requesterId) return;
+    await sendToUserTokens(requesterId, "Support update",
+      "Your support request is now " + statusAfter.replaceAll("_", " "), {
+        type: "support_update",
+        ticketId: event.params.ticketId,
+        status: statusAfter,
+      }).catch(() => {});
+  }
+);
+
 
 exports.notifyRideUpdate = onDocumentUpdated(
   "autoRideRequests/{rideId}",
