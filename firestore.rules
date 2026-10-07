@@ -29,6 +29,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.customerId == request.auth.uid;
+      allow update: if signedIn() && resource.data.customerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read','readAt']);
+      allow create, delete: if false;
+    }
+
     match /orders/{orderId} {
       allow create: if signedIn();
       allow read: if signedIn();

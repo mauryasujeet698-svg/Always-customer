@@ -25,3 +25,13 @@
 .adminNote{width:100%;padding:10px;border:1px solid #dbe6df;border-radius:10px;margin:5px 0 8px}
 
 .favBtn{float:right;border:0;background:#fff1f5;color:#c51b58;border-radius:50%;width:34px;height:34px;font-size:22px;cursor:pointer}.favBtn.saved{background:#ffe1eb}.rateBox{margin-top:10px;padding:10px;background:#fffaf0;border-radius:11px}.stars{display:flex;gap:5px;margin-top:6px}.rateBtn{border:0;background:none;color:#e6a400;font-size:24px;cursor:pointer}.ratingDone{margin-top:10px;padding:9px;background:#eef8f1;color:#245f3e;border-radius:10px;font-size:13px}.cancelReason{margin-top:8px;padding:9px;background:#fff5f5;color:#9b2c2c;border-radius:10px;font-size:13px}.smallAction{width:auto!important;padding:9px 12px!important;font-size:13px!important;margin-right:7px}.orderActions{display:flex;justify-content:flex-end;align-items:center;gap:6px}.orderActions .secondary{margin-top:0}.field select{background:#fff}
+.topbarActions{display:flex;gap:8px;align-items:center}
+.notificationBadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-left:4px;padding:0 4px;border-radius:99px;background:#087b3e;color:#fff;font-size:10px;font-weight:900}
+.notificationsList{display:grid;gap:9px;margin-top:12px;background:transparent;padding:0;text-align:left}
+.notificationItem{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;border:1px solid #e5ece7;background:#fff;border-radius:15px;padding:13px;cursor:pointer}
+.notificationItem.unread{border-color:#9dd6b5;background:#f4fbf6}
+.notificationItem b{font-size:14px;color:#132018}
+.notificationItem span{font-size:13px;color:#4f5d55;line-height:1.4}
+.notificationItem small{font-size:11px;color:#7a847e}
+.deliveryPinBox{background:#fff8df;border:1px solid #ead48b;color:#6a5310;border-radius:12px;padding:11px;margin:10px 0;font-size:15px}
+.deliveryPinBox small{display:block;margin-top:4px;color:#7a6a35;font-size:12px}
