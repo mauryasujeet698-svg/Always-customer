@@ -57,6 +57,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /supportTickets/{ticketId} {
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.requesterRole in ['customer','carrier','delivery_partner'];
+      allow read: if isAdmin() || (signedIn() && resource.data.requesterId == request.auth.uid);
+      allow update: if isAdmin()
+        || (signedIn() && resource.data.requesterId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['message','updatedAt']));
+      allow delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if isAdmin();
     }
