@@ -245,11 +245,6 @@ function chooseSavedAddress(id){
   if(n)n.value=a.name||"";if(p)p.value=a.phone||"";if(ad)ad.value=a.address||"";
 }
 function renderProducts(){
-  const notificationsBtn=document.getElementById("notificationsBtn");
-  if(notificationsBtn)notificationsBtn.addEventListener("click",openNotifications);
-  const enableNotifBtn=document.getElementById("enableBrowserNotificationsBtn");
-  if(enableNotifBtn)enableNotifBtn.addEventListener("click",enableBrowserNotifications);
-
   const search = document.getElementById("search");
   const productsEl = document.getElementById("products");
   const count = document.getElementById("count");
@@ -1325,6 +1320,11 @@ function startALLways(){
       showSection(tab.dataset.section);
     };
   });
+
+  const notificationsBtn=document.getElementById("notificationsBtn");
+  if(notificationsBtn)notificationsBtn.addEventListener("click",openNotifications);
+  const enableNotifBtn=document.getElementById("enableBrowserNotificationsBtn");
+  if(enableNotifBtn)enableNotifBtn.addEventListener("click",enableBrowserNotifications);
 
   const search = document.getElementById("search");
   if(search){
