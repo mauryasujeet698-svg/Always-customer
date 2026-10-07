@@ -541,6 +541,7 @@ async function placeOrder(subtotal, delivery, total){
     return { id: product.id, name: product.name, qty: quantity, price: product.price };
   });
 
+  const confirmationPin = String(Math.floor(1000 + Math.random() * 9000));
   const order = {
     id: "AW" + Date.now().toString().slice(-7),
     customerId: currentUser.uid,
@@ -554,6 +555,7 @@ async function placeOrder(subtotal, delivery, total){
     delivery: delivery,
     total: total,
     paymentMethod: "COD",
+    confirmationPin: confirmationPin,
     status: "New Order",
     estimatedDelivery: "",
     statusNote: "Order received",
@@ -629,6 +631,8 @@ function showThankYou(order){
       <div class="successIcon">✓</div>
       <h2>Thank you, ${escapeHtml(order.name)}!</h2>
       <p>Your ALLways order <b>#${escapeHtml(order.id)}</b> has been received.</p>
+    <p><b>Delivery confirmation:</b> ${escapeHtml(order.confirmationPin)}</p>
+    <p class="muted">Share this 4-digit number with your ALLways delivery partner only when they arrive with your order.</p>
       <p>We’ll contact you on <b>${escapeHtml(order.phone)}</b> to confirm delivery.</p>
       <div class="thankBox" style="text-align:left">
         <b>Order summary</b><br>

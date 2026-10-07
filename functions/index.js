@@ -165,6 +165,14 @@ exports.notifyOrderChange = onDocumentUpdated(
 
     if (prevStatus !== nextStatus && nextStatus) {
       body = "Order #" + orderId + " is now " + (after.status || nextStatus);
+      if (nextPartner) {
+        await sendToUserTokens(nextPartner, "Delivery update",
+          "Order #" + orderId + " is now " + (after.status || nextStatus), {
+            type: "order_status",
+            orderId,
+            status: nextStatus,
+          }).catch(() => {});
+      }
     }
 
     if (body && customerId) {
@@ -229,19 +237,188 @@ exports.notifyRideRequest = onDocumentCreated(
   }
 );
 
-/** Authoritative 4-digit passenger confirmation. */
-exports.verifyConfirmationPin = onCall(async (request) => {
+/** Authoritative 4-digit delivery/ride confirmation. */
+exports.acceptDeliveryOrder = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
-  const rideId = String(request.data?.id || request.data?.rideId || "").trim();
-  const pin = String(request.data?.pin || "").trim();
-  if (!rideId) throw new HttpsError("invalid-argument", "Ride ID is required.");
-  if (!/^\\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "Enter the 4-digit confirmation number.");
+  const orderId = String(request.data?.orderId || request.data?.id || "").trim();
+  if (!orderId) throw new HttpsError("invalid-argument", "Order ID is required.");
 
   const db = getFirestore();
-  const ref = db.collection("autoRideRequests").doc(rideId);
+  const orderRef = db.collection("orders").doc(orderId);
+  const partnerRef = db.collection("deliveryPartners").doc(request.auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [orderSnap, partnerSnap] = await Promise.all([
+      tx.get(orderRef),
+      tx.get(partnerRef),
+    ]);
+    if (!orderSnap.exists) throw new HttpsError("not-found", "Order not found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Delivery partner profile is missing.");
+
+    const order = orderSnap.data() || {};
+    const partner = partnerSnap.data() || {};
+    const assigned = String(order.carrierUid || order.deliveryPartnerUid || order.deliveryPartnerId || order.assignedPartnerId || "");
+    const status = String(order.status || "").trim().toLowerCase();
+
+    if (assigned && assigned !== request.auth.uid) {
+      throw new HttpsError("aborted", "This order is already assigned to another delivery partner.");
+    }
+    if (!["new order", "searching", "ready", "pending", "pending_acceptance", "assigned", ""].includes(status)) {
+      throw new HttpsError("failed-precondition", "This order is no longer available.");
+    }
+    if (String(partner.approvalStatus || "").toLowerCase() !== "approved") {
+      throw new HttpsError("failed-precondition", "Admin approval is required.");
+    }
+    const duty = String(partner.status || partner.dutyStatus || "").toLowerCase();
+    if (duty !== "online") {
+      throw new HttpsError("failed-precondition", "Go online before accepting delivery work.");
+    }
+
+    tx.update(orderRef, {
+      carrierUid: request.auth.uid,
+      deliveryPartnerUid: request.auth.uid,
+      carrierName: partner.name || partner.displayName || "ALLways Delivery Partner",
+      carrierPhone: partner.phone || partner.mobileNumber || "",
+      carrierVehicleType: partner.vehicleType || "bike",
+      status: "Assigned",
+      carrierAccepted: true,
+      assignedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(partnerRef, {
+      currentOrderId: orderId,
+      pendingOrderId: null,
+      lastAcceptedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+
+  return {ok: true, orderId};
+});
+
+exports.updateDeliveryOrderStatus = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const orderId = String(request.data?.orderId || request.data?.id || "").trim();
+  const requested = String(request.data?.status || "").trim().toLowerCase();
+  if (!orderId) throw new HttpsError("invalid-argument", "Order ID is required.");
+
+  const normalized = {
+    "assigned": "Assigned",
+    "pending_acceptance": "Assigned",
+    "picked up": "Picked Up",
+    "picked_up": "Picked Up",
+    "out for delivery": "Out for delivery",
+    "out_for_delivery": "Out for delivery",
+    "arrived": "Arrived",
+  }[requested];
+  if (!normalized) throw new HttpsError("invalid-argument", "Unsupported delivery status.");
+
+  const db = getFirestore();
+  const ref = db.collection("orders").doc(orderId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
+
+  const data = snap.data() || {};
+  const assigned = String(data.carrierUid || data.deliveryPartnerUid || data.deliveryPartnerId || data.assignedPartnerId || "");
+  if (assigned !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This delivery is not assigned to you.");
+  }
+
+  const current = String(data.status || "").trim().toLowerCase();
+  const allowed = {
+    "assigned": ["picked up"],
+    "pending_acceptance": ["picked up"],
+    "picked up": ["out for delivery"],
+    "out for delivery": ["arrived"],
+    "arrived": [],
+  };
+  const requestedKey = requested === "picked_up" ? "picked up" : requested;
+  if (!(allowed[current] || []).includes(requestedKey)) {
+    throw new HttpsError("failed-precondition", "Delivery cannot move from " + (data.status || "its current state") + " to " + normalized + ".");
+  }
+
+  const patch = {
+    status: normalized,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: request.auth.uid,
+    statusNote: "Updated by ALLways Delivery Partner",
+  };
+  if (normalized === "Picked Up") patch.pickedUpAt = FieldValue.serverTimestamp();
+  if (normalized === "Out for delivery") patch.outForDeliveryAt = FieldValue.serverTimestamp();
+  if (normalized === "Arrived") patch.arrivedAt = FieldValue.serverTimestamp();
+
+  await ref.update(patch);
+  await db.collection("deliveryPartners").doc(request.auth.uid).set({
+    currentOrderId: orderId,
+    lastDeliveryStatus: normalized,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {ok: true, orderId, status: normalized};
+});
+
+exports.verifyConfirmationPin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const type = String(request.data?.type || "ride").trim().toLowerCase();
+  const id = String(request.data?.id || request.data?.rideId || request.data?.orderId || "").trim();
+  const pin = String(request.data?.pin || "").trim();
+  if (!id) throw new HttpsError("invalid-argument", type === "delivery" ? "Order ID is required." : "Ride ID is required.");
+  if (!/^\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "Enter the 4-digit confirmation number.");
+
+  const db = getFirestore();
+
+  if (type === "delivery") {
+    const ref = db.collection("orders").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Order not found.");
+    const data = snap.data() || {};
+    const assigned = String(data.carrierUid || data.deliveryPartnerUid || data.deliveryPartnerId || data.assignedPartnerId || "");
+    if (assigned !== request.auth.uid) {
+      throw new HttpsError("permission-denied", "This delivery is not assigned to you.");
+    }
+    const status = String(data.status || "").toLowerCase();
+    if (!["out for delivery", "arrived"].includes(status)) {
+      throw new HttpsError("failed-precondition", "Delivery is not ready for customer confirmation.");
+    }
+    if (String(data.confirmationPin || "").trim() !== pin) {
+      throw new HttpsError("permission-denied", "Incorrect confirmation number.");
+    }
+
+    const isCod = String(data.paymentMethod || "COD").toUpperCase() === "COD";
+    const cashCollected = Boolean(request.data?.cashCollected);
+    if (isCod && !cashCollected) {
+      throw new HttpsError("failed-precondition", "Cash collection must be confirmed before completion.");
+    }
+
+    const patch = {
+      status: "Delivered",
+      deliveryPinVerified: true,
+      deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
+      deliveredAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      completedBy: request.auth.uid,
+    };
+    if (isCod) {
+      patch.cashCollected = true;
+      patch.cashCollectedAt = FieldValue.serverTimestamp();
+      patch.paymentStatus = "paid";
+    }
+    await ref.update(patch);
+    await db.collection("deliveryPartners").doc(request.auth.uid).set({
+      status: "online",
+      dutyStatus: "online",
+      isOnline: true,
+      availableForDeliveries: true,
+      currentOrderId: null,
+      pendingOrderId: null,
+      lastDeliveredAt: FieldValue.serverTimestamp(),
+      statusUpdatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    return {ok: true, orderId: id};
+  }
+
+  const ref = db.collection("autoRideRequests").doc(id);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
-
   const data = snap.data() || {};
   if (String(data.driverUid || "") !== request.auth.uid) {
     throw new HttpsError("permission-denied", "This ride is not assigned to you.");
@@ -264,11 +441,11 @@ exports.verifyConfirmationPin = onCall(async (request) => {
   await db.collection("ridePartners").doc(request.auth.uid).set({
     status: "on_trip",
     availableForRides: false,
-    activeRideId: rideId,
+    activeRideId: id,
     statusUpdatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
 
-  return {ok: true, rideId};
+  return {ok: true, rideId: id};
 });
 
 /** Authoritative ride completion. Carrier cannot mark an unrelated ride completed. */
