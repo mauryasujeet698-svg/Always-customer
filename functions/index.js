@@ -295,7 +295,7 @@ exports.verifyConfirmationPin = onCall(async (request) => {
   const type = String(request.data?.type || "").toLowerCase();
   const id = String(request.data?.id || "").trim();
   const pin = String(request.data?.pin || "").trim();
-  if (!id || !/^\\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "A valid 4-digit PIN is required.");
+  if (!id || !/^\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "A valid 4-digit PIN is required.");
   const db = getFirestore();
 
   if (type === "ride") {
