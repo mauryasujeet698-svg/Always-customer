@@ -31,14 +31,6 @@ async function sendToTopic(topic, title, body, data = {}) {
       title: String(title || "ALLways"),
       body: String(body || ""),
     },
-    android: {
-      priority: "high",
-      notification: {
-        channelId: "allways_updates",
-        priority: "high",
-        sound: "default",
-      },
-    },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
     ),
@@ -52,14 +44,6 @@ async function sendToToken(token, title, body, data = {}) {
     notification: {
       title: String(title || "ALLways"),
       body: String(body || ""),
-    },
-    android: {
-      priority: "high",
-      notification: {
-        channelId: "allways_updates",
-        priority: "high",
-        sound: "default",
-      },
     },
     data: Object.fromEntries(
       Object.entries(data).map(([k, v]) => [k, String(v ?? "")])
