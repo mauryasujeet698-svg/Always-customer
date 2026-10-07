@@ -49,6 +49,8 @@ let savedAddresses = [];
 let favouriteIds = new Set();
 let favouritesOnly = false;
 const ADMIN_EMAIL = "mauryasujeet698@gmail.com";
+// Add the Firebase Web Push public VAPID key here to enable background browser notifications.
+const WEB_PUSH_VAPID_KEY = "";
 let orders = [];
 
 try {
@@ -826,6 +828,32 @@ function isAdmin(){ return !!currentUser && String(currentUser.email || "").toLo
 
 function firebaseConfigured(){
   return !!(window.firebase && FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+}
+
+async function setupWebNotifications(user){
+  if(!firebaseReady || !("Notification" in window) || !firebase.messaging) return;
+  if(!WEB_PUSH_VAPID_KEY) return;
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=="granted") return;
+    const messaging=firebase.messaging();
+    const token=await messaging.getToken({vapidKey:WEB_PUSH_VAPID_KEY});
+    if(token){
+      await db.collection("fcmTokens").doc(user.uid).collection("tokens").doc(token).set({
+        uid:user.uid,token,role:"customer",platform:"web",notificationsEnabled:true,
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      },{merge:true});
+      await db.collection("fcmTokens").doc(user.uid).set({
+        uid:user.uid,token,role:"customer",platform:"web",notificationsEnabled:true,
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      },{merge:true});
+    }
+    messaging.onMessage(function(message){
+      const title=message.notification?.title || message.data?.title || "ALLways";
+      const body=message.notification?.body || message.data?.body || message.data?.message || "You have a new ALLways update.";
+      if(Notification.permission==="granted") new Notification(title,{body});
+    });
+  }catch(error){ console.warn("ALLways web notifications unavailable:",error); }
 }
 
 function initAuth(){
