@@ -236,6 +236,41 @@ exports.notifyRideRequest = onDocumentCreated(
   }
 );
 
+/** Support tickets -> notify Admin and requester when status changes */
+exports.notifySupportTicket = onDocumentCreated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const data = event.data ? event.data.data() || {} : {};
+    const ticketId = event.params.ticketId;
+    const subject = String(data.subject || data.category || "Support request");
+    await sendToTopic("admins", "New support request", subject, {
+      type: "support_ticket",
+      ticketId,
+      queue: String(data.queue || "Customer Support"),
+    }).catch(() => {});
+  }
+);
+
+exports.notifySupportTicketUpdate = onDocumentUpdated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    const statusBefore = String(before.status || "");
+    const statusAfter = String(after.status || "");
+    if (statusBefore === statusAfter) return;
+    const requesterId = String(after.requesterId || after.customerId || "");
+    if (!requesterId) return;
+    await sendToUserTokens(requesterId, "Support update",
+      "Your support request is now " + statusAfter.replaceAll("_", " "), {
+        type: "support_update",
+        ticketId: event.params.ticketId,
+        status: statusAfter,
+      }).catch(() => {});
+  }
+);
+
+
 exports.notifyRideUpdate = onDocumentUpdated(
   "autoRideRequests/{rideId}",
   async (event) => {
