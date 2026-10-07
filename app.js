@@ -729,11 +729,12 @@ function renderOrders(){
       '<p>'+itemText+'</p>'+(order.cancellationReason ? '<div class="cancelReason">❌ Cancellation reason: '+escapeHtml(order.cancellationReason)+'</div>' : '')+
       (!cancelled ? '<div class="orderTracker">'+statusSteps(order.status)+'</div>' : '')+
       eta+
-      '<small>Placed: '+escapeHtml(order.time)+'</small>'+ratingBlock+'<div class="orderActions">'+reorderButton+cancelButton+'</div>'+
+      '<small>Placed: '+escapeHtml(order.time)+'</small>'+ratingBlock+'<div class="orderActions"><button class="secondary smallAction" data-support-order="'+escapeHtml(order.id)+'">🎧 Help</button>'+reorderButton+cancelButton+'</div>'+
       '</div>';
   }).join("");
   ordersList.querySelectorAll(".rateBtn").forEach(function(btn){btn.addEventListener("click",function(){rateOrder(btn.dataset.rateId,btn.dataset.rate);});});
   ordersList.querySelectorAll(".reorderBtn").forEach(function(btn){btn.addEventListener("click",function(){reorderOrder(btn.dataset.reorderId);});});
+  ordersList.querySelectorAll("[data-support-order]").forEach(function(btn){btn.addEventListener("click",function(){openSupport({area:"Order",orderId:btn.dataset.supportOrder});});});
 }
 
 
@@ -764,11 +765,45 @@ function showSection(id){
    TRAVEL
    ========================================================= */
 
-function travelAction(type){
-  const names = { ride: "Local rides", bus: "Bus tickets", train: "Train journeys", rental: "Vehicle rentals" };
-  const message = document.getElementById("travelMsg");
-  if(!message) return;
-  message.innerHTML = `<b>${escapeHtml(names[type] || "Travel")}</b> will be available soon in your area. We’re preparing the ALLways Travel experience.`;
+async function travelAction(type){
+  if(type!=="ride"){
+    const message=document.getElementById("travelMsg");
+    if(message)message.textContent="This travel service is not enabled in your area yet.";
+    return;
+  }
+  if(!currentUser){openAuth();return;}
+  const modal=document.getElementById("modal"),content=document.getElementById("modalContent");
+  if(!modal||!content)return;
+  content.innerHTML='<h2>Book a local ride</h2><p class="muted">Allow location access so ALLways can find your pickup point.</p><label>Destination<input id="rideDestination" class="field" placeholder="Enter destination"></label><label>Vehicle<select id="rideType" class="field"><option value="bike">Bike</option><option value="auto">Auto</option><option value="car">Car</option></select></label><button class="primary" id="requestRideBtn">Request ride</button><p id="rideMsg" class="muted auth-msg"></p>';
+  modal.classList.remove("hidden");
+  document.getElementById("requestRideBtn").addEventListener("click",requestRide);
+}
+async function requestRide(){
+  const msg=document.getElementById("rideMsg"),destination=document.getElementById("rideDestination")?.value.trim(),type=document.getElementById("rideType")?.value||"bike";
+  if(!destination){if(msg)msg.textContent="Enter your destination.";return;}
+  if(!navigator.geolocation){if(msg)msg.textContent="Location is not available on this device.";return;}
+  const btn=document.getElementById("requestRideBtn");if(btn)btn.disabled=true;if(msg)msg.textContent="Finding your pickup location...";
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    try{
+      const lat=pos.coords.latitude,lng=pos.coords.longitude;
+      let pickupAddress="Current location",destinationAddress=destination,dlat=null,dlng=null;
+      try{
+        const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng,{headers:{"Accept":"application/json"}});
+        if(r.ok){const x=await r.json();pickupAddress=x.display_name||pickupAddress;}
+      }catch(_){}
+      try{
+        const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
+        if(r.ok){const x=await r.json();if(x&&x[0]){dlat=Number(x[0].lat);dlng=Number(x[0].lon);destinationAddress=x[0].display_name||destination;}}
+      }catch(_){}
+      const ref=db.collection("autoRideRequests").doc();
+      await ref.set({
+        customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerEmail:currentUser.email||"",
+        pickupAddress,destinationAddress,pickupLatitude:lat,pickupLongitude:lng,destinationLatitude:dlat,destinationLongitude:dlng,
+        rideType:type,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      closeModal();showSection("orders");alert("Ride requested. ALLways is finding a carrier.");
+    }catch(e){if(btn)btn.disabled=false;if(msg)msg.textContent="Could not request the ride. Please try again.";}
+  },function(){if(btn)btn.disabled=false;if(msg)msg.textContent="Location permission is required to request a ride.";},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 
 
@@ -1079,6 +1114,48 @@ async function resetPassword(){
 
 
 /* =========================================================
+   CUSTOMER SUPPORT
+   ========================================================= */
+async function openSupport(prefill){
+  if(!currentUser){ openAuth(); return; }
+  const content=document.getElementById("authContent"), modal=document.getElementById("authModal");
+  if(!content||!modal)return;
+  const orderOptions=orders.map(function(o){return '<option value="'+escapeHtml(o.id||o.orderId||'')+'">#'+escapeHtml(o.id||o.orderId||'Order')+'</option>';}).join("");
+  content.innerHTML='<div class="auth-head"><span class="auth-icon">?</span><h2>Customer Support</h2><p class="muted">Choose the issue type so ALLways can route it correctly.</p></div>'+
+    '<label>Area<select id="supportArea" class="field"><option value="Order">Order</option><option value="Ride">Ride</option><option value="Account">Account</option><option value="General">General</option></select></label>'+
+    '<label id="supportOrderWrap">Order<select id="supportOrder" class="field"><option value="">Select an order</option>'+orderOptions+'</select></label>'+
+    '<label>Issue<select id="supportCategory" class="field"><option>Order problem</option><option>Missing item</option><option>Wrong item</option><option>Damaged item</option><option>Delivery delayed</option><option>Cancellation / refund</option><option>Delivery partner issue</option><option>Ride issue</option><option>Carrier issue</option><option>Account / login</option><option>Suggestion</option><option>General issue</option></select></label>'+
+    '<label>Message<textarea id="supportMessage" class="field" rows="4" placeholder="Tell us what happened..."></textarea></label>'+
+    '<button class="primary" id="submitSupportBtn">Create support request</button><p id="supportMsg" class="muted auth-msg"></p>';
+  const area=document.getElementById("supportArea"), orderWrap=document.getElementById("supportOrderWrap");
+  area.value=prefill&&prefill.area?prefill.area:"Order";
+  orderWrap.style.display=area.value==="Order"?"block":"none";
+  area.addEventListener("change",function(){orderWrap.style.display=area.value==="Order"?"block":"none";});
+  document.getElementById("submitSupportBtn").addEventListener("click",async function(){
+    const msg=document.getElementById("supportMessage").value.trim();
+    const category=document.getElementById("supportCategory").value;
+    const orderId=document.getElementById("supportOrder").value;
+    const a=area.value;
+    if(!msg){document.getElementById("supportMsg").textContent="Please describe the issue.";return;}
+    const btn=this;btn.disabled=true;document.getElementById("supportMsg").textContent="Submitting...";
+    try{
+      const ride=(a==="Ride");
+      await db.collection("supportTickets").add({
+        requesterId:currentUser.uid,requesterRole:"customer",customerId:currentUser.uid,
+        customerName:currentUser.displayName||currentUser.email||"Customer",queue:"Customer Support",
+        area:a,category:category,subcategory:category,subject:category,
+        message:msg,orderId:orderId||null,rideId:prefill&&prefill.rideId?prefill.rideId:null,
+        priority:category.includes("safety")?"urgent":"normal",status:"open",
+        createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      document.getElementById("supportMsg").textContent="Support request created. ALLways will review it.";
+      setTimeout(closeAuth,700);
+    }catch(e){btn.disabled=false;document.getElementById("supportMsg").textContent="Could not create the request. Please try again.";}
+  });
+  modal.classList.remove("hidden");
+}
+
+/* =========================================================
    ACCOUNT
    ========================================================= */
 
@@ -1097,19 +1174,19 @@ function openAccount(){
       <h2>Your ALLways Account</h2>
       <p class="muted">${escapeHtml(currentUser.email)}</p>
     </div>
-    <button class="primary" id="myOrdersBtn">📦 My Orders</button>
+    <button class="primary" id="myOrdersBtn">📦 My Orders</button><button class="secondary" id="customerSupportBtn">🎧 Customer Support</button>
     <button class="secondary" id="favouritesBtn">❤️ Saved favourites (${favouriteIds.size})</button>
     <button class="secondary" id="addressesBtn">🏠 Saved addresses (${savedAddresses.length})</button>
     ${isAdmin() ? '<button class="secondary" id="adminDashboardBtn">🛠 Admin Dashboard</button>' : ''}
     <button class="secondary" id="signOutBtn">Sign out</button>
   `;
 
-  const myOrdersBtn = document.getElementById("myOrdersBtn");
+  const myOrdersBtn = document.getElementById("myOrdersBtn");\n  const customerSupportBtn = document.getElementById("customerSupportBtn");
   const favouritesBtn = document.getElementById("favouritesBtn");
   const addressesBtn = document.getElementById("addressesBtn");
   const adminDashboardBtn = document.getElementById("adminDashboardBtn");
   const signOutBtn = document.getElementById("signOutBtn");
-  if(myOrdersBtn){
+  if(customerSupportBtn){customerSupportBtn.addEventListener("click",function(){openSupport();});}\n  if(myOrdersBtn){
     myOrdersBtn.addEventListener("click", function(){
       showSection("orders");
       closeAuth();

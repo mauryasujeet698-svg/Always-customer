@@ -1,5 +1,6 @@
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -235,6 +236,73 @@ exports.notifyRideRequest = onDocumentCreated(
     }
   }
 );
+
+/** Authoritative ride completion. Carrier cannot mark an unrelated ride completed. */
+exports.completeRide = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.rideId || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "rideId is required.");
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+  const data = snap.data() || {};
+  if (String(data.driverUid || "") !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This ride is not assigned to you.");
+  }
+  if (String(data.status || "").toLowerCase() !== "started") {
+    throw new HttpsError("failed-precondition", "Ride must be started before completion.");
+  }
+  await ref.update({
+    status: "completed",
+    completedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    completedBy: request.auth.uid,
+  });
+  await db.collection("ridePartners").doc(request.auth.uid).set({
+    status: "online",
+    availableForRides: true,
+    activeRideId: null,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+  return {ok: true};
+});
+
+
+/** Support tickets -> notify Admin and requester when status changes */
+exports.notifySupportTicket = onDocumentCreated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const data = event.data ? event.data.data() || {} : {};
+    const ticketId = event.params.ticketId;
+    const subject = String(data.subject || data.category || "Support request");
+    await sendToTopic("admins", "New support request", subject, {
+      type: "support_ticket",
+      ticketId,
+      queue: String(data.queue || "Customer Support"),
+    }).catch(() => {});
+  }
+);
+
+exports.notifySupportTicketUpdate = onDocumentUpdated(
+  "supportTickets/{ticketId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    const statusBefore = String(before.status || "");
+    const statusAfter = String(after.status || "");
+    if (statusBefore === statusAfter) return;
+    const requesterId = String(after.requesterId || after.customerId || "");
+    if (!requesterId) return;
+    await sendToUserTokens(requesterId, "Support update",
+      "Your support request is now " + statusAfter.replaceAll("_", " "), {
+        type: "support_update",
+        ticketId: event.params.ticketId,
+        status: statusAfter,
+      }).catch(() => {});
+  }
+);
+
 
 exports.notifyRideUpdate = onDocumentUpdated(
   "autoRideRequests/{rideId}",
