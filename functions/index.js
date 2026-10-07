@@ -237,6 +237,48 @@ exports.notifyRideRequest = onDocumentCreated(
   }
 );
 
+/** Authoritative 4-digit passenger confirmation. */
+exports.verifyConfirmationPin = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.id || request.data?.rideId || "").trim();
+  const pin = String(request.data?.pin || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "Ride ID is required.");
+  if (!/^\\d{4}$/.test(pin)) throw new HttpsError("invalid-argument", "Enter the 4-digit confirmation number.");
+
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+
+  const data = snap.data() || {};
+  if (String(data.driverUid || "") !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This ride is not assigned to you.");
+  }
+  const status = String(data.status || "").toLowerCase();
+  if (!["accepted", "arrived"].includes(status)) {
+    throw new HttpsError("failed-precondition", "Ride is not waiting for passenger confirmation.");
+  }
+  if (String(data.confirmationPin || "").trim() !== pin) {
+    throw new HttpsError("permission-denied", "Incorrect confirmation number.");
+  }
+
+  await ref.update({
+    status: "started",
+    ridePinVerified: true,
+    ridePinVerifiedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    startedBy: request.auth.uid,
+  });
+  await db.collection("ridePartners").doc(request.auth.uid).set({
+    status: "on_trip",
+    availableForRides: false,
+    activeRideId: rideId,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  return {ok: true, rideId};
+});
+
 /** Authoritative ride completion. Carrier cannot mark an unrelated ride completed. */
 exports.completeRide = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
