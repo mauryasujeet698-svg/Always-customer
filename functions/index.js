@@ -1,5 +1,6 @@
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -235,6 +236,38 @@ exports.notifyRideRequest = onDocumentCreated(
     }
   }
 );
+
+/** Authoritative ride completion. Carrier cannot mark an unrelated ride completed. */
+exports.completeRide = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.rideId || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "rideId is required.");
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+  const data = snap.data() || {};
+  if (String(data.driverUid || "") !== request.auth.uid) {
+    throw new HttpsError("permission-denied", "This ride is not assigned to you.");
+  }
+  if (String(data.status || "").toLowerCase() !== "started") {
+    throw new HttpsError("failed-precondition", "Ride must be started before completion.");
+  }
+  await ref.update({
+    status: "completed",
+    completedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    completedBy: request.auth.uid,
+  });
+  await db.collection("ridePartners").doc(request.auth.uid).set({
+    status: "online",
+    availableForRides: true,
+    activeRideId: null,
+    statusUpdatedAt: FieldValue.serverTimestamp(),
+  }, {merge: true});
+  return {ok: true};
+});
+
 
 /** Support tickets -> notify Admin and requester when status changes */
 exports.notifySupportTicket = onDocumentCreated(
