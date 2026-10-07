@@ -765,11 +765,45 @@ function showSection(id){
    TRAVEL
    ========================================================= */
 
-function travelAction(type){
-  const names = { ride: "Local rides", bus: "Bus tickets", train: "Train journeys", rental: "Vehicle rentals" };
-  const message = document.getElementById("travelMsg");
-  if(!message) return;
-  message.innerHTML = `<b>${escapeHtml(names[type] || "Travel")}</b> will be available soon in your area. We’re preparing the ALLways Travel experience.`;
+async function travelAction(type){
+  if(type!=="ride"){
+    const message=document.getElementById("travelMsg");
+    if(message)message.textContent="This travel service is not enabled in your area yet.";
+    return;
+  }
+  if(!currentUser){openAuth();return;}
+  const modal=document.getElementById("modal"),content=document.getElementById("modalContent");
+  if(!modal||!content)return;
+  content.innerHTML='<h2>Book a local ride</h2><p class="muted">Allow location access so ALLways can find your pickup point.</p><label>Destination<input id="rideDestination" class="field" placeholder="Enter destination"></label><label>Vehicle<select id="rideType" class="field"><option value="bike">Bike</option><option value="auto">Auto</option><option value="car">Car</option></select></label><button class="primary" id="requestRideBtn">Request ride</button><p id="rideMsg" class="muted auth-msg"></p>';
+  modal.classList.remove("hidden");
+  document.getElementById("requestRideBtn").addEventListener("click",requestRide);
+}
+async function requestRide(){
+  const msg=document.getElementById("rideMsg"),destination=document.getElementById("rideDestination")?.value.trim(),type=document.getElementById("rideType")?.value||"bike";
+  if(!destination){if(msg)msg.textContent="Enter your destination.";return;}
+  if(!navigator.geolocation){if(msg)msg.textContent="Location is not available on this device.";return;}
+  const btn=document.getElementById("requestRideBtn");if(btn)btn.disabled=true;if(msg)msg.textContent="Finding your pickup location...";
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    try{
+      const lat=pos.coords.latitude,lng=pos.coords.longitude;
+      let pickupAddress="Current location",destinationAddress=destination,dlat=null,dlng=null;
+      try{
+        const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng,{headers:{"Accept":"application/json"}});
+        if(r.ok){const x=await r.json();pickupAddress=x.display_name||pickupAddress;}
+      }catch(_){}
+      try{
+        const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
+        if(r.ok){const x=await r.json();if(x&&x[0]){dlat=Number(x[0].lat);dlng=Number(x[0].lon);destinationAddress=x[0].display_name||destination;}}
+      }catch(_){}
+      const ref=db.collection("autoRideRequests").doc();
+      await ref.set({
+        customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerEmail:currentUser.email||"",
+        pickupAddress,destinationAddress,pickupLatitude:lat,pickupLongitude:lng,destinationLatitude:dlat,destinationLongitude:dlng,
+        rideType:type,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+      closeModal();showSection("orders");alert("Ride requested. ALLways is finding a carrier.");
+    }catch(e){if(btn)btn.disabled=false;if(msg)msg.textContent="Could not request the ride. Please try again.";}
+  },function(){if(btn)btn.disabled=false;if(msg)msg.textContent="Location permission is required to request a ride.";},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 
 
