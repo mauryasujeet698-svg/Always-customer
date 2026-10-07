@@ -729,11 +729,12 @@ function renderOrders(){
       '<p>'+itemText+'</p>'+(order.cancellationReason ? '<div class="cancelReason">❌ Cancellation reason: '+escapeHtml(order.cancellationReason)+'</div>' : '')+
       (!cancelled ? '<div class="orderTracker">'+statusSteps(order.status)+'</div>' : '')+
       eta+
-      '<small>Placed: '+escapeHtml(order.time)+'</small>'+ratingBlock+'<div class="orderActions">'+reorderButton+cancelButton+'</div>'+
+      '<small>Placed: '+escapeHtml(order.time)+'</small>'+ratingBlock+'<div class="orderActions"><button class="secondary smallAction" data-support-order="'+escapeHtml(order.id)+'">🎧 Help</button>'+reorderButton+cancelButton+'</div>'+
       '</div>';
   }).join("");
   ordersList.querySelectorAll(".rateBtn").forEach(function(btn){btn.addEventListener("click",function(){rateOrder(btn.dataset.rateId,btn.dataset.rate);});});
   ordersList.querySelectorAll(".reorderBtn").forEach(function(btn){btn.addEventListener("click",function(){reorderOrder(btn.dataset.reorderId);});});
+  ordersList.querySelectorAll("[data-support-order]").forEach(function(btn){btn.addEventListener("click",function(){openSupport({area:"Order",orderId:btn.dataset.supportOrder});});});
 }
 
 
