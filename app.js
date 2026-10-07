@@ -45,6 +45,8 @@ let firebaseReady = false;
 let db = null;
 let customerOrdersUnsubscribe = null;
 let announcementsUnsubscribe = null;
+let customerNotificationsUnsubscribe = null;
+let customerNotifications = [];
 let savedAddresses = [];
 let favouriteIds = new Set();
 let favouritesOnly = false;
@@ -243,6 +245,11 @@ function chooseSavedAddress(id){
   if(n)n.value=a.name||"";if(p)p.value=a.phone||"";if(ad)ad.value=a.address||"";
 }
 function renderProducts(){
+  const notificationsBtn=document.getElementById("notificationsBtn");
+  if(notificationsBtn)notificationsBtn.addEventListener("click",openNotifications);
+  const enableNotifBtn=document.getElementById("enableBrowserNotificationsBtn");
+  if(enableNotifBtn)enableNotifBtn.addEventListener("click",enableBrowserNotifications);
+
   const search = document.getElementById("search");
   const productsEl = document.getElementById("products");
   const count = document.getElementById("count");
@@ -724,11 +731,13 @@ function renderOrders(){
     const eta=order.estimatedDelivery
       ? '<div class="etaBox">🚚 <b>Estimated delivery: '+escapeHtml(order.estimatedDelivery)+'</b>'+(order.statusNote?'<small>'+escapeHtml(order.statusNote)+'</small>':'')+'</div>'
       : (order.statusNote ? '<div class="etaBox">ℹ️ '+escapeHtml(order.statusNote)+'</div>' : '');
+    const pinBox=order.deliveryPinRequired && !cancelled && order.status!=="Delivered"
+      ? '<div class="deliveryPinBox">🔐 <b>Delivery PIN: '+escapeHtml(order.deliveryPin||"----")+'</b><small>Share this 4-digit PIN with your delivery partner at delivery.</small></div>' : '';
     return '<div class="orderCard '+(cancelled?"cancelled":"")+'">'+
       '<div class="orderTop"><div><b>#'+escapeHtml(order.id)+'</b><span class="status '+(cancelled?"cancelledStatus":"")+'">'+escapeHtml(order.status)+'</span></div><b>₹'+escapeHtml(order.total)+'</b></div>'+
       '<p>'+itemText+'</p>'+(order.cancellationReason ? '<div class="cancelReason">❌ Cancellation reason: '+escapeHtml(order.cancellationReason)+'</div>' : '')+
       (!cancelled ? '<div class="orderTracker">'+statusSteps(order.status)+'</div>' : '')+
-      eta+
+      eta+pinBox+
       '<small>Placed: '+escapeHtml(order.time)+'</small>'+ratingBlock+'<div class="orderActions">'+reorderButton+cancelButton+'</div>'+
       '</div>';
   }).join("");
@@ -765,10 +774,62 @@ function showSection(id){
    ========================================================= */
 
 function travelAction(type){
-  const names = { ride: "Local rides", bus: "Bus tickets", train: "Train journeys", rental: "Vehicle rentals" };
+  if(type === "ride"){
+    openRideBooking();
+    return;
+  }
+  const names = { bus: "Bus tickets", train: "Train journeys", rental: "Vehicle rentals" };
   const message = document.getElementById("travelMsg");
   if(!message) return;
-  message.innerHTML = `<b>${escapeHtml(names[type] || "Travel")}</b> will be available soon in your area. We’re preparing the ALLways Travel experience.`;
+  message.innerHTML = `<b>${escapeHtml(names[type] || "Travel")}</b> is not currently available in this area.`;
+}
+
+async function openRideBooking(){
+  if(!currentUser){ openAuth("Please sign in to book a ride."); return; }
+  const modalContent=document.getElementById("modalContent"), modal=document.getElementById("modal");
+  if(!modalContent||!modal)return;
+  modalContent.innerHTML=`
+    <h2>Book a local ride</h2>
+    <p class="muted">Enter your destination and use your current location as pickup.</p>
+    <label>📍 Pickup address<input id="ridePickupAddress" class="field" placeholder="Pickup location"></label>
+    <button class="locationBtn" id="rideUseLocation">📍 Use my current location</button>
+    <p id="rideLocationMsg" class="muted"></p>
+    <label>🏁 Destination<input id="rideDestinationAddress" class="field" placeholder="Where are you going?"></label>
+    <label>🏍️ Ride type<select id="rideType" class="field"><option value="bike">Bike</option><option value="auto">Auto</option><option value="car">Car</option></select></label>
+    <button class="primary" id="requestRideBtn">Request ride</button>
+  `;
+  let pickupLat=null,pickupLng=null;
+  const locMsg=document.getElementById("rideLocationMsg");
+  document.getElementById("rideUseLocation").onclick=function(){
+    if(!navigator.geolocation){locMsg.textContent="Location is not supported on this device.";return;}
+    locMsg.textContent="Getting your location…";
+    navigator.geolocation.getCurrentPosition(async function(pos){
+      pickupLat=pos.coords.latitude;pickupLng=pos.coords.longitude;
+      const pickup=document.getElementById("ridePickupAddress");
+      try{
+        const response=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pickupLat}&lon=${pickupLng}&zoom=18&addressdetails=1`,{headers:{"Accept":"application/json"}});
+        const data=await response.json();
+        if(pickup)pickup.value=data.display_name||`${pickupLat.toFixed(6)}, ${pickupLng.toFixed(6)}`;
+      }catch(_){if(pickup)pickup.value=`Current location: ${pickupLat.toFixed(6)}, ${pickupLng.toFixed(6)}`;}
+      locMsg.textContent="Pickup location ready.";
+    },function(){locMsg.textContent="Location permission was not granted.";},{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
+  };
+  document.getElementById("requestRideBtn").onclick=async function(){
+    const btn=this;const pickup=(document.getElementById("ridePickupAddress")?.value||"").trim();
+    const destination=(document.getElementById("rideDestinationAddress")?.value||"").trim();
+    const rideType=document.getElementById("rideType")?.value||"bike";
+    if(!pickup||!destination||pickupLat==null||pickupLng==null){alert("Use your current location for pickup and enter a destination.");return;}
+    btn.disabled=true;btn.textContent="Requesting…";
+    try{
+      const ref=db.collection("autoRideRequests").doc();
+      const rideId=ref.id;
+      await ref.set({rideId,customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerPhone:currentUser.phoneNumber||"",pickupAddress:pickup,destinationAddress:destination,pickupLatitude:pickupLat,pickupLongitude:pickupLng,rideType,status:"searching",customerActive:true,createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      closeModal();
+      showSection("orders");
+      alert("Ride requested. ALLways is finding a carrier.");
+    }catch(error){console.error("ALLways ride request failed:",error);alert("Ride request could not be created. Please try again.");btn.disabled=false;btn.textContent="Request ride";}
+  };
+  modal.classList.remove("hidden");
 }
 
 
@@ -826,8 +887,13 @@ function initAuth(){
         announcementsUnsubscribe();
         announcementsUnsubscribe = null;
       }
+      if(!currentUser && customerNotificationsUnsubscribe){
+        customerNotificationsUnsubscribe();
+        customerNotificationsUnsubscribe = null;
+        customerNotifications = [];
+      }
       if(currentUser && db) listenToCustomerOrders();
-      if(currentUser && db) listenAnnouncements();
+      if(currentUser && db) { listenAnnouncements(); listenCustomerNotifications(); }
     });
   } catch(error) {
     firebaseReady = false;
@@ -863,6 +929,78 @@ function showAnnouncementBanner(title, body){
   window.__allwaysAnnouncementTimer=setTimeout(function(){
     if(banner)banner.remove();
   },8000);
+}
+
+function notificationTime(value){
+  if(!value)return "";
+  const d=value.toDate?value.toDate():new Date(value);
+  return isNaN(d.getTime())?"":d.toLocaleString("en-IN");
+}
+
+function renderNotificationBadge(){
+  const btn=document.getElementById("notificationsBtn");
+  if(!btn)return;
+  const unread=customerNotifications.filter(function(n){return n.read!==true;}).length;
+  btn.innerHTML="🔔"+(unread?'<span class="notificationBadge">'+unread+'</span>':"");
+}
+
+function renderNotifications(){
+  const el=document.getElementById("notificationsList");
+  if(!el)return;
+  if(!currentUser){el.innerHTML='<div class="empty">Please sign in to view notifications.</div>';return;}
+  if(!customerNotifications.length){el.innerHTML='<div class="empty">No notifications yet.</div>';return;}
+  el.innerHTML=customerNotifications.map(function(n){
+    const unread=n.read!==true;
+    return '<button type="button" class="notificationItem '+(unread?"unread":"")+'" data-notification-id="'+escapeHtml(n.id||"")+'">'+
+      '<b>'+escapeHtml(n.title||"ALLways")+'</b><span>'+escapeHtml(n.body||"")+'</span><small>'+escapeHtml(notificationTime(n.createdAt))+'</small></button>';
+  }).join("");
+  el.querySelectorAll("[data-notification-id]").forEach(function(btn){btn.onclick=function(){openCustomerNotification(btn.dataset.notificationId);};});
+}
+
+function openNotifications(){
+  if(!currentUser){openAuth("Please sign in to view notifications.");return;}
+  showSection("notifications");
+  renderNotifications();
+}
+
+async function openCustomerNotification(id){
+  const n=customerNotifications.find(function(x){return x.id===id;});
+  if(!n)return;
+  try{if(!n.read)await db.collection("notifications").doc(id).update({read:true,readAt:firebase.firestore.FieldValue.serverTimestamp()});}catch(e){console.warn("Could not mark notification read:",e);}
+  const type=String(n.type||"").toLowerCase();
+  if(n.orderId){showSection("orders");return;}
+  if(n.rideId){showSection("travel");return;}
+  renderNotifications();
+}
+
+async function enableBrowserNotifications(){
+  if(typeof Notification==="undefined"){alert("Browser notifications are not supported here.");return;}
+  const permission=await Notification.requestPermission();
+  if(permission==="granted"){alert("Notifications enabled for this browser.");}
+  else alert("Notification permission was not granted.");
+}
+
+function listenCustomerNotifications(){
+  if(!db||!currentUser)return;
+  if(customerNotificationsUnsubscribe)customerNotificationsUnsubscribe();
+  customerNotificationsUnsubscribe=db.collection("notifications").where("customerId","==",currentUser.uid).limit(50).onSnapshot(function(snap){
+    customerNotifications=snap.docs.map(function(doc){return Object.assign({id:doc.id},doc.data());});
+    customerNotifications.sort(function(a,b){
+      const av=a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():Number(a.createdAt||0);
+      const bv=b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():Number(b.createdAt||0);
+      return bv-av;
+    });
+    renderNotificationBadge();renderNotifications();
+    snap.docChanges().forEach(function(change){
+      if(change.type!=="added")return;
+      const data=change.doc.data()||{};
+      if(data.read===true)return;
+      showAnnouncementBanner(data.title||"ALLways",data.body||"");
+      if(typeof Notification!=="undefined"&&Notification.permission==="granted"){
+        try{new Notification(data.title||"ALLways",{body:data.body||""});}catch(e){}
+      }
+    });
+  },function(error){console.error("ALLways notification listener:",error);});
 }
 
 function listenAnnouncements(){
