@@ -6,6 +6,7 @@ class AllwaysColors {
   static const background = Color(0xFFFFF8FB);
   static const surface = Colors.white;
   static const text = Color(0xFF17151A);
+  static Color get primaryText => allwaysThemeNotifier.value == ThemeMode.dark ? const Color(0xFFF8F5F8) : text;
   static Color get muted => allwaysThemeNotifier.value == ThemeMode.dark ? const Color(0xFFD1CAD2) : const Color(0xFF6F6A73);
   static const primary = Color(0xFFC5005A);
   static const primaryDark = Color(0xFFAA004D);
