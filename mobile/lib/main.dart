@@ -215,7 +215,7 @@ Future<bool> isPincodeServiceable(String pincode) async {
 
 
 
-final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+final themeNotifier = allwaysThemeNotifier;
 final ValueNotifier<bool> unreadNotificationNotifier = ValueNotifier(false);
 final ValueNotifier<String> languageNotifier = ValueNotifier('English');
 
@@ -2211,7 +2211,7 @@ class _CartScreenState extends State<CartScreen>{
               const SizedBox(height:12),
               const Text('Your cart is empty',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),
               const SizedBox(height:6),
-              const Text('Add products from Shop and they will appear here.',textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted)),
+              Text('Add products from Shop and they will appear here.',textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted)),
               const SizedBox(height:16),
               FilledButton(onPressed:()=>Navigator.pop(c),child:const Text('Continue Shopping')),
             ]),
@@ -2228,7 +2228,7 @@ class _CartScreenState extends State<CartScreen>{
                     Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                       Text(x.product.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w900,fontSize:15)),
                       const SizedBox(height:3),
-                      Text('₹${x.product.price.toStringAsFixed(x.product.price%1==0?0:2)}',style:const TextStyle(color:AllwaysColors.muted)),
+                      Text('₹${x.product.price.toStringAsFixed(x.product.price%1==0?0:2)}',style:TextStyle(color:AllwaysColors.muted)),
                       const SizedBox(height:8),
                       Container(height:34,decoration:BoxDecoration(color:AllwaysColors.primarySoft,borderRadius:BorderRadius.circular(17)),child:Row(mainAxisSize:MainAxisSize.min,children:[
                         IconButton(visualDensity:VisualDensity.compact,onPressed:(){setState((){});widget.onQty(x.product.id,-1);setState((){});},icon:const Icon(Icons.remove,size:18,color:AllwaysColors.primary)),
@@ -2272,9 +2272,9 @@ class _CartScreenState extends State<CartScreen>{
                       Expanded(child:OutlinedButton.icon(onPressed:pickScheduledTime,icon:const Icon(Icons.schedule),label:Text(scheduledFor==null?'Choose date & time':MaterialLocalizations.of(context).formatMediumDate(scheduledFor!)+' • '+MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(scheduledFor!))))),
                     ]),
                   if(deliveryType=='scheduled'&&scheduledFor!=null)
-                    Align(alignment:Alignment.centerLeft,child:Text(scheduledFree?'Scheduled delivery: FREE':'Scheduled delivery: ₹'+scheduledFee.toStringAsFixed(0)+' • '+km.toString()+' km',style:const TextStyle(color:AllwaysColors.muted))),
+                    Align(alignment:Alignment.centerLeft,child:Text(scheduledFree?'Scheduled delivery: FREE':'Scheduled delivery: ₹'+scheduledFee.toStringAsFixed(0)+' • '+km.toString()+' km',style:TextStyle(color:AllwaysColors.muted))),
                   if(deliveryType=='instant')
-                    Align(alignment:Alignment.centerLeft,child:Text('Instant delivery: ₹'+instantFee.toStringAsFixed(0)+' • base ₹'+deliveryNum(deliverySettings,'instantBaseFee',35).toStringAsFixed(0)+' + '+km.toString()+' km',style:const TextStyle(color:AllwaysColors.muted))),
+                    Align(alignment:Alignment.centerLeft,child:Text('Instant delivery: ₹'+instantFee.toStringAsFixed(0)+' • base ₹'+deliveryNum(deliverySettings,'instantBaseFee',35).toStringAsFixed(0)+' + '+km.toString()+' km',style:TextStyle(color:AllwaysColors.muted))),
                 ]),
               ),
               const SizedBox(height:10),
@@ -4429,7 +4429,7 @@ class MyTripsPage extends StatelessWidget {
         children:[
           const Text('Your ALLways travel bookings',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900,height:1.12)),
           const SizedBox(height:8),
-          const Text('View, track, cancel eligible rides and review your completed travel bookings.',style:TextStyle(color:AllwaysColors.muted,fontSize:15,height:1.35)),
+          Text('View, track, cancel eligible rides and review your completed travel bookings.',style:TextStyle(color:AllwaysColors.muted,fontSize:15,height:1.35)),
           const SizedBox(height:18),
           const _TripBookingSection(type:'ride'),
         ],
@@ -4578,7 +4578,7 @@ class _TripCard extends StatelessWidget {
           Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:5),decoration:BoxDecoration(color:statusColor.withOpacity(.12),borderRadius:BorderRadius.circular(10)),
             child:Text(status.isEmpty?'Booking':status[0].toUpperCase()+status.substring(1),style:TextStyle(color:statusColor,fontWeight:FontWeight.w800,fontSize:11))),
           const Spacer(),
-          if(dateText.isNotEmpty)Text(dateText,style:const TextStyle(color:AllwaysColors.muted,fontSize:11)),
+          if(dateText.isNotEmpty)Text(dateText,style:TextStyle(color:AllwaysColors.muted,fontSize:11)),
         ]),
         const SizedBox(height:12),
         Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -4598,7 +4598,7 @@ class _TripCard extends StatelessWidget {
           const SizedBox(width:10),
           Column(crossAxisAlignment:CrossAxisAlignment.end,children:[
             Text(fare==null?'—':'₹'+fare.toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
-            const Text('Cash',style:TextStyle(color:AllwaysColors.muted,fontSize:11)),
+            Text('Cash',style:TextStyle(color:AllwaysColors.muted,fontSize:11)),
           ]),
         ]),
         const SizedBox(height:10),
@@ -4607,7 +4607,7 @@ class _TripCard extends StatelessWidget {
           const SizedBox(width:10),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(partner,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800)),
-            Text(vehicle+(phone.isEmpty?'':' • '+phone),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12)),
+            Text(vehicle+(phone.isEmpty?'':' • '+phone),maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:AllwaysColors.muted,fontSize:12)),
           ])),
           if(phone.isNotEmpty)IconButton(onPressed:()=>launchUrl(Uri.parse('tel:'+phone)),icon:const Icon(Icons.call_outlined,color:AllwaysColors.primary)),
         ]),
@@ -4637,7 +4637,7 @@ class _TripEmpty extends StatelessWidget {
   @override Widget build(BuildContext context)=>Container(
     padding:const EdgeInsets.symmetric(vertical:28,horizontal:18),
     decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(18)),
-    child:Center(child:Text(message,textAlign:TextAlign.center,style:const TextStyle(color:AllwaysColors.muted))),
+    child:Center(child:Text(message,textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted))),
   );
 }
 class HelpSupportPage extends StatefulWidget {
@@ -4705,8 +4705,8 @@ class _SupportOption extends StatelessWidget {
     child:Row(children:[
       Container(width:44,height:44,decoration:const BoxDecoration(color:Color(0xFFFCE3EB),shape:BoxShape.circle),child:Icon(icon,color:AllwaysColors.primary)),
       const SizedBox(width:12),
-      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),Text(subtitle,style:const TextStyle(color:AllwaysColors.muted,fontSize:12))])),
-      const Icon(Icons.chevron_right,color:AllwaysColors.muted),
+      Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:TextStyle(fontWeight:FontWeight.w800)),Text(subtitle,style:TextStyle(color:AllwaysColors.muted,fontSize:12))])),
+      Icon(Icons.chevron_right,color:AllwaysColors.muted),
     ]),
   );
 }
@@ -5216,16 +5216,16 @@ class _NotificationsPageState extends State<NotificationsPage>{
                                 Row(children:[
                                   Expanded(child:Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:15))),
                                   const SizedBox(width:6),
-                                  Text(_time(n['timestamp']),style:const TextStyle(color:AllwaysColors.muted,fontSize:11)),
+                                  Text(_time(n['timestamp']),style:TextStyle(color:AllwaysColors.muted,fontSize:11)),
                                 ]),
                                 const SizedBox(height:4),
-                                Text(body,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:12.5,height:1.3)),
+                                Text(body,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(color:AllwaysColors.muted,fontSize:12.5,height:1.3)),
                               ])),
                               const SizedBox(width:6),
                               Column(children:[
                                 if(unread)Container(width:7,height:7,decoration:const BoxDecoration(color:AllwaysColors.primary,shape:BoxShape.circle)),
                                 const SizedBox(height:12),
-                                const Icon(Icons.chevron_right,color:AllwaysColors.muted),
+                                Icon(Icons.chevron_right,color:AllwaysColors.muted),
                               ]),
                             ]),
                           ),
