@@ -138,6 +138,50 @@ const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/release
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://api.github.com/repos/mauryasujeet698-svg/Always-website/releases/tags/allways-latest';
 
+Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
+  try {
+    final snap=await FirebaseFirestore.instance.collection('settings').doc('appUpdate').get();
+    final data=snap.data();
+    if(data!=null){
+      final version=(data['version']??'').toString().trim();
+      final apkUrl=(data['apkUrl']??data['url']??'').toString().trim();
+      if(version.isNotEmpty&&apkUrl.isNotEmpty){
+        return <String,dynamic>{
+          'version':version,
+          'url':apkUrl,
+          'digest':(data['sha256']??data['digest']??'').toString().trim(),
+          'notes':(data['notes']??'').toString(),
+          'mandatory':data['mandatory']!=false,
+        };
+      }
+    }
+  }catch(_){}
+
+  try{
+    final response=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
+    if(response.statusCode!=200)return null;
+    final data=jsonDecode(response.body);
+    if(data is! Map)return null;
+    final remote=RegExp(r'(\d+\.\d+\.\d+)').firstMatch((data['name']??'').toString())?.group(1)??'';
+    final assets=data['assets'] is List?data['assets'] as List:const [];
+    for(final raw in assets){
+      if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
+        final url=(raw['browser_download_url']??'').toString().trim();
+        if(remote.isNotEmpty&&url.isNotEmpty){
+          return <String,dynamic>{
+            'version':remote,
+            'url':url,
+            'digest':(raw['digest']??'').toString().trim(),
+            'notes':(data['body']??'').toString(),
+            'mandatory':true,
+          };
+        }
+      }
+    }
+  }catch(_){}
+  return null;
+}
+
 const Map<String,dynamic> _defaultDeliverySettings = {
   'deliveryEnabled': true,
   'instantEnabled': true,
