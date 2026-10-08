@@ -564,15 +564,19 @@ exports.notifySupportTicketUpdate = onDocumentUpdated(
     const after = event.data.after.data() || {};
     const statusBefore = String(before.status || "");
     const statusAfter = String(after.status || "");
-    if (statusBefore === statusAfter) return;
+    const replyBefore = String(before.adminReply || "");
+    const replyAfter = String(after.adminReply || "");
+    if (statusBefore === statusAfter && replyBefore === replyAfter) return;
     const requesterId = String(after.requesterId || after.customerId || "");
     if (!requesterId) return;
-    await sendToUserTokens(requesterId, "Support update",
-      "Your support request is now " + statusAfter.replaceAll("_", " "), {
-        type: "support_update",
-        ticketId: event.params.ticketId,
-        status: statusAfter,
-      }).catch(() => {});
+    const body = replyAfter !== replyBefore && replyAfter
+      ? "ALLways Support replied to your request."
+      : "Your support request is now " + statusAfter.replaceAll("_", " ");
+    await sendToUserTokens(requesterId, "Support update", body, {
+      type: "support_update",
+      ticketId: event.params.ticketId,
+      status: statusAfter,
+    }).catch(() => {});
   }
 );
 
