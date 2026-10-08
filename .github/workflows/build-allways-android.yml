@@ -832,13 +832,14 @@ jobs:
           cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-v${APP_VERSION}.apk"
           cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-latest.apk"
 
-      - name: Upload APK
+      - name: Upload APK (best effort)
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: allways-release-apk-v${{ env.APP_VERSION }}
           path: release-assets/allways-v${{ env.APP_VERSION }}.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
 
       - name: Upload to GitHub Release
