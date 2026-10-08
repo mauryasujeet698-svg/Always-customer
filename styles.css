@@ -25,3 +25,21 @@
 .adminNote{width:100%;padding:10px;border:1px solid #dbe6df;border-radius:10px;margin:5px 0 8px}
 
 .favBtn{float:right;border:0;background:#fff1f5;color:#c51b58;border-radius:50%;width:34px;height:34px;font-size:22px;cursor:pointer}.favBtn.saved{background:#ffe1eb}.rateBox{margin-top:10px;padding:10px;background:#fffaf0;border-radius:11px}.stars{display:flex;gap:5px;margin-top:6px}.rateBtn{border:0;background:none;color:#e6a400;font-size:24px;cursor:pointer}.ratingDone{margin-top:10px;padding:9px;background:#eef8f1;color:#245f3e;border-radius:10px;font-size:13px}.cancelReason{margin-top:8px;padding:9px;background:#fff5f5;color:#9b2c2c;border-radius:10px;font-size:13px}.smallAction{width:auto!important;padding:9px 12px!important;font-size:13px!important;margin-right:7px}.orderActions{display:flex;justify-content:flex-end;align-items:center;gap:6px}.orderActions .secondary{margin-top:0}.field select{background:#fff}
+
+/* Dark-mode accessibility: Light Mode is unchanged. */
+@media (prefers-color-scheme: dark){
+  body{background:#101412;color:#f2f6f3}
+  .topbar,.section,.hero,.location,.product,.orderCard,.modal-card,.auth-card,.cartbar,.adminOrder,.admin-summary>div{background:#171c19;color:#f2f6f3;border-color:#303a34}
+  .muted,.location small,.product small,.stock,.section-head span,.trackStep,.etaBox small,.admin-summary small{color:#b7c2bb}
+  input,textarea,select,.field,.adminActions select,.adminEta input,.adminNote{background:#111614;color:#f2f6f3;border-color:#3b4740}
+  .secondary,.googleBtn,.qtyControl button,.productQty button,.rideHistory,.ridePlace{background:#18221c;color:#dff5e6;border-color:#41604a}
+  .free-banner,.etaBox,.adminItems,.ratingDone{background:#193021;color:#d9f2e1}
+  .orderTracker .trackStep span{border-color:#46534b}
+  .cancelOrderBtn,.removeItemBtn{background:#2b1919;color:#ffb9b9;border-color:#6d3b3b}
+  .modal{background:rgba(0,0,0,.72)}
+  .rideLocationResults{display:grid;gap:6px;margin-top:6px;max-height:220px;overflow:auto}
+}
+.rideLocationResults{display:grid;gap:6px;margin-top:6px;max-height:220px;overflow:auto}
+.rideLocationResults .ridePlace,.rideHistory{width:100%;text-align:left;margin-top:6px}
+.updateBanner{position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;background:#0d6b39;color:#fff;border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.updateBanner button{margin-left:auto;background:#fff;color:#0d6b39;border:0;border-radius:9px;padding:8px 11px;font-weight:900}
