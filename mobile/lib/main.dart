@@ -1920,6 +1920,24 @@ class _ShopPageState extends State<ShopPage>{
             const SizedBox(height:10),
             TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Theme.of(c).colorScheme.surface,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide(color:Theme.of(c).colorScheme.outlineVariant))),onChanged:(v)=>setState(()=>search=v)),
             const SizedBox(height:10),
+            if(widget.user==null)
+              Card(
+                color:Theme.of(c).colorScheme.surfaceContainerHigh,
+                child:Padding(
+                  padding:const EdgeInsets.fromLTRB(14,12,10,12),
+                  child:Row(children:[
+                    Container(width:42,height:42,decoration:BoxDecoration(color:Theme.of(c).colorScheme.primaryContainer,shape:BoxShape.circle),child:Icon(Icons.person_add_alt_1_rounded,color:Theme.of(c).colorScheme.primary)),
+                    const SizedBox(width:12),
+                    Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                      Text('New to ALLways?',style:TextStyle(fontWeight:FontWeight.w900,color:Theme.of(c).colorScheme.onSurface)),
+                      Text('Create your free account to order, save addresses and book rides.',maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:11,color:Theme.of(c).colorScheme.onSurfaceVariant)),
+                    ])),
+                    const SizedBox(width:8),
+                    FilledButton(onPressed:widget.onSignUp,child:const Text('Sign up')),
+                  ]),
+                ),
+              ),
+            const SizedBox(height:10),
             StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
               stream:FirebaseFirestore.instance.collection('settings').doc('delivery').snapshots(),
               builder:(context,deliverySnap){
