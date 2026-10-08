@@ -53,6 +53,36 @@ const ADMIN_EMAIL = "mauryasujeet698@gmail.com";
 const WEB_PUSH_VAPID_KEY = "";
 let orders = [];
 
+// =========================================================
+// THEME
+// =========================================================
+function applyTheme(theme){
+  const dark = theme === "dark";
+  document.body.classList.toggle("theme-dark", dark);
+  const btn = document.getElementById("themeBtn");
+  if(btn){
+    btn.textContent = dark ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+    btn.title = dark ? "Light mode" : "Dark mode";
+  }
+}
+function initTheme(){
+  const saved = localStorage.getItem("allwaysTheme");
+  const theme = saved === "dark" || saved === "light"
+    ? saved
+    : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(theme);
+  const btn = document.getElementById("themeBtn");
+  if(btn){
+    btn.addEventListener("click", function(){
+      const next = document.body.classList.contains("theme-dark") ? "light" : "dark";
+      localStorage.setItem("allwaysTheme", next);
+      applyTheme(next);
+    });
+  }
+}
+
+
 try {
   orders = JSON.parse(localStorage.getItem("allwaysOrders") || "[]");
 } catch(e) {
@@ -1335,7 +1365,8 @@ function startALLways(){
   renderOrders();
 
   // Firebase is initialized before loading the catalog so Firestore is available.
-  loadInventory();
+  initTheme();
+loadInventory();
 
   initAuth();
   loadInventory();
