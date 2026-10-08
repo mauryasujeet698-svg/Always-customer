@@ -740,7 +740,7 @@ function renderOrders(){
   }).join("");
   ordersList.querySelectorAll(".rateBtn").forEach(function(btn){btn.addEventListener("click",function(){rateOrder(btn.dataset.rateId,btn.dataset.rate);});});
   ordersList.querySelectorAll(".reorderBtn").forEach(function(btn){btn.addEventListener("click",function(){reorderOrder(btn.dataset.reorderId);});});
-  ordersList.querySelectorAll("[data-support-order]").forEach(function(btn){btn.addEventListener("click",function(){openSupport({area:"Order",orderId:btn.dataset.supportOrder});});});
+  ordersList.querySelectorAll("[data-support-order]").forEach(function(btn){btn.addEventListener("click",function(){openSupport({area:"Item",orderId:btn.dataset.supportOrder});});});
 }
 
 
@@ -1156,15 +1156,15 @@ async function openSupport(prefill){
   if(!content||!modal)return;
   const orderOptions=orders.map(function(o){return '<option value="'+escapeHtml(o.id||o.orderId||'')+'">#'+escapeHtml(o.id||o.orderId||'Order')+'</option>';}).join("");
   content.innerHTML='<div class="auth-head"><span class="auth-icon">?</span><h2>Customer Support</h2><p class="muted">Choose the issue type so ALLways can route it correctly.</p></div>'+
-    '<label>Area<select id="supportArea" class="field"><option value="Order">Order</option><option value="Ride">Ride</option><option value="Account">Account</option><option value="General">General</option></select></label>'+
+    '<label>Issue type<select id="supportArea" class="field"><option value="Item">Item</option><option value="Ride">Ride</option><option value="General">General</option></select></label>'+
     '<label id="supportOrderWrap">Order<select id="supportOrder" class="field"><option value="">Select an order</option>'+orderOptions+'</select></label>'+
-    '<label>Issue<select id="supportCategory" class="field"><option>Order problem</option><option>Missing item</option><option>Wrong item</option><option>Damaged item</option><option>Delivery delayed</option><option>Cancellation / refund</option><option>Delivery partner issue</option><option>Ride issue</option><option>Carrier issue</option><option>Account / login</option><option>Suggestion</option><option>General issue</option></select></label>'+
+    '<label>Issue<select id="supportCategory" class="field"><option>Missing item</option><option>Wrong item</option><option>Damaged item</option><option>Delivery delayed</option><option>Cancellation / refund</option><option>Quality issue</option><option>Driver partner issue</option><option>Could not find driver</option><option>Driver cancelled</option><option>Wrong fare</option><option>Safety</option><option>Account / login</option><option>Payment</option><option>App problem</option><option>Suggestion</option><option>Privacy / data</option><option>Other</option></select></label>'+
     '<label>Message<textarea id="supportMessage" class="field" rows="4" placeholder="Tell us what happened..."></textarea></label>'+
     '<button class="primary" id="submitSupportBtn">Create support request</button><p id="supportMsg" class="muted auth-msg"></p>';
   const area=document.getElementById("supportArea"), orderWrap=document.getElementById("supportOrderWrap");
-  area.value=prefill&&prefill.area?prefill.area:"Order";
-  orderWrap.style.display=area.value==="Order"?"block":"none";
-  area.addEventListener("change",function(){orderWrap.style.display=area.value==="Order"?"block":"none";});
+  area.value=prefill&&prefill.area?prefill.area:"Item";
+  orderWrap.style.display=area.value==="Item"?"block":"none";
+  area.addEventListener("change",function(){orderWrap.style.display=area.value==="Item"?"block":"none";});
   document.getElementById("submitSupportBtn").addEventListener("click",async function(){
     const msg=document.getElementById("supportMessage").value.trim();
     const category=document.getElementById("supportCategory").value;
@@ -1174,10 +1174,11 @@ async function openSupport(prefill){
     const btn=this;btn.disabled=true;document.getElementById("supportMsg").textContent="Submitting...";
     try{
       const ride=(a==="Ride");
+      const normalizedCategory = category || (a==="Ride" ? "Ride issue" : a==="General" ? "General issue" : "Order problem");
       await db.collection("supportTickets").add({
         requesterId:currentUser.uid,requesterRole:"customer",customerId:currentUser.uid,
         customerName:currentUser.displayName||currentUser.email||"Customer",queue:"Customer Support",
-        area:a,category:category,subcategory:category,subject:category,
+        area:a,category:normalizedCategory,subcategory:normalizedCategory,subject:normalizedCategory,
         message:msg,orderId:orderId||null,rideId:prefill&&prefill.rideId?prefill.rideId:null,
         priority:category.includes("safety")?"urgent":"normal",status:"open",
         createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
