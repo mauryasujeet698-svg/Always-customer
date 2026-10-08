@@ -424,6 +424,17 @@ class AllwaysApp extends StatelessWidget {
             elevation:0,
             margin:EdgeInsets.zero,
           ),
+          dividerColor:const Color(0xFF3B353E),
+          iconTheme:const IconThemeData(color:Color(0xFFD1CAD2)),
+          listTileTheme:const ListTileThemeData(iconColor:Color(0xFFD1CAD2)),
+          dialogTheme:const DialogThemeData(backgroundColor:Color(0xFF1D1A20)),
+          bottomSheetTheme:const BottomSheetThemeData(backgroundColor:Color(0xFF1D1A20)),
+          popupMenuTheme:const PopupMenuThemeData(color:Color(0xFF1D1A20)),
+          snackBarTheme:const SnackBarThemeData(
+            backgroundColor:Color(0xFF2D2830),
+            contentTextStyle:TextStyle(color:Color(0xFFF8F5F8)),
+          ),
+          floatingActionButtonTheme:const FloatingActionButtonThemeData(foregroundColor:Colors.white),
           inputDecorationTheme:const InputDecorationTheme(
             filled:true,
             fillColor:Color(0xFF252128),
