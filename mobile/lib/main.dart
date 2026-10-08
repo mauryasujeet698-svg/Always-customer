@@ -901,7 +901,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 const Icon(Icons.two_wheeler,size:24),const SizedBox(width:8),
                 Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   Text(widget.mode=='ride'?'Green pickup • Red destination • Purple moving bike':'Blue customer • Purple moving partner',style:const TextStyle(fontSize:13)),
-                  if(_routeDistanceMeters!=null)Text((_routeDistanceMeters!<1000?_routeDistanceMeters!.round().toString()+' m':(_routeDistanceMeters!/1000).toStringAsFixed(1)+' km')+' route • ETA '+((_routeDurationSeconds??0)/60).ceil().toString()+' min',style:const TextStyle(fontSize:12,color:AllwaysColors.muted)),
+                  if(_routeDistanceMeters!=null)Text((_routeDistanceMeters!<1000?_routeDistanceMeters!.round().toString()+' m':(_routeDistanceMeters!/1000).toStringAsFixed(1)+' km')+' route • ETA '+((_routeDurationSeconds??0)/60).ceil().toString()+' min',style:TextStyle(fontSize:12,color:AllwaysColors.muted)),
                 ])),
                 if(widget.allowCancel)TextButton(onPressed:_cancelActiveTrip,child:const Text('Cancel',style:TextStyle(color:Color(0xFF8E5A73)))),
               ]),
@@ -2776,7 +2776,7 @@ class _OrdersPageState extends State<OrdersPage> {
           padding: const EdgeInsets.all(32),
           child: Text(
             _filter == 'All' ? 'No orders yet.' : 'No orders in "$_filter".',
-            style: const TextStyle(color: AllwaysColors.muted, fontSize: 15),
+            style: TextStyle(color: AllwaysColors.muted, fontSize: 15),
             textAlign: TextAlign.center,
           ),
         ),
@@ -3776,7 +3776,7 @@ class _RideTypeListCard extends StatelessWidget{
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
             const SizedBox(height:4),
-            Text(subtitle,style:const TextStyle(fontSize:13,color:AllwaysColors.muted,height:1.25)),
+            Text(subtitle,style:TextStyle(fontSize:13,color:AllwaysColors.muted,height:1.25)),
           ])),
           const Icon(Icons.chevron_right,size:30),
         ]),
@@ -5889,7 +5889,7 @@ class _AuthState extends State<AuthScreen>{
   Future<void> submit()async{setState(()=>busy=true);try{if(signup){final x=await FirebaseAuth.instance.createUserWithEmailAndPassword(email:email.text.trim(),password:pass.text);if(name.text.trim().isNotEmpty)await x.user?.updateDisplayName(name.text.trim());}else{await FirebaseAuth.instance.signInWithEmailAndPassword(email:email.text.trim().toLowerCase(),password:pass.text.trim());}if(mounted)Navigator.pop(context);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(err(e))));}finally{if(mounted)setState(()=>busy=false);}}
   Future<void> reset()async{if(email.text.trim().isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter your email first.')));return;}try{await FirebaseAuth.instance.sendPasswordResetEmail(email:email.text.trim());if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Password reset email sent.')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(err(e))));}}
   Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:Text(signup?'Create ALLways account':'Sign in')),body:ListView(padding:const EdgeInsets.all(20),children:[
-    Text('ALLways',style:TextStyle(fontSize:34,fontWeight:FontWeight.w900)),const Text('Closer to You, Always',style:TextStyle(color:AllwaysColors.muted)),const SizedBox(height:25),
+    Text('ALLways',style:TextStyle(fontSize:34,fontWeight:FontWeight.w900)),Text('Closer to You, Always',style:TextStyle(color:AllwaysColors.muted)),const SizedBox(height:25),
     if(signup)TextField(controller:name,decoration:const InputDecoration(labelText:'Your name')),if(signup)const SizedBox(height:10),
     TextField(controller:email,keyboardType:TextInputType.emailAddress,decoration:const InputDecoration(labelText:'Email')),const SizedBox(height:10),
     TextField(controller:pass,obscureText:hide,decoration:InputDecoration(labelText:'Password',suffixIcon:IconButton(onPressed:()=>setState(()=>hide=!hide),icon:Icon(hide?Icons.visibility:Icons.visibility_off)))),const SizedBox(height:16),
