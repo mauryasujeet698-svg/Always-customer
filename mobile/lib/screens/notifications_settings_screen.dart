@@ -287,7 +287,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_travelUpdates', v);
                   },
                 ),
-                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'Offers & Promotions',
                   'Exclusive deals and reward news',
@@ -298,7 +298,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_offers', v);
                   },
                 ),
-                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'ALLways Announcements',
                   'Important service news and critical alerts',
@@ -524,7 +524,7 @@ class _NotificationsSettingsScreenState
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
       ),
       trailing: Switch(
         value: value,
