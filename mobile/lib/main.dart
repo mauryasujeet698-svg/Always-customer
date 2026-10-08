@@ -1729,7 +1729,7 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             margin:const EdgeInsets.fromLTRB(12,8,12,0),
             alignment:Alignment.centerRight,
             padding:const EdgeInsets.only(right:24),
-            decoration:BoxDecoration(color:AllwaysColors.muted.shade200,borderRadius:BorderRadius.circular(18)),
+            decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHigh,borderRadius:BorderRadius.circular(18)),
             child:const Icon(Icons.close),
           ),
           child:Card(
