@@ -3313,7 +3313,7 @@ class _TravelPageState extends State<TravelPage> {
                   Expanded(child:Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900,color:scheme.onSurface))),
                   TextButton(
                     onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
-                    child:const Row(
+                    child:Row(
                       mainAxisSize:MainAxisSize.min,
                       children:[
                         Text('See all',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:scheme.onSurfaceVariant)),
@@ -3532,12 +3532,12 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
       child:Padding(
         padding:const EdgeInsets.symmetric(horizontal:18,vertical:14),
         child:Row(children:[
-          Icon(recent?Icons.history:Icons.location_on_outlined,color:const Theme.of(context).colorScheme.onSurfaceVariant,size:27),
+          Icon(recent?Icons.history:Icons.location_on_outlined,color:Theme.of(context).colorScheme.onSurfaceVariant,size:27),
           const SizedBox(width:14),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
             const SizedBox(height:3),
-            Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Theme.of(context).colorScheme.onSurfaceVariant)),
+            Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,color:Theme.of(context).colorScheme.onSurfaceVariant)),
           ])),
           PopupMenuButton<String>(
             tooltip:'Location options',
@@ -3579,13 +3579,13 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                     const SizedBox(width:17),const Icon(Icons.search,size:27),const SizedBox(width:10),
                     Expanded(child:TextField(
                       controller:_controller,focusNode:_focus,
-                      decoration:const InputDecoration(
+                      decoration:InputDecoration(
                         border:InputBorder.none,
                         hintText:'Where are you going?',
                         hintStyle:TextStyle(fontSize:16,color:Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     )),
-                    if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:const Icon(Icons.close,color:Theme.of(context).colorScheme.onSurfaceVariant)),
+                    if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:Icon(Icons.close,color:Theme.of(context).colorScheme.onSurfaceVariant)),
                   ]),
                 ),
               ),
@@ -3633,13 +3633,13 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                   if(!_loading&&_error!=null&&_results.isEmpty)...[
                     Padding(
                       padding:const EdgeInsets.all(24),
-                      child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)),
+                      child:Text(_error!,textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)),
                     ),
                   ],
-                  if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
+                  if(!_loading&&_error==null&&_results.isEmpty)Padding(padding:const EdgeInsets.all(30),child:Column(children:[const Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),const SizedBox(height:12),const Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)])),
                   ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
-                if(!hasQuery&&_recent.isEmpty)const Padding(padding:EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
+                if(!hasQuery&&_recent.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[const Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),const SizedBox(height:12),const Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),const SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)])),
               ],
             ),
           ),
@@ -4754,10 +4754,44 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
     return Card(child:ListTile(leading:Icon(x['rideId']!=null?Icons.directions_car_outlined:Icons.shopping_bag_outlined,color:Theme.of(context).colorScheme.primary),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(subtitle,maxLines:2,overflow:TextOverflow.ellipsis),trailing:IconButton(icon:const Icon(Icons.close),tooltip:'Change selection',onPressed:()=>setState(()=>selectedReference=null))));
   }
   Widget _ticketCard(BuildContext context,DocumentSnapshot<Map<String,dynamic>> d){
-    final x=d.data()??{};final cs=Theme.of(context).colorScheme;final ref=(x['referenceType']??'').toString();
-    final refText=ref=='ride'?'Ride: '+(x['rideType']??'Ride').toString():ref.isNotEmpty?'Item: '+(x['itemName']??'Item').toString()+' • Order #'+(x['orderNumber']??x['orderId']??'').toString():'';
-    return Card(child:ListTile(leading:Icon(Icons.support_agent,color:cs.primary),title:Text((x['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((x['status']??'open').toString()+(refText.isEmpty?'':' • '+refText)+((x['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(title:Text((x['subject']??'Support ticket').toString()),content:SingleChildScrollView(child:Text((refText.isEmpty?'':refText+'\\n\\n')+(x['message']??'').toString()+((x['adminReply']??'').toString().isNotEmpty?'\\n\\nALLways Support:\\n'+x['adminReply'].toString():'')+'\\n\\nStatus: '+(x['status']??'open').toString())),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))])));
+    final x=d.data()??{};
+    final cs=Theme.of(context).colorScheme;
+    final ref=(x['referenceType']??'').toString();
+    final refText=ref=='ride'
+        ? 'Ride: '+(x['rideType']??'Ride').toString()
+        : ref.isNotEmpty
+            ? 'Item: '+(x['itemName']??'Item').toString()+' • Order #'+(x['orderNumber']??x['orderId']??'').toString()
+            : '';
+    return Card(
+      child:ListTile(
+        leading:Icon(Icons.support_agent,color:cs.primary),
+        title:Text((x['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
+        subtitle:Text((x['status']??'open').toString()+
+          (refText.isEmpty?'':' • '+refText)+
+          ((x['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),
+        onTap:()=>showDialog(
+          context:context,
+          builder:(dialog)=>AlertDialog(
+            title:Text((x['subject']??'Support ticket').toString()),
+            content:SingleChildScrollView(
+              child:Text(
+                (refText.isEmpty?'':refText+'\n\n')+
+                (x['message']??'').toString()+
+                ((x['adminReply']??'').toString().isNotEmpty
+                    ? '\n\nALLways Support:\n'+x['adminReply'].toString()
+                    : '')+
+                '\n\nStatus: '+(x['status']??'open').toString(),
+              ),
+            ),
+            actions:[
+              TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close')),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+
   @override Widget build(BuildContext context){
     final u=FirebaseAuth.instance.currentUser;final cs=Theme.of(context).colorScheme;final canSubmit=issue!=null&&details.text.trim().isNotEmpty&&(category=='General'||selectedReference!=null);
     return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
@@ -4899,6 +4933,13 @@ class ProfilePage extends StatefulWidget{
   @override State<ProfilePage> createState()=>_ProfilePageState();
 }
 class _ProfilePageState extends State<ProfilePage>{
+  bool _versionGreater(String remote,String local){
+    List<int> p(String v)=>v.split('.').map((x)=>int.tryParse(x.replaceAll(RegExp(r'[^0-9]'),''))??0).toList();
+    final a=p(remote),b=p(local);
+    for(var i=0;i<3;i++){final x=i<a.length?a[i]:0,y=i<b.length?b[i]:0;if(x!=y)return x>y;}
+    return false;
+  }
+
   Future<void> _checkForUpdate(BuildContext c) async {
     try{
       final r=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
