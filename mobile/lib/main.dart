@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -49,7 +50,11 @@ int _editDistance(String a,String b){
 }
 
 
-String _mapboxTilesUrl() => _mapboxStyleTiles + _mapboxPublicToken;
+String _mapboxTilesUrl({bool dark=false}) {
+  if (_mapboxPublicToken.trim().isEmpty) return _mapboxStyleTiles + _mapboxPublicToken;
+  final style = dark ? 'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}?access_token=' : _mapboxStyleTiles;
+  return style + _mapboxPublicToken;
+}
 const cloudinaryCloudName='busdtvia';
 const cloudinaryUploadPreset='allways_preset';
 
@@ -872,6 +877,7 @@ class _ShellState extends State<Shell> {
   String? updateVersion;
   String? updateUrl;
   String? updateNotes;
+  String? _updateDigest;
 
   @override void initState(){
     super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); checkForUpdate();
@@ -1038,7 +1044,7 @@ class _ShellState extends State<Shell> {
 
   Future<void> checkForUpdate() async {
     try {
-      final r=await http.get(Uri.parse(updateManifestUrl)).timeout(const Duration(seconds:8));
+      final r=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
       if(r.statusCode!=200)return;
       final data=jsonDecode(r.body);
       if(data is! Map)return;
@@ -1046,10 +1052,11 @@ class _ShellState extends State<Shell> {
       final match=RegExp(r'(\d+\.\d+\.\d+)').firstMatch(name);
       final remote=match?.group(1)??'';
       final assets=data['assets'] is List ? data['assets'] as List : const [];
-      String url='';
+      String url='',digest='';
       for(final raw in assets){
         if(raw is Map && (raw['name']??'').toString()=='allways-latest.apk'){
           url=(raw['browser_download_url']??'').toString();
+          digest=(raw['digest']??'').toString().trim();
           break;
         }
       }
@@ -1057,7 +1064,7 @@ class _ShellState extends State<Shell> {
       final info=await PackageInfo.fromPlatform();
       if(_versionGreater(remote,info.version)){
         if(!mounted)return;
-        setState((){updateVersion=remote;updateUrl=url;updateNotes=(data['body']??'').toString();});
+        setState((){updateVersion=remote;updateUrl=url;updateNotes=(data['body']??'').toString();_updateDigest=digest;});
       }
     }catch(_){}
   }
@@ -1080,26 +1087,34 @@ class _ShellState extends State<Shell> {
         content:ValueListenableBuilder<double>(valueListenable:controller,builder:(_,p,__)=>Column(
           mainAxisSize:MainAxisSize.min,
           children:[LinearProgressIndicator(value:p>0?p:null),const SizedBox(height:12),
-            Text(p>0?'Downloading '+(p*100).toStringAsFixed(0)+'%':'Starting download…')]
+            Text(p>0?'Downloading '+(p*100).toStringAsFixed(0)+'%':'Downloading secure update…')]
         )),
       ));
       final file=File(Directory.systemTemp.path+'/allways_update_'+DateTime.now().millisecondsSinceEpoch.toString()+'.apk');
       final downloadUrl=u+(u.contains('?')?'&':'?')+'cacheBust='+DateTime.now().millisecondsSinceEpoch.toString();
       await Dio().download(downloadUrl,file.path,deleteOnError:true,onReceiveProgress:(received,total){if(total>0)controller.value=received/total;});
+      final expected=(_updateDigest??'').replaceFirst(RegExp(r'^sha256:'),'').trim().toLowerCase();
+      if(expected.isNotEmpty){
+        final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
+        if(actual!=expected){
+          try{await file.delete();}catch(_){}
+          throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
+        }
+      }
       if(mounted)Navigator.of(context).pop();
       final result=await const MethodChannel('com.allways.app/apk_installer').invokeMethod<String>('installApk',{'path':file.path});
       if(result=='permission_required'){
-        try{
-          await const MethodChannel('com.allways.app/apk_installer').invokeMethod('openInstallSettings');
-        }catch(_){}
-        messenger.showSnackBar(const SnackBar(content:Text('Please allow ALLways to install updates, then tap Update again.')));
+        try{await const MethodChannel('com.allways.app/apk_installer').invokeMethod('openInstallSettings');}catch(_){}
+        messenger.showSnackBar(const SnackBar(content:Text('Allow ALLways to install updates, then tap Update again.')));
+      } else if(result!='started') {
+        messenger.showSnackBar(SnackBar(content:Text('Could not start installation: '+(result??'unknown error'))));
       }
-      else if(result!='started')messenger.showSnackBar(SnackBar(content:Text('Could not start installation: '+(result??'unknown error'))));
     }catch(e){
       if(mounted&&Navigator.of(context).canPop())Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(content:Text('Update failed: '+e.toString())));
+      messenger.showSnackBar(SnackBar(content:Text('Update failed: '+e.toString().replaceFirst('Exception: ',''))));
     }finally{controller.dispose();}
   }
+
   Future<List<Product>> _loadInventoryFallback() async {
     try {
       final productSnap = await FirebaseFirestore.instance.collection('products').limit(1000).get();
@@ -3012,7 +3027,7 @@ class _TravelPageState extends State<TravelPage> {
         child:Padding(
           padding:const EdgeInsets.symmetric(horizontal:4,vertical:6),
           child:Row(children:[
-            const Icon(Icons.history,color:Color(0xFF69717D),size:27),
+            Icon(Icons.history,color:Theme.of(context).colorScheme.onSurfaceVariant,size:27),
             const SizedBox(width:14),
             Expanded(child:Column(
               mainAxisAlignment:MainAxisAlignment.center,
@@ -3020,13 +3035,13 @@ class _TravelPageState extends State<TravelPage> {
               children:[
                 Text(title,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
                 const SizedBox(height:2),
-                Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,color:Color(0xFF7A828D))),
+                Text(subtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:14,color:Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
             )),
             IconButton(
               tooltip:favorite?'Remove favourite':'Save favourite',
               onPressed:()=>_toggleTravelFavorite(title),
-              icon:Icon(favorite?Icons.favorite:Icons.favorite_border,color:favorite?const Color(0xFFE51B5E):const Color(0xFF69717D),size:26),
+              icon:Icon(favorite?Icons.favorite:Icons.favorite_border,color:favorite?const Color(0xFFE51B5E):Theme.of(context).colorScheme.onSurfaceVariant,size:26),
             ),
           ]),
         ),
@@ -3036,13 +3051,13 @@ class _TravelPageState extends State<TravelPage> {
 
   Widget _zoomButton({required IconData icon,required VoidCallback onPressed}){
     return Material(
-      color:Colors.white,
+      color:Theme.of(context).colorScheme.surfaceContainerHigh,
       elevation:3,
       shape:const CircleBorder(),
       child:InkWell(
         customBorder:const CircleBorder(),
         onTap:onPressed,
-        child:SizedBox(width:48,height:48,child:Icon(icon,size:25,color:const Color(0xFF25262A))),
+        child:SizedBox(width:48,height:48,child:Icon(icon,size:25,color:Theme.of(context).colorScheme.onSurface)),
       ),
     );
   }
@@ -3099,12 +3114,14 @@ class _TravelPageState extends State<TravelPage> {
   @override
   Widget build(BuildContext context){
     final size=MediaQuery.of(context).size;
+    final scheme=Theme.of(context).colorScheme;
+    final dark=Theme.of(context).brightness==Brightness.dark;
     final mapHeight=(size.height*.42).clamp(340.0,620.0);
     final mapUrl=_mapboxPublicToken.trim().isNotEmpty
-        ? _mapboxTilesUrl()
+        ? _mapboxTilesUrl(dark:dark)
         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
     return Scaffold(
-      backgroundColor:const Color(0xFFFFFAFC),
+      backgroundColor:scheme.surface,
       body:SafeArea(
         top:false,
         child:ListView(
@@ -3224,7 +3241,7 @@ class _TravelPageState extends State<TravelPage> {
               child:Container(
                 padding:const EdgeInsets.fromLTRB(16,12,10,12),
                 decoration:BoxDecoration(
-                  color:Colors.white,
+                  color:scheme.surfaceContainer,
                   borderRadius:BorderRadius.circular(18),
                   boxShadow:[BoxShadow(color:Colors.black.withOpacity(.08),blurRadius:10,offset:const Offset(0,3))],
                 ),
@@ -3236,9 +3253,9 @@ class _TravelPageState extends State<TravelPage> {
                   ),
                   const SizedBox(width:10),
                   Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    const Text('Pickup Point',style:TextStyle(fontSize:12,color:Color(0xFF68727F),fontWeight:FontWeight.w700)),
+                    Text('Pickup Point',style:TextStyle(fontSize:12,color:scheme.onSurfaceVariant,fontWeight:FontWeight.w700)),
                     const SizedBox(height:2),
-                    Text(_pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14,fontWeight:FontWeight.w800)),
+                    Text(_pickupAddress,maxLines:2,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:14,fontWeight:FontWeight.w800,color:scheme.onSurface)),
                   ])),
                   IconButton(
                     tooltip:'Use current location',
@@ -3251,7 +3268,7 @@ class _TravelPageState extends State<TravelPage> {
             Padding(
               padding:const EdgeInsets.fromLTRB(28,10,28,0),
               child:Material(
-                color:Colors.white,
+                color:scheme.surfaceContainerHigh,
                 elevation:4,
                 borderRadius:BorderRadius.circular(32),
                 child:InkWell(
@@ -3260,15 +3277,15 @@ class _TravelPageState extends State<TravelPage> {
                   child:Padding(
                     padding:const EdgeInsets.symmetric(horizontal:18,vertical:13),
                     child:Row(children:[
-                      const Icon(Icons.search,size:30,color:Colors.black),
+                      Icon(Icons.search,size:30,color:scheme.onSurface),
                       const SizedBox(width:14),
                       Expanded(child:Text(
                         _search.text.trim().isEmpty?'Where are you going?':'To: '+_search.text.trim(),
                         maxLines:1,overflow:TextOverflow.ellipsis,
                         style:TextStyle(fontSize:17,fontWeight:FontWeight.w700,
-                          color:_search.text.trim().isEmpty?const Color(0xFF68727F):const Color(0xFF202124)),
+                          color:_search.text.trim().isEmpty?scheme.onSurfaceVariant:scheme.onSurface),
                       )),
-                      if(_selectedDestination!=null)const Icon(Icons.chevron_right,color:Color(0xFF68727F)),
+                      if(_selectedDestination!=null)Icon(Icons.chevron_right,color:scheme.onSurfaceVariant),
                     ]),
                   ),
                 ),
@@ -3293,15 +3310,15 @@ class _TravelPageState extends State<TravelPage> {
               padding:const EdgeInsets.fromLTRB(28,24,20,10),
               child:Row(
                 children:[
-                  const Expanded(child:Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900))),
+                  Expanded(child:Text('Travel with ALLways',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900,color:scheme.onSurface))),
                   TextButton(
                     onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
                     child:const Row(
                       mainAxisSize:MainAxisSize.min,
                       children:[
-                        Text('See all',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:Color(0xFF68727F))),
+                        Text('See all',style:TextStyle(fontSize:14,fontWeight:FontWeight.w600,color:scheme.onSurfaceVariant)),
                         SizedBox(width:2),
-                        Icon(Icons.chevron_right,size:22,color:Color(0xFF68727F)),
+                        Icon(Icons.chevron_right,size:22,color:scheme.onSurfaceVariant),
                       ],
                     ),
                   ),
@@ -3318,7 +3335,7 @@ class _TravelPageState extends State<TravelPage> {
                     icon:Icons.two_wheeler,
                     title:'Book a Bike',
                     subtitle:'Quick & affordable\nbike rides',
-                    background:const Color(0xFFEAF3FF),
+                    background:dark?const Color(0xFF172438):const Color(0xFFEAF3FF),
                     iconBackground:const Color(0xFF2878D8),
                     onTap:()=>_openRide(
                       'bike',
@@ -3331,7 +3348,7 @@ class _TravelPageState extends State<TravelPage> {
                     icon:Icons.directions_car_filled,
                     title:'Rent a Vehicle',
                     subtitle:'Find vehicles for\nyour trips',
-                    background:const Color(0xFFEAF8EF),
+                    background:dark?const Color(0xFF17291F):const Color(0xFFEAF8EF),
                     iconBackground:const Color(0xFF18A661),
                     onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const VehicleBookingPage())),
                   ),
@@ -3515,12 +3532,12 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
       child:Padding(
         padding:const EdgeInsets.symmetric(horizontal:18,vertical:14),
         child:Row(children:[
-          Icon(recent?Icons.history:Icons.location_on_outlined,color:const Color(0xFF68727F),size:27),
+          Icon(recent?Icons.history:Icons.location_on_outlined,color:const Theme.of(context).colorScheme.onSurfaceVariant,size:27),
           const SizedBox(width:14),
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
             const SizedBox(height:3),
-            Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Color(0xFF68727F))),
+            Text(address,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:13,color:Theme.of(context).colorScheme.onSurfaceVariant)),
           ])),
           PopupMenuButton<String>(
             tooltip:'Location options',
@@ -3557,7 +3574,7 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
               Expanded(
                 child:Container(
                   height:56,
-                  decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(30),boxShadow:[BoxShadow(color:Colors.black.withOpacity(.08),blurRadius:10,offset:const Offset(0,3))]),
+                  decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHigh,borderRadius:BorderRadius.circular(30),boxShadow:[BoxShadow(color:Theme.of(context).colorScheme.onSurface.withOpacity(.08),blurRadius:10,offset:const Offset(0,3))]),
                   child:Row(children:[
                     const SizedBox(width:17),const Icon(Icons.search,size:27),const SizedBox(width:10),
                     Expanded(child:TextField(
@@ -3565,10 +3582,10 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                       decoration:const InputDecoration(
                         border:InputBorder.none,
                         hintText:'Where are you going?',
-                        hintStyle:TextStyle(fontSize:16,color:Color(0xFF68727F)),
+                        hintStyle:TextStyle(fontSize:16,color:Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     )),
-                    if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:const Icon(Icons.close,color:Color(0xFF68727F))),
+                    if(hasQuery)IconButton(onPressed:()=>_controller.clear(),icon:const Icon(Icons.close,color:Theme.of(context).colorScheme.onSurfaceVariant)),
                   ]),
                 ),
               ),
@@ -3616,13 +3633,13 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                   if(!_loading&&_error!=null&&_results.isEmpty)...[
                     Padding(
                       padding:const EdgeInsets.all(24),
-                      child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Color(0xFF68727F))),
+                      child:Text(_error!,textAlign:TextAlign.center,style:const TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)),
                     ),
                   ],
-                  if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
+                  if(!_loading&&_error==null&&_results.isEmpty)const Padding(padding:EdgeInsets.all(30),child:Column(children:[Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
                   ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
-                if(!hasQuery&&_recent.isEmpty)const Padding(padding:EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Color(0xFF68727F)))])),
+                if(!hasQuery&&_recent.isEmpty)const Padding(padding:EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),SizedBox(height:12),Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
               ],
             ),
           ),
@@ -4644,100 +4661,166 @@ class HelpSupportPage extends StatefulWidget {
   const HelpSupportPage({super.key});
   @override State<HelpSupportPage> createState()=>_HelpSupportPageState();
 }
-
 class _HelpSupportPageState extends State<HelpSupportPage>{
   String? category,issue;
   final details=TextEditingController();
+  Map<String,dynamic>? selectedReference;
   static const issues=<String,List<String>>{
     'Item':['Item not received','Wrong item','Missing item','Damaged item','Item quality issue','Refund issue','Delivery issue','Other'],
     'Ride':['Ride not accepted','Carrier issue','Ride cancelled','Fare issue','Pickup/location issue','Tracking issue','Safety issue','Other'],
     'General':['Account/Login','Google Sign-In','Notifications','App problem','Billing/payment issue','Privacy/account data','Other'],
   };
   @override void dispose(){details.dispose();super.dispose();}
-
+  Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _customerOrders(String uid) async {
+    final merged=<String,QueryDocumentSnapshot<Map<String,dynamic>>>{};
+    for(final field in ['customerId','customerUid']){
+      try{
+        final snap=await FirebaseFirestore.instance.collection('orders').where(field,isEqualTo:uid).limit(50).get();
+        for(final d in snap.docs)merged[d.id]=d;
+      }catch(_){}
+    }
+    final list=merged.values.toList();
+    list.sort((a,b){
+      dynamic av=a.data()['createdAt'],bv=b.data()['createdAt'];
+      int time(dynamic v)=>v is Timestamp?v.millisecondsSinceEpoch:v is num?v.toInt():0;
+      return time(bv).compareTo(time(av));
+    });
+    return list;
+  }
+  Future<Map<String,dynamic>?> _pickItem() async {
+    final u=FirebaseAuth.instance.currentUser;if(u==null)return null;
+    final orders=await _customerOrders(u.uid);if(!mounted)return null;
+    if(orders.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('No orders found to attach to this support request.')));return null;}
+    return showModalBottomSheet<Map<String,dynamic>>(context:context,isScrollControlled:true,showDragHandle:true,builder:(sheet)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+      const Padding(padding:EdgeInsets.fromLTRB(20,8,20,10),child:Align(alignment:Alignment.centerLeft,child:Text('Pick the affected item',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)))),
+      Flexible(child:ListView.builder(shrinkWrap:true,padding:const EdgeInsets.only(bottom:16),itemCount:orders.length,itemBuilder:(context,i){
+        final d=orders[i],o=d.data();final raw=o['items'];final items=raw is List?raw.whereType<Map>().toList():<Map>[];
+        if(items.isEmpty)return ListTile(leading:const Icon(Icons.receipt_long),title:Text('Order #'+d.id),subtitle:Text((o['status']??'Order').toString()),onTap:()=>Navigator.pop(sheet,{'referenceType':'order','orderId':d.id,'orderNumber':d.id,'itemName':'Entire order'}));
+        return ExpansionTile(leading:const Icon(Icons.shopping_bag_outlined),title:Text('Order #'+d.id),subtitle:Text((o['status']??'Order').toString()),children:[for(final rawItem in items)ListTile(
+          contentPadding:const EdgeInsets.only(left:56,right:16),
+          title:Text((rawItem['name']??rawItem['title']??'Item').toString()),
+          subtitle:Text('Quantity: '+(rawItem['qty']??1).toString()),
+          onTap:()=>Navigator.pop(sheet,{'referenceType':'item','orderId':d.id,'orderNumber':d.id,'itemId':(rawItem['id']??'').toString(),'itemName':(rawItem['name']??rawItem['title']??'Item').toString(),'itemQty':rawItem['qty']??1}),
+        )]);
+      })),
+    ])));
+  }
+  Future<Map<String,dynamic>?> _pickRide() async {
+    final u=FirebaseAuth.instance.currentUser;if(u==null)return null;
+    try{
+      final snap=await FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:u.uid).limit(50).get();
+      if(!mounted)return null;
+      final docs=snap.docs.toList();docs.sort((a,b){
+        final av=a.data()['createdAt'],bv=b.data()['createdAt'];
+        int time(dynamic v)=>v is Timestamp?v.millisecondsSinceEpoch:v is num?v.toInt():0;return time(bv).compareTo(time(av));
+      });
+      if(docs.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('No rides found to attach to this support request.')));return null;}
+      return showModalBottomSheet<Map<String,dynamic>>(context:context,isScrollControlled:true,showDragHandle:true,builder:(sheet)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
+        const Padding(padding:EdgeInsets.fromLTRB(20,8,20,10),child:Align(alignment:Alignment.centerLeft,child:Text('Pick the affected ride',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)))),
+        Flexible(child:ListView.builder(shrinkWrap:true,padding:const EdgeInsets.only(bottom:16),itemCount:docs.length,itemBuilder:(context,i){
+          final d=docs[i],x=d.data();final type=(x['rideType']??x['type']??'Ride').toString();final pickup=(x['pickupAddress']??x['pickup']??'Pickup').toString();final destination=(x['destinationAddress']??x['destination']??'Destination').toString();final status=(x['status']??'').toString();
+          return ListTile(leading:Icon(type.toLowerCase()=='bike'?Icons.two_wheeler:Icons.local_taxi_outlined),title:Text(type+' • '+(status.isEmpty?'Ride':status)),subtitle:Text(pickup+' → '+destination,maxLines:2,overflow:TextOverflow.ellipsis),onTap:()=>Navigator.pop(sheet,{'referenceType':'ride','rideId':d.id,'rideType':type,'pickupAddress':pickup,'destinationAddress':destination}));
+        })),
+      ])));
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not load rides: '+e.toString())));return null;}
+  }
+  Future<void> _chooseReference() async {
+    Map<String,dynamic>? value;
+    if(category=='Item')value=await _pickItem();
+    if(category=='Ride')value=await _pickRide();
+    if(value!=null&&mounted)setState(()=>selectedReference=value);
+  }
   Future<void> submit()async{
-    final u=FirebaseAuth.instance.currentUser;
-    if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
+    final u=FirebaseAuth.instance.currentUser;if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
+    if(category!='General'&&selectedReference==null){
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Please pick the '+category!.toLowerCase()+' this ticket is about.')));return;
+    }
     try{
       final ref=await FirebaseFirestore.instance.collection('supportTickets').add({
         'queue':'Customer Support','category':category,'area':category,'subcategory':issue,'issueType':issue,
         'subject':category!+' support: '+issue!,'message':details.text.trim(),
-        'customerUid':u.uid,'userUid':u.uid,'requesterId':u.uid,'customerName':u.displayName??'ALLways customer',
-        'requesterName':u.displayName??'ALLways customer','requesterRole':'customer','customerEmail':u.email??'',
+        'customerUid':u.uid,'userUid':u.uid,'requesterId':u.uid,'customerName':u.displayName??'ALLways customer','requesterName':u.displayName??'ALLways customer','requesterRole':'customer','customerEmail':u.email??'',
+        'referenceType':selectedReference?['referenceType'],'orderId':selectedReference?['orderId'],'orderNumber':selectedReference?['orderNumber'],'itemId':selectedReference?['itemId'],'itemName':selectedReference?['itemName'],'itemQty':selectedReference?['itemQty'],
+        'rideId':selectedReference?['rideId'],'rideType':selectedReference?['rideType'],'pickupAddress':selectedReference?['pickupAddress'],'destinationAddress':selectedReference?['destinationAddress'],
         'status':'open','priority':'normal','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
       });
-      details.clear();
-      if(mounted){
-        setState((){category=null;issue=null;});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Support ticket '+ref.id+' submitted.')));
-      }
-    }catch(e){
-      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
-    }
+      details.clear();if(mounted){setState((){category=null;issue=null;selectedReference=null;});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Support ticket '+ref.id+' submitted.')));}
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));}
   }
-
+  Widget _referenceCard(){
+    final x=selectedReference;if(x==null)return const SizedBox.shrink();
+    final title=(x['itemName']??x['rideType']??'Selected reference').toString();final id=(x['orderNumber']??x['rideId']??'').toString();
+    final subtitle=x['rideId']!=null?((x['pickupAddress']??'Pickup').toString()+' → '+(x['destinationAddress']??'Destination').toString()):'Order #'+id;
+    return Card(child:ListTile(leading:Icon(x['rideId']!=null?Icons.directions_car_outlined:Icons.shopping_bag_outlined,color:Theme.of(context).colorScheme.primary),title:Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text(subtitle,maxLines:2,overflow:TextOverflow.ellipsis),trailing:IconButton(icon:const Icon(Icons.close),tooltip:'Change selection',onPressed:()=>setState(()=>selectedReference=null))));
+  }
   Widget _ticketCard(BuildContext context,DocumentSnapshot<Map<String,dynamic>> d){
-    final x=d.data()??{}; final cs=Theme.of(context).colorScheme;
-    return Card(child:ListTile(
-      leading:Icon(Icons.support_agent,color:cs.primary),
-      title:Text((x['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
-      subtitle:Text((x['status']??'open').toString()+((x['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),
-      onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(
-        title:Text((x['subject']??'Support ticket').toString()),
-        content:SingleChildScrollView(child:Text((x['message']??'').toString()+((x['adminReply']??'').toString().isNotEmpty?'\n\nALLways Support:\n'+x['adminReply'].toString():'')+'\n\nStatus: '+(x['status']??'open').toString())),
-        actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))],
-      )),
-    ));
+    final x=d.data()??{};final cs=Theme.of(context).colorScheme;final ref=(x['referenceType']??'').toString();
+    final refText=ref=='ride'?'Ride: '+(x['rideType']??'Ride').toString():ref.isNotEmpty?'Item: '+(x['itemName']??'Item').toString()+' • Order #'+(x['orderNumber']??x['orderId']??'').toString():'';
+    return Card(child:ListTile(leading:Icon(Icons.support_agent,color:cs.primary),title:Text((x['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((x['status']??'open').toString()+(refText.isEmpty?'':' • '+refText)+((x['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(title:Text((x['subject']??'Support ticket').toString()),content:SingleChildScrollView(child:Text((refText.isEmpty?'':refText+'\\n\\n')+(x['message']??'').toString()+((x['adminReply']??'').toString().isNotEmpty?'\\n\\nALLways Support:\\n'+x['adminReply'].toString():'')+'\\n\\nStatus: '+(x['status']??'open').toString())),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))])));
   }
-
   @override Widget build(BuildContext context){
-    final u=FirebaseAuth.instance.currentUser; final cs=Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor:AllwaysColors.background,
-      appBar:AppBar(title:const Text('Help & Support')),
-      body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
-        const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
-        const SizedBox(height:6),
-        Text('Choose Item, Ride or General support, then select the issue.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),
+    final u=FirebaseAuth.instance.currentUser;final cs=Theme.of(context).colorScheme;final canSubmit=issue!=null&&details.text.trim().isNotEmpty&&(category=='General'||selectedReference!=null);
+    return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
+      const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),const SizedBox(height:6),
+      Text('Choose Item, Ride or General support, then select the affected item or ride.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),const SizedBox(height:16),
+      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_){setState((){category=x;issue=null;selectedReference=null;});}))) ]),
+      if(category!=null)...[
         const SizedBox(height:16),
-        Row(children:[
-          for(final x in const ['Item','Ride','General'])
-            Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_){setState((){category=x;issue=null;});}))),
-        ]),
-        if(category!=null)...[
-          const SizedBox(height:16),
-          Text('Select issue',style:TextStyle(fontWeight:FontWeight.w800,color:cs.onSurface)),
-          const SizedBox(height:8),
-          Wrap(spacing:8,runSpacing:8,children:[
-            for(final x in issues[category!]!)ChoiceChip(label:Text(x),selected:issue==x,onSelected:(_)=>setState(()=>issue=x)),
-          ]),
-          const SizedBox(height:16),
-          TextField(controller:details,maxLines:5,decoration:const InputDecoration(labelText:'Describe the issue',hintText:'Please describe your issue in detail...')),
-          const SizedBox(height:14),
-          SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:issue!=null&&details.text.trim().isNotEmpty?submit:null,icon:const Icon(Icons.send_outlined),label:const Text('Submit support ticket'))),
-        ],
-        const SizedBox(height:22),
-        const Text('My support tickets',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),
-        const SizedBox(height:8),
-        if(u==null)const Text('Sign in to create and view support tickets.'),
-        if(u!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-          stream:FirebaseFirestore.instance.collection('supportTickets').where('customerUid',isEqualTo:u.uid).limit(50).snapshots(),
-          builder:(context,snap){
-            if(snap.hasError)return Text('Could not load tickets: '+snap.error.toString());
-            if(!snap.hasData)return const Center(child:CircularProgressIndicator());
-            final docs=snap.data!.docs.toList();
-            docs.sort((a,b){
-              final at=a.data()['createdAt'],bt=b.data()['createdAt'];
-              final am=at is Timestamp?at.millisecondsSinceEpoch:0;
-              final bm=bt is Timestamp?bt.millisecondsSinceEpoch:0;
-              return bm.compareTo(am);
-            });
-            if(docs.isEmpty)return const Text('No support tickets yet.');
-            return Column(children:docs.map((d)=>_ticketCard(context,d)).toList());
-          },
-        ),
-      ]),
-    );
+        if(category!='General')SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:_chooseReference,icon:Icon(category=='Item'?Icons.shopping_bag_outlined:Icons.directions_car_outlined),label:Text(selectedReference==null?'Pick the affected '+category!.toLowerCase():'Change selected '+category!.toLowerCase()))),
+        if(selectedReference!=null)...[const SizedBox(height:10),_referenceCard()],
+        const SizedBox(height:16),Text('Select issue',style:TextStyle(fontWeight:FontWeight.w800,color:cs.onSurface)),const SizedBox(height:8),
+        Wrap(spacing:8,runSpacing:8,children:[for(final x in issues[category!]!)ChoiceChip(label:Text(x),selected:issue==x,onSelected:(_)=>setState(()=>issue=x))]),
+        const SizedBox(height:16),
+        TextField(controller:details,maxLines:5,onChanged:(_)=>setState((){}),decoration:const InputDecoration(labelText:'Describe the issue',hintText:'Please describe your issue in detail...')),
+        const SizedBox(height:14),SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:canSubmit?submit:null,icon:const Icon(Icons.send_outlined),label:const Text('Submit support ticket'))),
+      ],
+      const SizedBox(height:22),const Text('My support tickets',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:8),
+      if(u==null)const Text('Sign in to create and view support tickets.'),
+      if(u!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('supportTickets').where('customerUid',isEqualTo:u.uid).limit(50).snapshots(),builder:(context,snap){
+        if(snap.hasError)return Text('Could not load tickets: '+snap.error.toString());if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+        final docs=snap.data!.docs.toList();docs.sort((a,b){final at=a.data()['createdAt'],bt=b.data()['createdAt'];final am=at is Timestamp?at.millisecondsSinceEpoch:0;final bm=bt is Timestamp?bt.millisecondsSinceEpoch:0;return bm.compareTo(am);});
+        if(docs.isEmpty)return const Text('No support tickets yet.');return Column(children:docs.map((d)=>_ticketCard(context,d)).toList());
+      }),
+    ]));
+  }
+}
+class _UpdatePromptPage extends StatefulWidget {
+  final String version,notes,url,digest;
+  const _UpdatePromptPage({required this.version,required this.notes,required this.url,required this.digest});
+  @override State<_UpdatePromptPage> createState()=>_UpdatePromptPageState();
+}
+class _UpdatePromptPageState extends State<_UpdatePromptPage>{
+  bool installing=false;
+  Future<void> _install() async {
+    if(installing)return;
+    setState(()=>installing=true);
+    try{
+      final file=File(Directory.systemTemp.path+'/allways_update_profile_'+DateTime.now().millisecondsSinceEpoch.toString()+'.apk');
+      final url=widget.url+(widget.url.contains('?')?'&':'?')+'cacheBust='+DateTime.now().millisecondsSinceEpoch.toString();
+      await Dio().download(url,file.path,deleteOnError:true);
+      final expected=widget.digest.replaceFirst(RegExp(r'^sha256:'),'').trim().toLowerCase();
+      if(expected.isNotEmpty){
+        final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
+        if(actual!=expected)throw Exception('Downloaded update failed integrity verification.');
+      }
+      final result=await const MethodChannel('com.allways.app/apk_installer').invokeMethod<String>('installApk',{'path':file.path});
+      if(!mounted)return;
+      if(result=='permission_required'){
+        await const MethodChannel('com.allways.app/apk_installer').invokeMethod('openInstallSettings');
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Allow ALLways to install updates, then return and tap Update again.')));
+      }else if(result!='started')ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not start update: '+(result??'unknown error'))));
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Update failed: '+e.toString().replaceFirst('Exception: ',''))));
+    }finally{if(mounted)setState(()=>installing=false);}
+  }
+  @override Widget build(BuildContext context){
+    final cs=Theme.of(context).colorScheme;
+    return Scaffold(appBar:AppBar(title:const Text('ALLways Update')),body:Padding(padding:const EdgeInsets.all(24),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Icon(Icons.system_update_alt,color:cs.primary,size:48),const SizedBox(height:16),
+      Text('New version '+widget.version,style:TextStyle(fontSize:25,fontWeight:FontWeight.w900,color:cs.onSurface)),const SizedBox(height:8),
+      Text(widget.notes.isEmpty?'A newer ALLways build is ready.':widget.notes,style:TextStyle(color:cs.onSurfaceVariant)),const Spacer(),
+      SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:installing?null:_install,icon:installing?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.download),label:Text(installing?'Downloading & verifying…':'Update now'))),
+    ])));
   }
 }
 class _SupportOption extends StatelessWidget {
@@ -4818,18 +4901,36 @@ class ProfilePage extends StatefulWidget{
 class _ProfilePageState extends State<ProfilePage>{
   Future<void> _checkForUpdate(BuildContext c) async {
     try{
-      final r=await http.get(Uri.parse(updateManifestUrl)).timeout(const Duration(seconds:8));
+      final r=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
       if(!c.mounted)return;
       if(r.statusCode==200){
         final d=jsonDecode(r.body);
-        if(d is Map&&(d['version']??'').toString().isNotEmpty){
-          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Latest version: '+d['version'].toString())));
+        if(d is Map){
+          final name=(d['name']??'').toString();
+          final match=RegExp(r'(\d+\.\d+\.\d+)').firstMatch(name);
+          final remote=match?.group(1)??'';
+          final info=await PackageInfo.fromPlatform();
+          if(remote.isNotEmpty&&_versionGreater(remote,info.version)){
+            final assets=d['assets'] is List ? d['assets'] as List : const [];
+            for(final raw in assets){
+              if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
+                final url=(raw['browser_download_url']??'').toString();
+                if(url.isNotEmpty&&c.mounted){
+                  await Navigator.of(c).push(MaterialPageRoute(builder:(_)=>_UpdatePromptPage(
+                    version:remote,notes:(d['body']??'').toString(),url:url,digest:(raw['digest']??'').toString(),
+                  )));
+                }
+                return;
+              }
+            }
+          }
+          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('ALLways is up to date (v'+info.version+').')));
           return;
         }
       }
       ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Could not check for updates.')));
-    }catch(_){
-      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Could not check for updates.')));
+    }catch(e){
+      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Could not check for updates: '+e.toString())));
     }
   }
 
