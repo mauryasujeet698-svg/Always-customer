@@ -2288,7 +2288,7 @@ class _CartScreenState extends State<CartScreen>{
                   const Divider(height:22),
                   Row(mainAxisAlignment:MainAxisAlignment.spaceBetween,children:[const Text('You Pay',style:TextStyle(fontWeight:FontWeight.w900)),Text('₹'+grand.toStringAsFixed(0),style:const TextStyle(fontWeight:FontWeight.w900,fontSize:19))]),
                   const SizedBox(height:8),
-                  const Align(alignment:Alignment.centerLeft,child:Text('Cash on Delivery (COD)',style:TextStyle(color:AllwaysColors.muted))),
+                  Align(alignment:Alignment.centerLeft,child:Text('Cash on Delivery (COD)',style:TextStyle(color:AllwaysColors.muted))),
                 ]),
               ),
               const SizedBox(height:12),
