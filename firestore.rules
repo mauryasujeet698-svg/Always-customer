@@ -167,7 +167,7 @@ service cloud.firestore {
 
       match /tokens/{tokenId} {
         allow create, update, delete: if signedIn() && request.auth.uid == uid;
-        allow read: if signedIn();
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       }
     }
 
@@ -289,11 +289,27 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    match /support_tickets/{ticketId} {
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow update: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    match /supportTickets/{ticketId} {
+      allow create: if signedIn() && (
+        request.resource.data.requesterId == request.auth.uid ||
+        request.resource.data.customerUid == request.auth.uid ||
+        request.resource.data.userUid == request.auth.uid
+      );
+      allow read: if isAdmin() || (
+        signedIn() && (
+          resource.data.requesterId == request.auth.uid ||
+          resource.data.customerUid == request.auth.uid ||
+          resource.data.userUid == request.auth.uid
+        )
+      );
+      allow update: if isAdmin();
       allow delete: if isAdmin();
+    }
+
+    // Legacy path is retained read-only for admins during migration.
+    match /support_tickets/{ticketId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /sosAlerts/{alertId} {
