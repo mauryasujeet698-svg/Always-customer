@@ -142,7 +142,7 @@ class _NotificationsSettingsScreenState
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      backgroundColor: AllwaysColors.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
