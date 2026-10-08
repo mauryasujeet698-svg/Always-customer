@@ -1564,7 +1564,7 @@ class _ShellState extends State<Shell> {
       const TravelPage(),
       ProfilePage(user:user,addresses:addresses,onLogin:login,onReload:loadAddresses,onDelete:deleteAddress,onCancel:cancelOrder,onReorder:reorderItems,onAdd:add,onOpenCart:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder)))),
     ];
-    return ValueListenableBuilder<String>(valueListenable:languageNotifier,builder:(context,lang,_)=>Scaffold(
+    return ValueListenableBuilder<String>(valueListenable:languageNotifier,builder:(context,lang,_)=>Stack(children:[Scaffold(
       body:SafeArea(child:Column(children:[
         if(updateVersion!=null)
           MaterialBanner(
@@ -1584,10 +1584,53 @@ class _ShellState extends State<Shell> {
           (icon:Icons.person_outline,activeIcon:Icons.person,label:tr('Profile')),
         ],
       ),
-      floatingActionButton:count==0?null:FloatingActionButton.extended(
-        onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),
-        icon:const Icon(Icons.shopping_cart),label:Text(count.toString()+' • ₹'+total.toStringAsFixed(0))),
-    ));
+      bottomNavigationBar:_updateMandatory&&updateVersion!=null
+          ? null
+          : AllwaysBottomNav(
+              selectedIndex:tab,
+              onSelected:(i)=>setState(()=>tab=i),
+              items:[
+                (icon:Icons.shopping_bag_outlined,activeIcon:Icons.shopping_bag,label:tr('Shop')),
+                (icon:Icons.directions_car_outlined,activeIcon:Icons.directions_car,label:tr('Travel')),
+                (icon:Icons.person_outline,activeIcon:Icons.person,label:tr('Profile')),
+              ],
+            ),
+      floatingActionButton:_updateMandatory&&updateVersion!=null
+          ? null
+          : (count==0?null:FloatingActionButton.extended(
+              onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>CartScreen(cart:cart,addresses:addresses,onQty:qty,onPlace:placeOrder))),
+              icon:const Icon(Icons.shopping_cart),label:Text(count.toString()+' • ₹'+total.toStringAsFixed(0)))),
+    ),
+    if(_updateMandatory&&updateVersion!=null)
+      Positioned.fill(
+        child:PopScope(
+          canPop:false,
+          child:Material(
+            color:Theme.of(context).colorScheme.surface,
+            child:SafeArea(
+              child:Center(
+                child:Padding(
+                  padding:const EdgeInsets.all(28),
+                  child:Column(mainAxisSize:MainAxisSize.min,children:[
+                    Icon(Icons.system_update_alt_rounded,size:64,color:Theme.of(context).colorScheme.primary),
+                    const SizedBox(height:18),
+                    Text('Update required',style:TextStyle(fontSize:26,fontWeight:FontWeight.w900,color:Theme.of(context).colorScheme.onSurface)),
+                    const SizedBox(height:8),
+                    Text('A new ALLways version '+updateVersion!+' is available. Please update to continue using ALLways.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant,height:1.4)),
+                    if((updateNotes??'').trim().isNotEmpty) ...[
+                      const SizedBox(height:10),
+                      Text(updateNotes!,textAlign:TextAlign.center,maxLines:4,overflow:TextOverflow.ellipsis,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant,fontSize:12)),
+                    ],
+                    const SizedBox(height:24),
+                    SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:openUpdate,icon:const Icon(Icons.download_rounded),label:const Text('Update now'))),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]));
   }
 }
 
