@@ -1,6 +1,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
 
@@ -356,6 +357,15 @@ await db.collection("deliveryPartners").doc(oldPartner).set({
   }
 );
 
+async function rideMatchingRadiusKm() {
+  try {
+    const snap = await db.collection("settings").doc("ride").get();
+    const value = Number(snap.data()?.matchingRadiusKm);
+    if (Number.isFinite(value) && value > 0) return Math.min(value, 50);
+  } catch (_) {}
+  return 7;
+}
+
 // New ride requests are pushed directly to nearby eligible carrier devices.
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
@@ -373,7 +383,18 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 
     const rideType = String(ride.rideType || "bike").toLowerCase();
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
-    if (Date.now() - createdMs > 30000) return;
+    if (!ride.expiresAt) {
+      await event.data.ref.set({ expiresAt: new Date(createdMs + 30 * 60 * 1000) }, { merge: true });
+    }
+    const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
+    const expiresAtMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
+    if (!ride.expiresAt) {
+      await event.data.ref.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    if (Date.now() >= expiresAtMs) {
+      await event.data.ref.set({ status: "expired", expiredAt: FieldValue.serverTimestamp(), customerActive: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return;
+    }
     const pickupLat = Number(ride.pickupLatitude);
     const pickupLng = Number(ride.pickupLongitude);
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
@@ -381,6 +402,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
     const snap = await db.collection("ridePartners")
       .where("status", "==", "online")
       .get();
+    const matchingRadiusKm = await rideMatchingRadiusKm();
     const offerExpiresAt = Date.now() + 30000;
 
     for (const partner of snap.docs) {
@@ -399,7 +421,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
 
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
-      if (distance > 7) continue;
+      if (distance > matchingRadiusKm) continue;
 
       await sendToUser(
         partner.id,
@@ -411,6 +433,31 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 }
   }
 );
+
+// Expire customer ride searches server-side so the request cannot remain searchable forever.
+exports.expireSearchingRides = onSchedule("every 5 minutes", async () => {
+  const snap = await db.collection("autoRideRequests").where("status", "==", "searching").limit(500).get();
+  const now = Date.now();
+  for (const doc of snap.docs) {
+    const ride = doc.data() || {};
+    const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : now;
+    const expiresMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
+    if (now < expiresMs) {
+      if (!ride.expiresAt) await doc.ref.set({ expiresAt: new Date(expiresMs) }, { merge: true });
+      continue;
+    }
+    await doc.ref.set({
+      status: "expired",
+      customerActive: false,
+      expiredAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    const customerUid = String(ride.customerUid || ride.customerId || "").trim();
+    if (customerUid) {
+      await sendToUser(customerUid, "Ride search expired", "We could not find a ride nearby within 30 minutes. Try again or change your pickup location.", { type: "ride_status", requestId: doc.id, status: "expired" }, "customer");
+    }
+  }
+});
 
 // Ride state changes also notify the relevant customer/partner devices.
 exports.onAutoRideRequestUpdated = onDocumentUpdated(
@@ -746,3 +793,18 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
     console.log("Automatic catalog sync completed:", { rows: rows.length, written });
   }
 );
+
+// Notify customers when an admin replies or changes a support ticket.
+exports.onSupportTicketUpdated = onDocumentUpdated("supportTickets/{ticketId}", async (event) => {
+  const before = event.data.before.data() || {};
+  const after = event.data.after.data() || {};
+  const customerUid = String(after.customerUid || after.userUid || after.requesterId || "").trim();
+  if (!customerUid) return;
+  const replyChanged = String(before.adminReply || "") !== String(after.adminReply || "");
+  const statusChanged = String(before.status || "") !== String(after.status || "");
+  if (!replyChanged && !statusChanged) return;
+  const status = String(after.status || "open");
+  const title = replyChanged ? "ALLways Support replied" : "Support ticket updated";
+  const body = replyChanged ? String(after.adminReply || "You have a new support reply.") : "Your ALLways support ticket is now " + status.replaceAll("_", " ") + ".";
+  await sendToUser(customerUid, title, body, { type: "support_update", ticketId: event.params.ticketId, status }, "customer");
+});
