@@ -933,6 +933,7 @@ class _ShellState extends State<Shell> {
   String? updateUrl;
   String? updateNotes;
   String? _updateDigest;
+  bool _updateMandatory=false;
 
   @override void initState(){
     super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); checkForUpdate();
@@ -1098,28 +1099,22 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> checkForUpdate() async {
-    try {
-      final r=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
-      if(r.statusCode!=200)return;
-      final data=jsonDecode(r.body);
-      if(data is! Map)return;
-      final name=(data['name']??'').toString();
-      final match=RegExp(r'(\d+\.\d+\.\d+)').firstMatch(name);
-      final remote=match?.group(1)??'';
-      final assets=data['assets'] is List ? data['assets'] as List : const [];
-      String url='',digest='';
-      for(final raw in assets){
-        if(raw is Map && (raw['name']??'').toString()=='allways-latest.apk'){
-          url=(raw['browser_download_url']??'').toString();
-          digest=(raw['digest']??'').toString().trim();
-          break;
-        }
-      }
+    try{
+      final manifest=await _fetchAllwaysUpdateManifest();
+      if(manifest==null)return;
+      final remote=(manifest['version']??'').toString().trim();
+      final url=(manifest['url']??'').toString().trim();
       if(remote.isEmpty||url.isEmpty)return;
       final info=await PackageInfo.fromPlatform();
       if(_versionGreater(remote,info.version)){
         if(!mounted)return;
-        setState((){updateVersion=remote;updateUrl=url;updateNotes=(data['body']??'').toString();_updateDigest=digest;});
+        setState((){
+          updateVersion=remote;
+          updateUrl=url;
+          updateNotes=(manifest['notes']??'').toString();
+          _updateDigest=(manifest['digest']??'').toString().trim();
+          _updateMandatory=manifest['mandatory']!=false;
+        });
       }
     }catch(_){}
   }
