@@ -200,7 +200,7 @@ class _NotificationsSettingsScreenState
                   style: TextStyle(fontSize: 25, height: 1.05, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Get real-time notifications about your order, delivery updates, offers and more.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AllwaysColors.muted, height: 1.35),
