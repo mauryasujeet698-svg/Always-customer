@@ -1216,12 +1216,14 @@ function openAccount(){
     <button class="secondary" id="signOutBtn">Sign out</button>
   `;
 
-  const myOrdersBtn = document.getElementById("myOrdersBtn");\n  const customerSupportBtn = document.getElementById("customerSupportBtn");
+  const myOrdersBtn = document.getElementById("myOrdersBtn");
+  const customerSupportBtn = document.getElementById("customerSupportBtn");
   const favouritesBtn = document.getElementById("favouritesBtn");
   const addressesBtn = document.getElementById("addressesBtn");
   const adminDashboardBtn = document.getElementById("adminDashboardBtn");
   const signOutBtn = document.getElementById("signOutBtn");
-  if(customerSupportBtn){customerSupportBtn.addEventListener("click",function(){openSupport();});}\n  if(myOrdersBtn){
+  if(customerSupportBtn){customerSupportBtn.addEventListener("click",function(){openSupport();});}
+  if(myOrdersBtn){
     myOrdersBtn.addEventListener("click", function(){
       showSection("orders");
       closeAuth();
