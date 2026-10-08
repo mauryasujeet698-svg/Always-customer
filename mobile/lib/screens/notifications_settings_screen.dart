@@ -365,7 +365,7 @@ class _NotificationsSettingsScreenState
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Padding(
+                  return Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
@@ -385,7 +385,7 @@ class _NotificationsSettingsScreenState
                 }).toList();
 
                 if (docs.isEmpty) {
-                  return const Padding(
+                  return Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
@@ -411,7 +411,7 @@ class _NotificationsSettingsScreenState
                       ),
                       child: Row(
                         children: [
-                          const CircleAvatar(
+                          CircleAvatar(
                             backgroundColor: Color(0xFFE8D0D5),
                             child: Icon(
                               Icons.notifications_active,
