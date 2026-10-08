@@ -426,14 +426,14 @@ class _NotificationsSettingsScreenState
                               children: [
                                 Text(
                                   item['title'] ?? 'Notification',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 Text(
                                   item['body'] ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
@@ -479,7 +479,7 @@ class _NotificationsSettingsScreenState
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
                     color: Theme.of(context).colorScheme.onSurface,
@@ -516,7 +516,7 @@ class _NotificationsSettingsScreenState
       ),
       title: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
           color: Theme.of(context).colorScheme.onSurface,
