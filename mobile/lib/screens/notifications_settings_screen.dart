@@ -246,7 +246,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_orderUpdates', v);
                   },
                 ),
-                const Divider(height: 1, color: Colors.black12),
+                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'Delivery updates',
                   'Partner alerts and tracking status',
@@ -272,7 +272,7 @@ class _NotificationsSettingsScreenState
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFFCECEF),
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -287,7 +287,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_travelUpdates', v);
                   },
                 ),
-                const Divider(height: 1, color: Colors.black12),
+                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'Offers & Promotions',
                   'Exclusive deals and reward news',
@@ -298,7 +298,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_offers', v);
                   },
                 ),
-                const Divider(height: 1, color: Colors.black12),
+                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'ALLways Announcements',
                   'Important service news and critical alerts',
@@ -333,7 +333,7 @@ class _NotificationsSettingsScreenState
                     label: Text(tab),
                     selected: isSelected,
                     selectedColor: AllwaysColors.primary,
-                    backgroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                     labelStyle: TextStyle(
                       color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                     ),
@@ -463,14 +463,14 @@ class _NotificationsSettingsScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFCECEF),
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           CircleAvatar(
             backgroundColor: const Color(0xFFE8D0D5),
-            child: Icon(icon, color: const Color(0xFF7A434E)),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -494,7 +494,7 @@ class _NotificationsSettingsScreenState
           ),
           Switch(
             value: value,
-            activeColor: const Color(0xFF7A434E),
+            activeThumbColor: Theme.of(context).colorScheme.primary,
             onChanged: onChanged,
           ),
         ],
@@ -512,7 +512,7 @@ class _NotificationsSettingsScreenState
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: const Color(0xFFE8D0D5),
-        child: Icon(icon, color: const Color(0xFF7A434E), size: 20),
+        child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
       ),
       title: Text(
         title,
@@ -528,7 +528,7 @@ class _NotificationsSettingsScreenState
       ),
       trailing: Switch(
         value: value,
-        activeColor: const Color(0xFF7A434E),
+        activeThumbColor: Theme.of(context).colorScheme.primary,
         onChanged: onChanged,
       ),
     );
