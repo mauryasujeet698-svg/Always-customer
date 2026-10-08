@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../allways_design.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
-  const NotificationsSettingsScreen({super.key});
+  NotificationsSettingsScreen({super.key});
 
   @override
   State<NotificationsSettingsScreen> createState() =>
@@ -171,12 +171,12 @@ class _NotificationsSettingsScreenState
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+            padding: EdgeInsets.fromLTRB(22, 22, 22, 20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 colors: [Color(0xFFFFE7F1), Color(0xFFFFF3F7)],
               ),
               borderRadius: BorderRadius.circular(24),
@@ -187,19 +187,19 @@ class _NotificationsSettingsScreenState
                 Container(
                   width: 104,
                   height: 104,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: AllwaysColors.primarySoft,
                   ),
-                  child: const Icon(Icons.notifications_active_rounded, size: 58, color: AllwaysColors.primary),
+                  child: Icon(Icons.notifications_active_rounded, size: 58, color: AllwaysColors.primary),
                 ),
-                const SizedBox(height: 14),
-                const Text(
+                SizedBox(height: 14),
+                Text(
                   'Stay updated at every step!',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 25, height: 1.05, fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text(
                   'Get real-time notifications about your order, delivery updates, offers and more.',
                   textAlign: TextAlign.center,
@@ -208,7 +208,7 @@ class _NotificationsSettingsScreenState
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           _buildToggleCard(
             title: 'ALLways notifications',
             subtitle: 'Central app alerts and updates',
@@ -219,7 +219,7 @@ class _NotificationsSettingsScreenState
               _setPreference('allways_notifications_enabled', v);
             },
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             'ORDER & DELIVERY',
             style: TextStyle(
@@ -228,7 +228,7 @@ class _NotificationsSettingsScreenState
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -260,7 +260,7 @@ class _NotificationsSettingsScreenState
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             'TRAVEL & OFFERS',
             style: TextStyle(
@@ -269,7 +269,7 @@ class _NotificationsSettingsScreenState
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surfaceContainerHigh,
@@ -312,7 +312,7 @@ class _NotificationsSettingsScreenState
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
           Text(
             'NOTIFICATION HISTORY',
             style: TextStyle(
@@ -321,14 +321,14 @@ class _NotificationsSettingsScreenState
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: ['All', 'Orders', 'Delivery', 'Travel', 'Offers'].map((tab) {
                 final isSelected = _selectedTab == tab;
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                  padding: EdgeInsets.only(right: 8),
                   child: ChoiceChip(
                     label: Text(tab),
                     selected: isSelected,
@@ -343,7 +343,7 @@ class _NotificationsSettingsScreenState
               }).toList(),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           if (user != null)
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
@@ -354,7 +354,7 @@ class _NotificationsSettingsScreenState
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    padding: EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
                         'Notifications unavailable. Pull to refresh or check connection.',
@@ -398,13 +398,13 @@ class _NotificationsSettingsScreenState
 
                 return ListView.separated(
                   shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
+                  physics: NeverScrollableScrollPhysics(),
                   itemCount: docs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, __) => SizedBox(height: 10),
                   itemBuilder: (context, i) {
                     final item = docs[i].data();
                     return Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(14),
@@ -419,7 +419,7 @@ class _NotificationsSettingsScreenState
                               size: 20,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,7 +461,7 @@ class _NotificationsSettingsScreenState
     required ValueChanged<bool> onChanged,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(16),
@@ -469,10 +469,10 @@ class _NotificationsSettingsScreenState
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: const Color(0xFFE8D0D5),
+            backgroundColor: Color(0xFFE8D0D5),
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,7 +511,7 @@ class _NotificationsSettingsScreenState
   ) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: const Color(0xFFE8D0D5),
+        backgroundColor: Color(0xFFE8D0D5),
         child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
       ),
       title: Text(
