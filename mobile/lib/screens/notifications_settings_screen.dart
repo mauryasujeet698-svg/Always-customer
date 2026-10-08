@@ -165,7 +165,7 @@ class _NotificationsSettingsScreenState
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.close, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            icon: Icon(Icons.close, color: Theme.of(context).colorScheme.onSurfaceVariant),
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -246,7 +246,7 @@ class _NotificationsSettingsScreenState
                     _setPreference('notification_orderUpdates', v);
                   },
                 ),
-                const Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+                Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                 _buildTile(
                   'Delivery updates',
                   'Partner alerts and tracking status',
@@ -487,7 +487,7 @@ class _NotificationsSettingsScreenState
                 ),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
               ],
             ),
