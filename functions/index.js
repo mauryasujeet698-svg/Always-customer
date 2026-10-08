@@ -1,5 +1,6 @@
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
@@ -145,7 +146,7 @@ exports.notifyOrderChange = onDocumentUpdated(
       ""
     );
 
-    const customerId = String(after.customerId || after.uid || after.userId || "");
+    const customerId = String(after.customerId || after.customerUid || after.uid || after.userId || "");
     const title = "ALLways order update";
     let body = "";
 
@@ -215,7 +216,7 @@ exports.notifyRideRequest = onDocumentCreated(
           type: "ride_request",
           rideId,
         });
-      const customerId = String(data.customerId || data.uid || data.userId || "");
+      const customerId = String(data.customerId || data.customerUid || data.uid || data.userId || "");
       if (customerId) {
         await sendToUserTokens(customerId, "Searching for a rider",
           "We are finding a carrier for your ride", {
@@ -348,7 +349,7 @@ exports.notifyRideUpdate = onDocumentUpdated(
     const nextStatus = String(after.status || "").toLowerCase();
     const prevDriver = String(before.driverUid || "");
     const nextDriver = String(after.driverUid || "");
-    const customerId = String(after.customerId || after.uid || after.userId || "");
+    const customerId = String(after.customerId || after.customerUid || after.uid || after.userId || "");
 
     try {
       if (prevDriver !== nextDriver && nextDriver) {
@@ -373,5 +374,40 @@ exports.notifyRideUpdate = onDocumentUpdated(
     } catch (error) {
       console.error("notifyRideUpdate failed:", error);
     }
+  }
+);
+
+
+/**
+ * Expire customer ride searches that have been waiting for 30 minutes.
+ * This is server-authoritative so a closed app cannot leave a request
+ * searchable forever.
+ */
+exports.expireUnmatchedRides = onSchedule(
+  {schedule: "every 5 minutes", timeZone: "Asia/Kolkata"},
+  async () => {
+    const db = getFirestore();
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const snap = await db.collection("autoRideRequests")
+      .where("status", "==", "searching")
+      .where("requestedAt", "<=", cutoff)
+      .limit(200)
+      .get();
+
+    if (snap.empty) return;
+
+    const batch = db.batch();
+    snap.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      const requestedAt = data.requestedAt?.toDate?.();
+      if (!requestedAt || requestedAt > cutoff) return;
+      batch.update(doc.ref, {
+        status: "expired",
+        expiredAt: FieldValue.serverTimestamp(),
+        expirationReason: "No driver found within 30 minutes",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    await batch.commit();
   }
 );
