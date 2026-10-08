@@ -4644,14 +4644,17 @@ class HelpSupportPage extends StatefulWidget {
   const HelpSupportPage({super.key});
   @override State<HelpSupportPage> createState()=>_HelpSupportPageState();
 }
+
 class _HelpSupportPageState extends State<HelpSupportPage>{
-  String? category,issue; final details=TextEditingController();
+  String? category,issue;
+  final details=TextEditingController();
   static const issues=<String,List<String>>{
     'Item':['Item not received','Wrong item','Missing item','Damaged item','Item quality issue','Refund issue','Delivery issue','Other'],
     'Ride':['Ride not accepted','Carrier issue','Ride cancelled','Fare issue','Pickup/location issue','Tracking issue','Safety issue','Other'],
     'General':['Account/Login','Google Sign-In','Notifications','App problem','Billing/payment issue','Privacy/account data','Other'],
   };
   @override void dispose(){details.dispose();super.dispose();}
+
   Future<void> submit()async{
     final u=FirebaseAuth.instance.currentUser;
     if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
@@ -4664,39 +4667,79 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
         'status':'open','priority':'normal','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
       });
       details.clear();
-      if(mounted){setState((){category=null;issue=null;});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Support ticket '+ref.id+' submitted.')));}
-    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));}
+      if(mounted){
+        setState((){category=null;issue=null;});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Support ticket '+ref.id+' submitted.')));
+      }
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
+    }
   }
+
+  Widget _ticketCard(BuildContext context,DocumentSnapshot<Map<String,dynamic>> d){
+    final x=d.data()??{}; final cs=Theme.of(context).colorScheme;
+    return Card(child:ListTile(
+      leading:Icon(Icons.support_agent,color:cs.primary),
+      title:Text((x['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
+      subtitle:Text((x['status']??'open').toString()+((x['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),
+      onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(
+        title:Text((x['subject']??'Support ticket').toString()),
+        content:SingleChildScrollView(child:Text((x['message']??'').toString()+((x['adminReply']??'').toString().isNotEmpty?'\n\nALLways Support:\n'+x['adminReply'].toString():'')+'\n\nStatus: '+(x['status']??'open').toString())),
+        actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))],
+      )),
+    ));
+  }
+
   @override Widget build(BuildContext context){
     final u=FirebaseAuth.instance.currentUser; final cs=Theme.of(context).colorScheme;
-    return Scaffold(backgroundColor:AllwaysColors.background,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
-      const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
-      const SizedBox(height:6),Text('Choose Item, Ride or General support, then select the issue.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),
-      const SizedBox(height:16),
-      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_)=>setState((){category=x;issue=null;}))))]),
-      if(category!=null)...[
-        const SizedBox(height:16),Text('Select issue',style:TextStyle(fontWeight:FontWeight.w800,color:cs.onSurface)),const SizedBox(height:8),
-        Wrap(spacing:8,runSpacing:8,children:[for(final x in issues[category!]!)ChoiceChip(label:Text(x),selected:issue==x,onSelected:(_)=>setState(()=>issue=x))]),
-        const SizedBox(height:16),TextField(controller:details,maxLines:5,decoration:const InputDecoration(labelText:'Describe the issue',hintText:'Please describe your issue in detail...')),
-        const SizedBox(height:14),SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:issue!=null&&details.text.trim().isNotEmpty?submit:null,icon:const Icon(Icons.send_outlined),label:const Text('Submit support ticket'))),
-      ],
-      const SizedBox(height:22),const Text('My support tickets',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-      if(u==null)const Text('Sign in to create and view support tickets.'),
-      if(u!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('supportTickets').where('customerUid',isEqualTo:u.uid).limit(50).snapshots(),builder:(context,snap){
-        if(snap.hasError)return Text('Could not load tickets: '+snap.error.toString());
-        if(!snap.hasData)return const Center(child:CircularProgressIndicator());
-        final docs=snap.data!.docs.toList()..sort((a,b){final at=a.data()['createdAt'],bt=b.data()['createdAt'];final am=at is Timestamp?at.millisecondsSinceEpoch:0,bm=bt is Timestamp?bt.millisecondsSinceEpoch:0;return bm.compareTo(am);});
-        if(docs.isEmpty)return const Text('No support tickets yet.');
-        return Column(children:[for(final d in docs)Card(child:ListTile(
-          leading:Icon(Icons.support_agent,color:cs.primary),title:Text((d.data()['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
-          subtitle:Text((d.data()['status']??'open').toString()+((d.data()['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),
-          onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(title:Text((d.data()['subject']??'Support ticket').toString()),content:SingleChildScrollView(child:Text((d.data()['message']??'').toString()+((d.data()['adminReply']??'').toString().isNotEmpty?'\\n\\nALLways Support:\\n'+d.data()['adminReply'].toString():'')+'\\n\\nStatus: '+(d.data()['status']??'open').toString())),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))],))),
-        ))]);
-      }),
-    ]));
+    return Scaffold(
+      backgroundColor:AllwaysColors.background,
+      appBar:AppBar(title:const Text('Help & Support')),
+      body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
+        const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
+        const SizedBox(height:6),
+        Text('Choose Item, Ride or General support, then select the issue.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),
+        const SizedBox(height:16),
+        Row(children:[
+          for(final x in const ['Item','Ride','General'])
+            Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_){setState((){category=x;issue=null;});}))),
+        ]),
+        if(category!=null)...[
+          const SizedBox(height:16),
+          Text('Select issue',style:TextStyle(fontWeight:FontWeight.w800,color:cs.onSurface)),
+          const SizedBox(height:8),
+          Wrap(spacing:8,runSpacing:8,children:[
+            for(final x in issues[category!]!)ChoiceChip(label:Text(x),selected:issue==x,onSelected:(_)=>setState(()=>issue=x)),
+          ]),
+          const SizedBox(height:16),
+          TextField(controller:details,maxLines:5,decoration:const InputDecoration(labelText:'Describe the issue',hintText:'Please describe your issue in detail...')),
+          const SizedBox(height:14),
+          SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:issue!=null&&details.text.trim().isNotEmpty?submit:null,icon:const Icon(Icons.send_outlined),label:const Text('Submit support ticket'))),
+        ],
+        const SizedBox(height:22),
+        const Text('My support tickets',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),
+        const SizedBox(height:8),
+        if(u==null)const Text('Sign in to create and view support tickets.'),
+        if(u!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
+          stream:FirebaseFirestore.instance.collection('supportTickets').where('customerUid',isEqualTo:u.uid).limit(50).snapshots(),
+          builder:(context,snap){
+            if(snap.hasError)return Text('Could not load tickets: '+snap.error.toString());
+            if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+            final docs=snap.data!.docs.toList();
+            docs.sort((a,b){
+              final at=a.data()['createdAt'],bt=b.data()['createdAt'];
+              final am=at is Timestamp?at.millisecondsSinceEpoch:0;
+              final bm=bt is Timestamp?bt.millisecondsSinceEpoch:0;
+              return bm.compareTo(am);
+            });
+            if(docs.isEmpty)return const Text('No support tickets yet.');
+            return Column(children:docs.map((d)=>_ticketCard(context,d)).toList());
+          },
+        ),
+      ]),
+    );
   }
 }
-
 class _SupportOption extends StatelessWidget {
   final IconData icon; final String title; final String subtitle;
   const _SupportOption({required this.icon,required this.title,required this.subtitle});
@@ -5186,7 +5229,7 @@ class _NotificationsPageState extends State<NotificationsPage>{
                     Container(
                       padding:const EdgeInsets.symmetric(horizontal:24,vertical:48),
                       decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(20)),
-                      child:const Column(children:[
+                      child:Column(children:[
                         Icon(Icons.notifications_none_rounded,size:54,color:AllwaysColors.primary),
                         SizedBox(height:12),
                         Text('No notifications yet',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),
