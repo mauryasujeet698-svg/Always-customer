@@ -114,7 +114,7 @@ Future<String> uploadImageToCloudinary(XFile image, {String? folder}) async {
   }
   return secureUrl;
 }
-const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-v1.5.0.apk';
+const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-latest.apk';
 
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://api.github.com/repos/mauryasujeet698-svg/Always-website/releases/tags/allways-latest';
@@ -4609,124 +4609,60 @@ class _TripEmpty extends StatelessWidget {
     child:Center(child:Text(message,textAlign:TextAlign.center,style:const TextStyle(color:AllwaysColors.muted))),
   );
 }
-class HelpSupportPage extends StatelessWidget {
+class HelpSupportPage extends StatefulWidget {
   const HelpSupportPage({super.key});
-
-  List<String> _issues(String category){
-    switch(category){
-      case 'Orders & Delivery': return ['Order not received','Wrong item','Refund issue','Delivery delay','Damaged item','Other'];
-      case 'Travel & Rides': return ['Ride not accepted','Driver / carrier issue','Ride cancelled','Fare issue','Pickup / location issue','Ride tracking issue','Other'];
-      case 'Vehicle Booking': return ['Vehicle unavailable','Booking issue','Cancellation issue','Pricing issue','Vehicle condition issue','Owner issue','Other'];
-      case 'Account & Login': return ['Login issue','Google Sign-In issue','Account issue','Delete account','Other'];
-      default: return ['General issue','Other'];
-    }
+  @override State<HelpSupportPage> createState()=>_HelpSupportPageState();
+}
+class _HelpSupportPageState extends State<HelpSupportPage>{
+  String? category,issue; final details=TextEditingController();
+  static const issues=<String,List<String>>{
+    'Item':['Item not received','Wrong item','Missing item','Damaged item','Item quality issue','Refund issue','Delivery issue','Other'],
+    'Ride':['Ride not accepted','Carrier issue','Ride cancelled','Fare issue','Pickup/location issue','Tracking issue','Safety issue','Other'],
+    'General':['Account/Login','Google Sign-In','Notifications','App problem','Billing/payment issue','Privacy/account data','Other'],
+  };
+  @override void dispose(){details.dispose();super.dispose();}
+  Future<void> submit()async{
+    final u=FirebaseAuth.instance.currentUser;
+    if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
+    try{
+      final ref=await FirebaseFirestore.instance.collection('supportTickets').add({
+        'queue':'Customer Support','category':category,'area':category,'subcategory':issue,'issueType':issue,
+        'subject':category!+' support: '+issue!,'message':details.text.trim(),
+        'customerUid':u.uid,'userUid':u.uid,'requesterId':u.uid,'customerName':u.displayName??'ALLways customer',
+        'requesterName':u.displayName??'ALLways customer','requesterRole':'customer','customerEmail':u.email??'',
+        'status':'open','priority':'normal','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
+      });
+      details.clear();
+      if(mounted){setState((){category=null;issue=null;});ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Support ticket '+ref.id+' submitted.')));}
+    }catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));}
   }
-
-  Future<void> _openIssue(BuildContext context,String category) async {
-    final user=FirebaseAuth.instance.currentUser;
-    if(user==null)return;
-    String? selected;
-    final details=TextEditingController();
-    final result=await showModalBottomSheet<bool>(
-      context:context,isScrollControlled:true,backgroundColor:Colors.transparent,
-      builder:(sheetContext)=>StatefulBuilder(builder:(context,setSheetState){
-        final issues=_issues(category);
-        return Padding(
-          padding:EdgeInsets.only(bottom:MediaQuery.of(context).viewInsets.bottom),
-          child:Container(
-            padding:const EdgeInsets.fromLTRB(20,18,20,20),
-            decoration:const BoxDecoration(color:Color(0xFFFFEEF3),borderRadius:BorderRadius.vertical(top:Radius.circular(28))),
-            child:SafeArea(
-              top:false,
-              child:SingleChildScrollView(
-                child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                  Row(children:[
-                    Expanded(child:Text(category+' support',style:const TextStyle(fontSize:21,fontWeight:FontWeight.w800))),
-                    IconButton(onPressed:()=>Navigator.pop(sheetContext,false),icon:const Icon(Icons.close)),
-                  ]),
-                  const SizedBox(height:4),
-                  const Text('Select issue type',style:TextStyle(fontWeight:FontWeight.w800)),
-                  const SizedBox(height:10),
-                  Wrap(spacing:8,runSpacing:8,children:issues.map((issue){
-                    final active=selected==issue;
-                    return ChoiceChip(label:Text(issue),selected:active,selectedColor:const Color(0xFFF4C6D5),backgroundColor:Colors.white,onSelected:(_)=>setSheetState(()=>selected=issue));
-                  }).toList()),
-                  const SizedBox(height:18),
-                  const Text('Describe the issue',style:TextStyle(fontWeight:FontWeight.w800)),
-                  const SizedBox(height:8),
-                  TextField(controller:details,maxLines:5,decoration:const InputDecoration(hintText:'Please describe your issue in detail...',fillColor:Colors.white)),
-                  const SizedBox(height:16),
-                  SizedBox(width:double.infinity,child:FilledButton(
-                    onPressed:selected==null||details.text.trim().isEmpty?null:() async {
-                      try{
-                        await FirebaseFirestore.instance.collection('supportRequests').add({
-                          'userUid':user.uid,'userName':user.displayName??'ALLways customer','userEmail':user.email??'',
-                          'category':category,'issueType':selected,'details':details.text.trim(),'status':'open','createdAt':FieldValue.serverTimestamp(),
-                        });
-                        if(sheetContext.mounted)Navigator.pop(sheetContext,true);
-                      }catch(e){
-                        if(sheetContext.mounted)ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content:Text('Could not submit support request: '+e.toString())));
-                      }
-                    },
-                    child:const Text('Submit'),
-                  )),
-                ]),
-              ),
-            ),
-          ),
-        );
+  @override Widget build(BuildContext context){
+    final u=FirebaseAuth.instance.currentUser; final cs=Theme.of(context).colorScheme;
+    return Scaffold(backgroundColor:AllwaysColors.background,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
+      const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
+      const SizedBox(height:6),Text('Choose Item, Ride or General support, then select the issue.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),
+      const SizedBox(height:16),
+      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_)=>setState((){category=x;issue=null;}))))]),
+      if(category!=null)...[
+        const SizedBox(height:16),Text('Select issue',style:TextStyle(fontWeight:FontWeight.w800,color:cs.onSurface)),const SizedBox(height:8),
+        Wrap(spacing:8,runSpacing:8,children:[for(final x in issues[category!]!)ChoiceChip(label:Text(x),selected:issue==x,onSelected:(_)=>setState(()=>issue=x))]),
+        const SizedBox(height:16),TextField(controller:details,maxLines:5,decoration:const InputDecoration(labelText:'Describe the issue',hintText:'Please describe your issue in detail...')),
+        const SizedBox(height:14),SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:issue!=null&&details.text.trim().isNotEmpty?submit:null,icon:const Icon(Icons.send_outlined),label:const Text('Submit support ticket'))),
+      ],
+      const SizedBox(height:22),const Text('My support tickets',style:TextStyle(fontSize:19,fontWeight:FontWeight.w900)),const SizedBox(height:8),
+      if(u==null)const Text('Sign in to create and view support tickets.'),
+      if(u!=null)StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:FirebaseFirestore.instance.collection('supportTickets').where('customerUid',isEqualTo:u.uid).limit(50).snapshots(),builder:(context,snap){
+        if(snap.hasError)return Text('Could not load tickets: '+snap.error.toString());
+        if(!snap.hasData)return const Center(child:CircularProgressIndicator());
+        final docs=snap.data!.docs.toList()..sort((a,b){final at=a.data()['createdAt'],bt=b.data()['createdAt'];final am=at is Timestamp?at.millisecondsSinceEpoch:0,bm=bt is Timestamp?bt.millisecondsSinceEpoch:0;return bm.compareTo(am);});
+        if(docs.isEmpty)return const Text('No support tickets yet.');
+        return Column(children:[for(final d in docs)Card(child:ListTile(
+          leading:Icon(Icons.support_agent,color:cs.primary),title:Text((d.data()['subject']??'Support ticket').toString(),style:const TextStyle(fontWeight:FontWeight.w800)),
+          subtitle:Text((d.data()['status']??'open').toString()+((d.data()['adminReply']??'').toString().isNotEmpty?' • Admin replied':'')),
+          onTap:()=>showDialog(context:context,builder:(dialog)=>AlertDialog(title:Text((d.data()['subject']??'Support ticket').toString()),content:SingleChildScrollView(child:Text((d.data()['message']??'').toString()+((d.data()['adminReply']??'').toString().isNotEmpty?'\\n\\nALLways Support:\\n'+d.data()['adminReply'].toString():'')+'\\n\\nStatus: '+(d.data()['status']??'open').toString())),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('Close'))],))),
+        ))]);
       }),
-    )??false;
-    details.dispose();
-    if(result&&context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Support request submitted.')));
-  }
-
-  @override Widget build(BuildContext context) {
-    const categories=[
-      ('Orders & Delivery',Icons.inventory_2_outlined,'Order, delivery and product issues'),
-      ('Travel & Rides',Icons.two_wheeler_outlined,'Ride booking and travel issues'),
-      ('Vehicle Booking',Icons.directions_car_outlined,'Rent a vehicle issues'),
-      ('Account & Login',Icons.person_outline,'Profile, login and account issues'),
-    ];
-    return Scaffold(
-      backgroundColor:AllwaysColors.background,
-      appBar:AppBar(title:const Text('Help & Support')),
-      body:ListView(
-        padding:const EdgeInsets.fromLTRB(28,8,28,28),
-        children:[
-          const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),
-          const SizedBox(height:6),
-          const Text('Choose a topic and tell ALLways what you need help with.',style:TextStyle(color:AllwaysColors.muted,fontSize:14)),
-          const SizedBox(height:16),
-          GridView.builder(
-            shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:categories.length,
-            gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:2,crossAxisSpacing:10,mainAxisSpacing:10,childAspectRatio:1.15),
-            itemBuilder:(context,index){
-              final item=categories[index];
-              return InkWell(
-                borderRadius:BorderRadius.circular(18),onTap:()=>_openIssue(context,item.$1),
-                child:Container(
-                  padding:const EdgeInsets.all(14),
-                  decoration:BoxDecoration(color:index==0?const Color(0xFFFFEAF0):index==1?const Color(0xFFEAF4FF):index==2?const Color(0xFFEAF9F0):const Color(0xFFFFF6DF),borderRadius:BorderRadius.circular(18)),
-                  child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                    Icon(item.$2,color:AllwaysColors.primary,size:27),const Spacer(),
-                    Row(children:[Expanded(child:Text(item.$1,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w800,fontSize:14))),const Icon(Icons.chevron_right,size:20)]),
-                    const SizedBox(height:4),
-                    Text(item.$3,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(color:AllwaysColors.muted,fontSize:11,height:1.2)),
-                  ]),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height:18),
-          const Text('Other Support Options',style:TextStyle(fontSize:16,fontWeight:FontWeight.w800)),
-          const SizedBox(height:8),
-          _SupportOption(icon:Icons.chat_bubble_outline,title:'Chat with us',subtitle:'Get help from our support team'),
-          const SizedBox(height:8),
-          _SupportOption(icon:Icons.description_outlined,title:'FAQ',subtitle:'Find answers to common questions'),
-        ],
-      ),
-    );
+    ]));
   }
 }
 
@@ -4774,39 +4710,31 @@ class AccountSecurityPage extends StatelessWidget {
   }
 }
 
-class PrivacyPolicyPage extends StatelessWidget {
+class PrivacyPolicyPage extends StatelessWidget{
   const PrivacyPolicyPage({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Privacy Policy')),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: const [
-          Text('ALLways Privacy Policy', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-          SizedBox(height: 12),
-          Text('ALLways uses account information to authenticate customers, process orders and provide delivery updates. Delivery addresses and order details are used to fulfill orders. Wishlist and saved-address data are stored under your customer account.'),
-          SizedBox(height: 14),
-          Text('Information sharing', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          Text('ALLways shares order information with people who need it to fulfill an order, such as authorized delivery partners and administrators. ALLways uses information only for the services and features you use.'),
-          SizedBox(height: 14),
-          Text('Location sharing', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          Text('When you start an active delivery, ride or vehicle-tracking session, ALLways can use your device location to show your live position to the other authorized participant(s) and to ALLways administrators for fulfillment and safety. Location sharing is limited to the active session and is stopped when the session ends. Background location may be used while an active tracking session is running so the map can continue updating when the screen is off.'),
-          SizedBox(height: 14),
-          Text('Notifications', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          Text('ALLways uses Firebase Cloud Messaging for order, delivery, travel and service notifications. You can enable or disable notification categories in the Notifications settings.'),
-          SizedBox(height: 14),
-          Text('Maps', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          Text('ALLways uses OpenStreetMap-based map data for live tracking. © OpenStreetMap contributors.'),
-          SizedBox(height: 14),
-          Text('Your choices', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
-          Text('You can manage saved addresses, wishlist items, notification settings and active location sharing in the app, and you can request account-related changes through ALLways support.'),
-        ],
-      ),
-    );
-  }
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Privacy Policy')),body:ListView(padding:const EdgeInsets.all(18),children:[
+    const Text('ALLways Privacy Policy',style:TextStyle(fontSize:26,fontWeight:FontWeight.w900)),
+    const SizedBox(height:12),const Text('Effective date: 8 October 2026 • Version 2.0'),
+    const SizedBox(height:14),const Text('What ALLways offers',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('ALLways provides local shopping and delivery services, ride booking and live ride tracking, and vehicle discovery or booking features where available.'),
+    const SizedBox(height:14),const Text('Information we use',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('We may use account information, name, email, saved addresses, order and ride details, support requests, notification/device tokens and information you provide while using ALLways.'),
+    const SizedBox(height:14),const Text('Location',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('ALLways uses device location for nearby search, pickup and destination selection, ride matching and live tracking. During an active tracking session, location may continue in the background so authorized participants and ALLways operations can receive current ride information.'),
+    const SizedBox(height:14),const Text('Sharing',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('Information is shared only as needed to provide the service. Active rides may share relevant pickup, destination, contact and live-location information between the customer and assigned Driver Partner. Authorized ALLways administrators may access operational information for support, safety and fulfillment.'),
+    const SizedBox(height:14),const Text('Service providers',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('ALLways uses Firebase for authentication, database and notifications; Mapbox and routing/geocoding services for maps and location search; Cloudinary for supported image storage; and Google Sign-In when you choose Google authentication.'),
+    const SizedBox(height:14),const Text('Support and notifications',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('Firebase Cloud Messaging may send order, delivery, ride, support and service notifications. Support tickets and replies are stored so ALLways can investigate and resolve issues.'),
+    const SizedBox(height:14),const Text('Your choices and deletion',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('You can manage saved addresses, notifications and location permissions through the app and device settings. You may request account-related changes or deletion through ALLways support.'),
+    const SizedBox(height:14),const Text('Security and retention',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('ALLways uses access controls and the security features of its service infrastructure to protect information. Operational records may be retained as reasonably necessary for fulfillment, safety, support, legal obligations and legitimate business operations.'),
+    const SizedBox(height:14),const Text('Contact',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
+    const Text('For privacy, account or service questions, use Help & Support in the ALLways app.'),
+  ]));
 }
-
 class ProfilePage extends StatefulWidget{
   final User? user; final List<Map<String,dynamic>> addresses; final VoidCallback onLogin;
   final Future<void> Function() onReload; final Future<void> Function(String) onDelete; final Future<void> Function(String) onCancel; final Future<void> Function(List<Map<String,dynamic>>) onReorder; final void Function(Product) onAdd; final VoidCallback onOpenCart;
