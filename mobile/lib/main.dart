@@ -5793,9 +5793,10 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 }
 
-class AuthScreen extends StatefulWidget{const AuthScreen({super.key});State<AuthScreen> createState()=>_AuthState();}
+class AuthScreen extends StatefulWidget{final bool initialSignup;const AuthScreen({super.key,this.initialSignup=false});State<AuthScreen> createState()=>_AuthState();}
 class _AuthState extends State<AuthScreen>{
   final email=TextEditingController(),pass=TextEditingController(),name=TextEditingController();bool signup=false,busy=false,hide=true;
+  @override void initState(){super.initState();signup=widget.initialSignup;}
   @override void dispose(){email.dispose();pass.dispose();name.dispose();super.dispose();}
   String err(Object e){if(e is FirebaseAuthException){if(e.code=='invalid-credential'||e.code=='wrong-password')return'Email or password is incorrect. Use Forgot password if this is an existing account.';if(e.code=='user-not-found')return'No account exists with this email.';if(e.code=='email-already-in-use')return'An account already exists with this email.';if(e.code=='weak-password')return'Use a stronger password.';if(e.code=='invalid-email')return'Enter a valid email address.';return e.message??'Authentication failed.';}return'Something went wrong.';}
   Future<void> googleSignIn() async {
