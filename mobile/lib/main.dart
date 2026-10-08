@@ -34,6 +34,20 @@ import 'allways_design.dart';
 
 const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
 const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=';
+int _editDistance(String a,String b){
+  if(a==b)return 0;
+  final prev=List<int>.generate(b.length+1,(i)=>i);
+  for(var i=0;i<a.length;i++){
+    var diag=prev[0]; prev[0]=i+1;
+    for(var j=0;j<b.length;j++){
+      final old=prev[j+1];
+      prev[j+1]=a.codeUnitAt(i)==b.codeUnitAt(j)?diag:1+[prev[j],prev[j+1],diag].reduce((x,y)=>x<y?x:y);
+      diag=old;
+    }
+  }
+  return prev.last;
+}
+
 
 String _mapboxTilesUrl() => _mapboxStyleTiles + _mapboxPublicToken;
 const cloudinaryCloudName='busdtvia';
@@ -1553,7 +1567,7 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
         final latest=await tx.get(ref);
         final status=(latest.data()?['status']??'').toString().toLowerCase();
         if(['completed','cancelled'].contains(status))throw Exception('This ride is already finished.');
-        tx.update(ref,{'status':'cancelled','cancelledBy':'customer','cancellationReason':selected,'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+        tx.update(ref,{'status':'cancelled','customerActive':false,'cancelledBy':'customer','cancellationReason':selected,'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
       });
       if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride cancelled.')));
     }catch(e){
@@ -1580,6 +1594,11 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
           final rawStatus=data['status'];
           if(rawStatus==null)return false;
           final st=rawStatus.toString().trim().toLowerCase();
+          final expiry=data['expiresAt'];
+          if(const {'searching','requested'}.contains(st) && expiry is Timestamp && expiry.toDate().isBefore(DateTime.now())){
+            FirebaseFirestore.instance.collection('autoRideRequests').doc(d.id).update({'status':'expired','customerActive':false,'expiredAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()}).catchError((_){});
+            return false;
+          }
           final terminalTimestamp=data['cancelledAt']??data['completedAt']??data['endedAt']??data['rejectedAt']??data['expiredAt'];
           final cancelledBy=(data['cancelledBy']??'').toString().trim();
           if(terminalTimestamp!=null || cancelledBy.isNotEmpty)return false;
@@ -1786,7 +1805,19 @@ class _ShopPageState extends State<ShopPage>{
 
   @override Widget build(BuildContext c){
     final q=search.trim().toLowerCase();
-    final searched=q.isEmpty?widget.products:widget.products.where((p)=>(p.name+' '+p.category+' '+p.brand+' '+p.description).toLowerCase().contains(q)).toList();
+    final searched=q.isEmpty?widget.products:widget.products.where((p){
+      final h=(p.name+' '+p.category+' '+p.brand+' '+p.description).toLowerCase();
+      if(h.contains(q))return true;
+      final words=q.split(' ').where((x)=>x.length>2);
+      return words.every((w)=>h.contains(w)||p.name.toLowerCase().split(' ').any((n)=>n.length>2&&_editDistance(n,w)<=1));
+    }).toList();
+    if(q.isNotEmpty)searched.sort((a,b){
+      int score(Product p){
+        final n=p.name.toLowerCase(),br=p.brand.toLowerCase(),cat=p.category.toLowerCase();
+        if(n==q)return 0;if(n.startsWith(q))return 1;if((br+' '+n).contains(q))return 2;if(n.contains(q))return 3;if(br.contains(q)||cat.contains(q))return 4;return p.stock>0?5:6;
+      }
+      return score(a).compareTo(score(b));
+    });
     final cs=cats;
     final sections=<String>[];
     for(final x in preferred){if(byCat(x).isNotEmpty)sections.add(x);}
@@ -3389,7 +3420,7 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
     try{
       final params=<String,String>{
         'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en','limit':'10','autocomplete':'true',
+        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
       };
       if(_position!=null)params['proximity']=_position!.longitude.toString()+','+_position!.latitude.toString();
       final res=await http.get(Uri.https('api.mapbox.com','/search/geocode/v6/forward',params)).timeout(const Duration(seconds:8));
@@ -3740,7 +3771,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       if(_mapboxPublicToken.trim().isEmpty)throw Exception('Mapbox search is not configured in this build.');
       final params=<String,String>{
         'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en','limit':'10','autocomplete':'true',
+        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
       };
       if(pickup!=null)params['proximity']=pickup!.longitude.toString()+','+pickup!.latitude.toString();
       final res=await http.get(
