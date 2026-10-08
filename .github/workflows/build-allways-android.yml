@@ -1,13 +1,12 @@
-# ALLways Android build workflow - signing verification
-# Release build uses arm64 with the official Mapbox Maps SDK.
-# Catalog and Travel fixes and syntax verification are built automatically on the allways-android-app branch.
+# ALLways native Android customer-app build.
+# The Flutter source of truth for the native APK is the allways-android-app branch.
+# The website/main branch is a separate web deployment and is intentionally not an APK trigger.
 name: Build ALLways Android APK
 
 on:
   push:
     branches:
       - allways-android-app
-      - main
     paths:
       - "mobile/**"
       - "functions/**"
@@ -535,20 +534,9 @@ jobs:
               raise SystemExit("No Android app Gradle build file found")
           PY
 
-      - name: Persist Android project changes
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mobile/android
-          if ! git diff --cached --quiet; then
-            git commit -m "Persist permanent ALLways Android project"
-            git fetch origin allways-android-app
-            git rebase origin/allways-android-app
-            git push origin HEAD:allways-android-app
-          fi
-
+      # Android files are generated/normalized in the runner when needed.
+      # Do not commit generated build changes back to the source branch from CI.
+      # This prevents CI from creating recursive builds or making the branch drift.
       # firebase_messaging is already declared in mobile/pubspec.yaml.
       # Its Android Firebase Messaging dependency is supplied transitively by the Flutter plugin.
       # Do not inject a second native dependency here; doing so breaks generated Kotlin Gradle projects.
@@ -855,7 +843,7 @@ jobs:
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/heads/allways-android-app') || github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/allways-android-app'
         with:
           tag_name: allways-latest
           name: "ALLways Android v${{ env.APP_VERSION }}"
