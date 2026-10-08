@@ -220,7 +220,7 @@ class _NotificationsSettingsScreenState
             },
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'ORDER & DELIVERY',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -261,7 +261,7 @@ class _NotificationsSettingsScreenState
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'TRAVEL & OFFERS',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -313,7 +313,7 @@ class _NotificationsSettingsScreenState
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'NOTIFICATION HISTORY',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
