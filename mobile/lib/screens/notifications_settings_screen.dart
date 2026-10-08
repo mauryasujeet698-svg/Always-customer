@@ -152,20 +152,20 @@ class _NotificationsSettingsScreenState
             Text(
               'Notifications',
               style: TextStyle(
-                color: Colors.black87,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             Text(
               'Stay updated with your ALLways activity',
-              style: TextStyle(color: Colors.black54, fontSize: 12),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.close, color: Colors.black54),
+            icon: const Icon(Icons.close, color: Theme.of(context).colorScheme.onSurfaceVariant),
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -223,7 +223,7 @@ class _NotificationsSettingsScreenState
           const Text(
             'ORDER & DELIVERY',
             style: TextStyle(
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -264,7 +264,7 @@ class _NotificationsSettingsScreenState
           const Text(
             'TRAVEL & OFFERS',
             style: TextStyle(
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -316,7 +316,7 @@ class _NotificationsSettingsScreenState
           const Text(
             'NOTIFICATION HISTORY',
             style: TextStyle(
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
@@ -335,7 +335,7 @@ class _NotificationsSettingsScreenState
                     selectedColor: AllwaysColors.primary,
                     backgroundColor: Colors.white,
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
+                      color: isSelected ? Colors.white : Theme.of(context).colorScheme.onSurface,
                     ),
                     onSelected: (val) => setState(() => _selectedTab = tab),
                   ),
@@ -358,7 +358,7 @@ class _NotificationsSettingsScreenState
                     child: Center(
                       child: Text(
                         'Notifications unavailable. Pull to refresh or check connection.',
-                        style: TextStyle(color: Colors.black45),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -370,7 +370,7 @@ class _NotificationsSettingsScreenState
                     child: Center(
                       child: Text(
                         'No notifications yet.',
-                        style: TextStyle(color: Colors.black45),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ),
                   );
@@ -390,7 +390,7 @@ class _NotificationsSettingsScreenState
                     child: Center(
                       child: Text(
                         'No notifications in this category.',
-                        style: TextStyle(color: Colors.black45),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ),
                   );
@@ -415,7 +415,7 @@ class _NotificationsSettingsScreenState
                             backgroundColor: Color(0xFFE8D0D5),
                             child: Icon(
                               Icons.notifications_active,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               size: 20,
                             ),
                           ),
@@ -427,14 +427,14 @@ class _NotificationsSettingsScreenState
                                 Text(
                                   item['title'] ?? 'Notification',
                                   style: const TextStyle(
-                                    color: Colors.black87,
+                                    color: Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 Text(
                                   item['body'] ?? '',
                                   style: const TextStyle(
-                                    color: Colors.black54,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -482,12 +482,12 @@ class _NotificationsSettingsScreenState
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 15,
-                    color: Colors.black87,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  style: const TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                 ),
               ],
             ),
@@ -519,12 +519,12 @@ class _NotificationsSettingsScreenState
         style: const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
-          color: Colors.black87,
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Colors.black54, fontSize: 11),
+        style: const TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
       ),
       trailing: Switch(
         value: value,
