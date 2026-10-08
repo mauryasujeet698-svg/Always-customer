@@ -1291,8 +1291,24 @@ function authError(error){
    START APP
    ========================================================= */
 
+async function checkWebAppUpdate(){
+  try{
+    const r=await fetch("version.json?_="+Date.now(),{cache:"no-store"}); if(!r.ok)return; const remote=await r.json();
+    const latest=String(remote.version||""); const current=String(localStorage.getItem("allwaysWebVersion")||"");
+    if(!current){localStorage.setItem("allwaysWebVersion",latest);return;}
+    if(latest&&latest!==current){
+      if(!document.getElementById("allwaysWebUpdate")){
+        const banner=document.createElement("div");banner.id="allwaysWebUpdate";banner.className="updateBanner";banner.innerHTML='<span>New ALLways version '+escapeHtml(latest)+' is available.</span><button type="button" id="reloadAllways">UPDATE</button>';document.body.appendChild(banner);
+        document.getElementById("reloadAllways").addEventListener("click",function(){localStorage.setItem("allwaysWebVersion",latest);location.reload();});
+      }
+    }
+  }catch(_){ }
+}
+
 function startALLways(){
   console.log("ALLways application starting...");
+  checkWebAppUpdate();
+  setInterval(checkWebAppUpdate,10*60*1000);
 
   document.querySelectorAll(".tab").forEach(function(tab){
     tab.onclick = function(){
