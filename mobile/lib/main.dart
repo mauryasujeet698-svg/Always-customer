@@ -3639,7 +3639,7 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
                   if(!_loading&&_error==null&&_results.isEmpty)Padding(padding:const EdgeInsets.all(30),child:Column(children:[const Icon(Icons.search_off,size:54,color:Color(0xFF9AA1AA)),const SizedBox(height:12),const Text('No places found',style:TextStyle(fontSize:17,fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('Try a different name or check spelling.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
                   ..._results.map((p)=>Column(children:[_placeRow(p),const Divider(height:1,indent:58,endIndent:20)])),
                 ],
-                if(!hasQuery&&_recent.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[const Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),const SizedBox(height:12),const Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),const SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)])),
+                if(!hasQuery&&_recent.isEmpty)Padding(padding:const EdgeInsets.fromLTRB(28,50,28,20),child:Column(children:[const Icon(Icons.location_searching,size:52,color:Color(0xFF9AA1AA)),const SizedBox(height:12),const Text('Search for a destination',style:TextStyle(fontSize:18,fontWeight:FontWeight.w800)),const SizedBox(height:5),Text('Find places, stations, hospitals and more near you.',textAlign:TextAlign.center,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant))])),
               ],
             ),
           ),
