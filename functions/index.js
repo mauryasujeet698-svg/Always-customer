@@ -1,6 +1,7 @@
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -236,6 +237,67 @@ exports.notifyRideRequest = onDocumentCreated(
     }
   }
 );
+
+
+/** Customer-authoritative ride cancellation. Stops carrier search immediately. */
+exports.cancelRide = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required.");
+  const rideId = String(request.data?.rideId || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "rideId is required.");
+  const db = getFirestore();
+  const ref = db.collection("autoRideRequests").doc(rideId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Ride not found.");
+    const data = snap.data() || {};
+    const owner = String(data.customerId || data.customerUid || data.uid || "");
+    if (owner !== request.auth.uid) throw new HttpsError("permission-denied", "This ride does not belong to you.");
+    const status = String(data.status || "").toLowerCase();
+    if (!["searching", "accepted", "arrived"].includes(status)) {
+      throw new HttpsError("failed-precondition", "This ride can no longer be cancelled.");
+    }
+    tx.update(ref, {
+      status: "cancelled",
+      cancelledBy: "customer",
+      cancellationReason: String(request.data?.reason || "Customer cancelled the ride"),
+      cancelledAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (data.driverUid) {
+      tx.set(db.collection("ridePartners").doc(String(data.driverUid)), {
+        activeRideId: null,
+        availableForRides: true,
+        status: "online",
+        statusUpdatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+    }
+  });
+  return {ok: true, rideId};
+});
+
+/** Expire unmatched ride searches after 30 minutes. */
+exports.expireUnmatchedRides = onSchedule({schedule: "every 5 minutes", timeZone: "Asia/Kolkata"}, async () => {
+  const db = getFirestore();
+  const cutoff = Date.now() - (30 * 60 * 1000);
+  const snap = await db.collection("autoRideRequests").where("status", "==", "searching").limit(100).get();
+  const batch = db.batch();
+  let changed = 0;
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    const raw = data.requestedAt;
+    const requestedMs = raw && typeof raw.toMillis === "function" ? raw.toMillis() : Date.parse(String(raw || ""));
+    if (!requestedMs || requestedMs > cutoff) continue;
+    batch.update(doc.ref, {
+      status: "expired",
+      expiredAt: FieldValue.serverTimestamp(),
+      cancellationReason: "No Driver Partner found within 30 minutes.",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    changed++;
+  }
+  if (changed) await batch.commit();
+  return {expired: changed};
+});
 
 /** Authoritative 4-digit delivery/ride confirmation. */
 exports.acceptDeliveryOrder = onCall(async (request) => {
