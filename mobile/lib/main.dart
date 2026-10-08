@@ -1328,7 +1328,7 @@ class _ShellState extends State<Shell> {
     }
   }
   void msg(String s){if(!mounted)return;ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s)));}
-  void login(){Navigator.push(context,MaterialPageRoute(builder:(_)=>const AuthScreen()));}
+  void login({bool signup=false}){Navigator.push(context,MaterialPageRoute(builder:(_)=>AuthScreen(initialSignup:signup)));}
 
   Future<void> loadWishlist() async {
     if(user==null)return;
