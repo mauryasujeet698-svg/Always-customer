@@ -1722,7 +1722,7 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             margin:const EdgeInsets.fromLTRB(12,8,12,0),
             alignment:Alignment.centerLeft,
             padding:const EdgeInsets.only(left:24),
-            decoration:BoxDecoration(color:AllwaysColors.muted.shade200,borderRadius:BorderRadius.circular(18)),
+            decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHigh,borderRadius:BorderRadius.circular(18)),
             child:const Icon(Icons.close),
           ),
           secondaryBackground:Container(
@@ -5429,7 +5429,7 @@ class _NotificationsPageState extends State<NotificationsPage>{
             child:Row(children:[
               IconButton(onPressed:()=>Navigator.pop(context),icon:const Icon(Icons.arrow_back)),
               const SizedBox(width:2),
-              const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+              Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                 Text('Notifications',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
                 Text('Stay updated with your ALLways activity',style:TextStyle(color:AllwaysColors.muted,fontSize:12)),
               ])),
