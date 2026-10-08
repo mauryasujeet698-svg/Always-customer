@@ -383,10 +383,6 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 
     const rideType = String(ride.rideType || "bike").toLowerCase();
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
-    if (!ride.expiresAt) {
-      await event.data.ref.set({ expiresAt: new Date(createdMs + 30 * 60 * 1000) }, { merge: true });
-    }
-    const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
     const expiresAtMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
     if (!ride.expiresAt) {
       await event.data.ref.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
