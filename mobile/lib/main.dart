@@ -885,7 +885,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 Container(width:10,height:10,decoration:const BoxDecoration(color:Colors.green,shape:BoxShape.circle)),const SizedBox(width:9),
                 Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   Text(activeLabel,style:const TextStyle(fontWeight:FontWeight.w900)),
-                  Text(partner==null?'Waiting for partner location':(_liveDistanceMeters==null?'Partner location is updating live':(_liveDistanceMeters!<1000?_liveDistanceMeters!.round().toString()+' m away':(_liveDistanceMeters!/1000).toStringAsFixed(1)+' km away')),style:const TextStyle(color:Colors.grey,fontSize:12)),
+                  Text(partner==null?'Waiting for partner location':(_liveDistanceMeters==null?'Partner location is updating live':(_liveDistanceMeters!<1000?_liveDistanceMeters!.round().toString()+' m away':(_liveDistanceMeters!/1000).toStringAsFixed(1)+' km away')),style:const TextStyle(color:AllwaysColors.muted,fontSize:12)),
                 ])),
                 if(callPhone.isNotEmpty)IconButton(onPressed:()=>_call(context,callPhone),icon:const Icon(Icons.call),tooltip:'Call'),
                 const Icon(Icons.gps_fixed,size:20),
@@ -901,7 +901,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 const Icon(Icons.two_wheeler,size:24),const SizedBox(width:8),
                 Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   Text(widget.mode=='ride'?'Green pickup • Red destination • Purple moving bike':'Blue customer • Purple moving partner',style:const TextStyle(fontSize:13)),
-                  if(_routeDistanceMeters!=null)Text((_routeDistanceMeters!<1000?_routeDistanceMeters!.round().toString()+' m':(_routeDistanceMeters!/1000).toStringAsFixed(1)+' km')+' route • ETA '+((_routeDurationSeconds??0)/60).ceil().toString()+' min',style:const TextStyle(fontSize:12,color:Colors.grey)),
+                  if(_routeDistanceMeters!=null)Text((_routeDistanceMeters!<1000?_routeDistanceMeters!.round().toString()+' m':(_routeDistanceMeters!/1000).toStringAsFixed(1)+' km')+' route • ETA '+((_routeDurationSeconds??0)/60).ceil().toString()+' min',style:const TextStyle(fontSize:12,color:AllwaysColors.muted)),
                 ])),
                 if(widget.allowCancel)TextButton(onPressed:_cancelActiveTrip,child:const Text('Cancel',style:TextStyle(color:Color(0xFF8E5A73)))),
               ]),
@@ -1722,14 +1722,14 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             margin:const EdgeInsets.fromLTRB(12,8,12,0),
             alignment:Alignment.centerLeft,
             padding:const EdgeInsets.only(left:24),
-            decoration:BoxDecoration(color:Colors.grey.shade200,borderRadius:BorderRadius.circular(18)),
+            decoration:BoxDecoration(color:AllwaysColors.muted.shade200,borderRadius:BorderRadius.circular(18)),
             child:const Icon(Icons.close),
           ),
           secondaryBackground:Container(
             margin:const EdgeInsets.fromLTRB(12,8,12,0),
             alignment:Alignment.centerRight,
             padding:const EdgeInsets.only(right:24),
-            decoration:BoxDecoration(color:Colors.grey.shade200,borderRadius:BorderRadius.circular(18)),
+            decoration:BoxDecoration(color:AllwaysColors.muted.shade200,borderRadius:BorderRadius.circular(18)),
             child:const Icon(Icons.close),
           ),
           child:Card(
@@ -1861,7 +1861,7 @@ class _ShopPageState extends State<ShopPage>{
               const SizedBox(height:6),
               SizedBox(height:36,child:Text(p.name,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800))),
               const SizedBox(height:2),
-              SizedBox(height:15,child:Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:Colors.grey))),
+              SizedBox(height:15,child:Text(p.category,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:AllwaysColors.muted))),
               const Spacer(),
               Text('₹'+p.price.toString(),style:const TextStyle(fontSize:13,fontWeight:FontWeight.w900)),
               const SizedBox(height:5),
@@ -1950,7 +1950,7 @@ class _ShopPageState extends State<ShopPage>{
               IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:widget.onOpenCart))),icon:const Icon(Icons.favorite_border)),
               IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
             ]),
-            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:Colors.grey)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
+            InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('Deliver to',style:TextStyle(fontSize:10,color:AllwaysColors.muted)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
             const SizedBox(height:10),
             TextField(controller:searchController,style:const TextStyle(fontSize:14),decoration:InputDecoration(hintText:'Search for products, brands and more',prefixIcon:const Icon(Icons.search),suffixIcon:IconButton(onPressed:listening?speech.stop:voice,icon:Icon(listening?Icons.mic:Icons.mic_none,color:listening?Colors.red:green)),filled:true,fillColor:Theme.of(c).colorScheme.surface,border:OutlineInputBorder(borderRadius:BorderRadius.circular(14),borderSide:BorderSide(color:Theme.of(c).colorScheme.outlineVariant))),onChanged:(v)=>setState(()=>search=v)),
             const SizedBox(height:10),
@@ -1998,7 +1998,7 @@ class _ShopPageState extends State<ShopPage>{
                 final raw=bannerSnap.data?.data()?['imageUrls'];
                 final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(7).toList():<String>[];
                 if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle),const Spacer(),Text(deliveryText,style:const TextStyle(color:green,fontWeight:FontWeight.w900))]));
-                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(urls[bannerIndex%urls.length],fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
+                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(urls[bannerIndex%urls.length],fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[AllwaysColors.muted,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
               },
             ),
             const SizedBox(height:14),
@@ -2050,7 +2050,7 @@ class CategoryProductsPage extends StatelessWidget{
             ]),
             const SizedBox(height:7),
             Text(p.name,maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontWeight:FontWeight.w900)),
-            Text(p.category,style:const TextStyle(color:Colors.grey,fontSize:12)),
+            Text(p.category,style:const TextStyle(color:AllwaysColors.muted,fontSize:12)),
             Text('₹'+p.price.toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
             const Spacer(),
             if(item==null)
@@ -2170,8 +2170,8 @@ class ProductScreen extends StatelessWidget{
            ? Image.network(product.imageUrl,fit:BoxFit.cover,width:double.infinity,height:220,errorBuilder:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
            : Text(product.icon,style:const TextStyle(fontSize:70)),
      ),const SizedBox(height:20),
-    Text(product.name,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:8),Text(product.category,style:const TextStyle(color:Colors.grey)),
-    if(product.brand.isNotEmpty)Text(product.brand,style:const TextStyle(color:Colors.grey)),const SizedBox(height:14),
+    Text(product.name,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:8),Text(product.category,style:const TextStyle(color:AllwaysColors.muted)),
+    if(product.brand.isNotEmpty)Text(product.brand,style:const TextStyle(color:AllwaysColors.muted)),const SizedBox(height:14),
     Text('₹'+product.price.toString(),style:const TextStyle(fontSize:24,fontWeight:FontWeight.w800)),const SizedBox(height:14),
     Text(product.description.isEmpty?'No description available.':product.description),const SizedBox(height:22),
     FilledButton.icon(onPressed:product.stock>0?onAdd:null,icon:const Icon(Icons.shopping_cart),label:Text(product.stock>0?'Add to cart':'Unavailable')),
@@ -2491,7 +2491,7 @@ class _OrdersPageState extends State<OrdersPage> {
     if (s.contains('out for delivery') || s.contains('ready')) return const Color(0xFFEF6C00);
     if (s.contains('cancel')) return const Color(0xFFC62828);
     if (s.contains('confirm') || s.contains('prepar') || s.contains('new')) return const Color(0xFF1565C0);
-    return Colors.grey;
+    return AllwaysColors.muted;
   }
 
   Widget _statusChip(String status) {
@@ -2527,7 +2527,7 @@ class _OrdersPageState extends State<OrdersPage> {
           color: dark ? const Color(0xFF24262C) : const Color(0xFFF7F5F6),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : Colors.grey),
+        child: Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted),
       );
     }
     return SizedBox(
@@ -2579,7 +2579,7 @@ class _OrdersPageState extends State<OrdersPage> {
               child: Image.network(
                 img,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : Colors.grey),
+                errorBuilder: (_, __, ___) => Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted),
               ),
             )
           : Center(
@@ -2733,7 +2733,7 @@ class _OrdersPageState extends State<OrdersPage> {
                 if (primarySnapshot.hasError) {
                   return Center(child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('Could not load orders.\\n'+primarySnapshot.error.toString(), textAlign: TextAlign.center, style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : Colors.black54)),
+                    child: Text('Could not load orders.\\n'+primarySnapshot.error.toString(), textAlign: TextAlign.center, style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : AllwaysColors.muted)),
                   ));
                 }
                 if (!primarySnapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -2776,7 +2776,7 @@ class _OrdersPageState extends State<OrdersPage> {
           padding: const EdgeInsets.all(32),
           child: Text(
             _filter == 'All' ? 'No orders yet.' : 'No orders in "$_filter".',
-            style: const TextStyle(color: Colors.black54, fontSize: 15),
+            style: const TextStyle(color: AllwaysColors.muted, fontSize: 15),
             textAlign: TextAlign.center,
           ),
         ),
@@ -2898,7 +2898,7 @@ class _OrdersPageState extends State<OrdersPage> {
 
 class StatusView extends StatelessWidget{final String status;const StatusView({super.key,required this.status});Widget build(BuildContext c){
   const s=['New Order','Confirmed','Preparing','Out for delivery','Delivered'];final i=s.indexOf(status)<0?0:s.indexOf(status);
-  return Column(children:[for(int x=0;x<s.length;x++)ListTile(dense:true,contentPadding:EdgeInsets.zero,leading:Icon(x<=i?Icons.check_circle:Icons.radio_button_unchecked,color:x<=i?Colors.green:Colors.grey),title:Text(s[x]))]);
+  return Column(children:[for(int x=0;x<s.length;x++)ListTile(dense:true,contentPadding:EdgeInsets.zero,leading:Icon(x<=i?Icons.check_circle:Icons.radio_button_unchecked,color:x<=i?Colors.green:AllwaysColors.muted),title:Text(s[x]))]);
 }}
 
 
@@ -3776,7 +3776,7 @@ class _RideTypeListCard extends StatelessWidget{
           Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Text(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),
             const SizedBox(height:4),
-            Text(subtitle,style:const TextStyle(fontSize:13,color:Colors.grey,height:1.25)),
+            Text(subtitle,style:const TextStyle(fontSize:13,color:AllwaysColors.muted,height:1.25)),
           ])),
           const Icon(Icons.chevron_right,size:30),
         ]),
@@ -4312,7 +4312,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                         if(routeError!=null)Padding(
                           padding:const EdgeInsets.only(top:4),
                           child:Text('Route fallback: '+routeError!,
-                            style:const TextStyle(color:Colors.grey,fontSize:11)),
+                            style:const TextStyle(color:AllwaysColors.muted,fontSize:11)),
                         ),
                         const SizedBox(height:12),
                         SizedBox(
@@ -4406,7 +4406,7 @@ class _OnDemandRideTrackingPageState extends State<OnDemandRideTrackingPage> {
             Text(status=='searching'?'Looking for an available '+(widget.rideType=='bike'?'bike':'auto')+' partner…':'Ride '+status,style:const TextStyle(fontSize:19,fontWeight:FontWeight.w900),textAlign:TextAlign.center),
             const SizedBox(height:8),
             Text(waitingLong?'Waiting longer than usual. You can cancel and try again.':'Searching nearby available partners.'),
-            if(waited>0)Padding(padding:const EdgeInsets.only(top:8),child:Text('Waiting: '+(waited~/60).toString().padLeft(2,'0')+':'+(waited%60).toString().padLeft(2,'0'),style:const TextStyle(color:Colors.grey))),
+            if(waited>0)Padding(padding:const EdgeInsets.only(top:8),child:Text('Waiting: '+(waited~/60).toString().padLeft(2,'0')+':'+(waited%60).toString().padLeft(2,'0'),style:const TextStyle(color:AllwaysColors.muted))),
             const SizedBox(height:18),
             if(!cancelled)OutlinedButton.icon(onPressed:()=>_cancel(context,waitingLong?'Waiting too long':'Customer cancelled before acceptance'),icon:const Icon(Icons.close),label:Text(waitingLong?'Cancel request':'Cancel ride')),
           ])))),
@@ -4987,7 +4987,7 @@ class AccountSecurityPage extends StatelessWidget {
         children:[
           const Text('Sensitive account actions',style:TextStyle(fontSize:24,fontWeight:FontWeight.w900)),
           const SizedBox(height:6),
-          const Text('These actions are kept here to avoid accidental use.',style:TextStyle(color:Colors.grey)),
+          const Text('These actions are kept here to avoid accidental use.',style:TextStyle(color:AllwaysColors.muted)),
           const SizedBox(height:14),
           Card(
             child:ListTile(
@@ -5302,7 +5302,7 @@ class _ProfilePageState extends State<ProfilePage>{
         _menuCard(c,icon:Icons.security_outlined,title:'Account & Security',subtitle:'Manage sensitive account actions',onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>AccountSecurityPage(onDelete:()=>_deleteAccount(c))))),
         _menuCard(c,icon:Icons.logout_outlined,title:tr('Log Out'),subtitle:'Sign out of your ALLways account',danger:true,onTap:()=>_confirmLogout(c)),
         const SizedBox(height:12),
-        const Text('ALLways • Closer to You, Always',textAlign:TextAlign.center,style:TextStyle(color:Colors.grey)),
+        const Text('ALLways • Closer to You, Always',textAlign:TextAlign.center,style:TextStyle(color:AllwaysColors.muted)),
       ],
     );
   }
@@ -5431,7 +5431,7 @@ class _NotificationsPageState extends State<NotificationsPage>{
               const SizedBox(width:2),
               const Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                 Text('Notifications',style:TextStyle(fontSize:22,fontWeight:FontWeight.w900)),
-                Text('Stay updated with your ALLways activity',style:TextStyle(color:Colors.grey,fontSize:12)),
+                Text('Stay updated with your ALLways activity',style:TextStyle(color:AllwaysColors.muted,fontSize:12)),
               ])),
               IconButton(tooltip:'Notification settings',onPressed:()=>Navigator.pushNamed(context,'/notifications-settings'),icon:const Icon(Icons.settings_outlined)),
             ]),
@@ -5577,7 +5577,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
           ...docs.map((doc){final d=doc.data();final allow=d['allowNegotiation']==true;return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Row(children:[const Icon(Icons.directions_car_outlined),const SizedBox(width:10),Expanded(child:Text((d['category']??d['vehicleType']??'Vehicle').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+(d['price']??0).toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
             const SizedBox(height:6),Text('Owner: '+(d['ownerName']??'ALLways vehicle owner').toString()+(d['capacity']!=null&&d['capacity'].toString()!='0'?' • Capacity: '+d['capacity'].toString():'')),
-            const SizedBox(height:4),Text(allow?'Owner allows negotiation':'Fixed owner price',style:const TextStyle(color:Colors.grey)),const SizedBox(height:10),
+            const SizedBox(height:4),Text(allow?'Owner allows negotiation':'Fixed owner price',style:const TextStyle(color:AllwaysColors.muted)),const SizedBox(height:10),
             Row(children:[Expanded(child:FilledButton(onPressed:()=>_book(doc,negotiate:false),child:const Text('Book'))),if(allow)...[const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_book(doc,negotiate:true),child:const Text('Book & negotiate')))]])
           ])));}),
           const SizedBox(height:14),TravelBookingsSection(type:'vehicle'),const SizedBox(height:14),const Text('25 popular vehicle categories',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:8),
@@ -5889,7 +5889,7 @@ class _AuthState extends State<AuthScreen>{
   Future<void> submit()async{setState(()=>busy=true);try{if(signup){final x=await FirebaseAuth.instance.createUserWithEmailAndPassword(email:email.text.trim(),password:pass.text);if(name.text.trim().isNotEmpty)await x.user?.updateDisplayName(name.text.trim());}else{await FirebaseAuth.instance.signInWithEmailAndPassword(email:email.text.trim().toLowerCase(),password:pass.text.trim());}if(mounted)Navigator.pop(context);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(err(e))));}finally{if(mounted)setState(()=>busy=false);}}
   Future<void> reset()async{if(email.text.trim().isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Enter your email first.')));return;}try{await FirebaseAuth.instance.sendPasswordResetEmail(email:email.text.trim());if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Password reset email sent.')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(err(e))));}}
   Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:Text(signup?'Create ALLways account':'Sign in')),body:ListView(padding:const EdgeInsets.all(20),children:[
-    const Text('ALLways',style:TextStyle(fontSize:34,fontWeight:FontWeight.w900)),const Text('Closer to You, Always',style:TextStyle(color:Colors.grey)),const SizedBox(height:25),
+    const Text('ALLways',style:TextStyle(fontSize:34,fontWeight:FontWeight.w900)),const Text('Closer to You, Always',style:TextStyle(color:AllwaysColors.muted)),const SizedBox(height:25),
     if(signup)TextField(controller:name,decoration:const InputDecoration(labelText:'Your name')),if(signup)const SizedBox(height:10),
     TextField(controller:email,keyboardType:TextInputType.emailAddress,decoration:const InputDecoration(labelText:'Email')),const SizedBox(height:10),
     TextField(controller:pass,obscureText:hide,decoration:InputDecoration(labelText:'Password',suffixIcon:IconButton(onPressed:()=>setState(()=>hide=!hide),icon:Icon(hide?Icons.visibility:Icons.visibility_off)))),const SizedBox(height:16),
@@ -5908,4 +5908,4 @@ class _AuthState extends State<AuthScreen>{
   ]));
 }
 
-class InfoCard extends StatelessWidget{final String title,detail;const InfoCard({super.key,required this.title,required this.detail});Widget build(BuildContext c)=>Card(child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),const SizedBox(height:6),Text(detail,style:const TextStyle(color:Colors.grey))])));}
+class InfoCard extends StatelessWidget{final String title,detail;const InfoCard({super.key,required this.title,required this.detail});Widget build(BuildContext c)=>Card(child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(title,style:const TextStyle(fontWeight:FontWeight.w800)),const SizedBox(height:6),Text(detail,style:const TextStyle(color:AllwaysColors.muted))])));}
