@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import '../allways_design.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
-  NotificationsSettingsScreen({super.key});
+  const NotificationsSettingsScreen({super.key});
 
   @override
   State<NotificationsSettingsScreen> createState() =>
