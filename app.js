@@ -45,6 +45,9 @@ let firebaseReady = false;
 let db = null;
 let customerOrdersUnsubscribe = null;
 let announcementsUnsubscribe = null;
+let activeRideUnsubscribe = null;
+let activeRideLocationWatchId = null;
+let activeRideId = null;
 let savedAddresses = [];
 let favouriteIds = new Set();
 let favouritesOnly = false;
@@ -776,9 +779,38 @@ async function travelAction(type){
   if(!currentUser){openAuth();return;}
   const modal=document.getElementById("modal"),content=document.getElementById("modalContent");
   if(!modal||!content)return;
-  content.innerHTML='<h2>Book a local ride</h2><p class="muted">Allow location access so ALLways can find your pickup point.</p><label>Destination<input id="rideDestination" class="field" placeholder="Enter destination"></label><label>Vehicle<select id="rideType" class="field"><option value="bike">Bike</option><option value="auto">Auto</option><option value="car">Car</option></select></label><button class="primary" id="requestRideBtn">Request ride</button><p id="rideMsg" class="muted auth-msg"></p>';
+  content.innerHTML='<h2>Book a local ride</h2><p class="muted">Allow location access so ALLways can find your pickup point.</p><label>Destination<input id="rideDestination" class="field" placeholder="Enter destination" autocomplete="street-address"></label><label>Vehicle<select id="rideType" class="field"><option value="bike">Bike</option><option value="auto">Auto</option><option value="car">Car</option></select></label><button class="primary" id="requestRideBtn">Request ride</button><p id="rideMsg" class="muted auth-msg"></p><p id="ridePinNote" class="policy"></p>';
   modal.classList.remove("hidden");
   document.getElementById("requestRideBtn").addEventListener("click",requestRide);
+}
+function stopActiveRideWatcher(){
+  if(activeRideUnsubscribe){activeRideUnsubscribe();activeRideUnsubscribe=null;}
+  if(activeRideLocationWatchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(activeRideLocationWatchId);activeRideLocationWatchId=null;}
+  activeRideId=null;
+}
+function startActiveRideWatcher(rideId){
+  stopActiveRideWatcher(); activeRideId=rideId;
+  activeRideUnsubscribe=db.collection("autoRideRequests").doc(rideId).onSnapshot(function(snap){
+    const data=snap.exists?snap.data():null, msg=document.getElementById("rideMsg");
+    if(!data){if(msg)msg.textContent="Ride request is no longer available.";stopActiveRideWatcher();return;}
+    const status=String(data.status||"searching").toLowerCase();
+    if(msg){const labels={searching:"Searching for a driver…",accepted:"Driver found. Your ride is accepted.",arrived:"Your driver has arrived.",started:"Ride in progress.",completed:"Ride completed.",cancelled:"Ride cancelled.",expired:"No driver was found within 30 minutes."};msg.textContent=labels[status]||("Ride status: "+status);}
+    if(["cancelled","expired","completed"].includes(status)){stopActiveRideWatcher();if(status==="cancelled"||status==="expired")showSection("travel");}
+  },function(error){console.error("ALLways ride watcher:",error);});
+  if(navigator.geolocation){activeRideLocationWatchId=navigator.geolocation.watchPosition(function(pos){
+    const id=activeRideId;if(!id||!currentUser||!db)return;
+    db.collection("autoRideRequests").doc(id).update({customerLat:pos.coords.latitude,customerLng:pos.coords.longitude,customerLocationUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(function(){});
+  },function(){},{enableHighAccuracy:true,maximumAge:10000});}
+}
+async function cancelRideRequest(){
+  const id=activeRideId;if(!id||!currentUser||!db)return;
+  const msg=document.getElementById("rideMsg"),btn=document.getElementById("cancelRideBtn");if(btn)btn.disabled=true;if(msg)msg.textContent="Cancelling ride…";
+  try{
+    const ref=db.collection("autoRideRequests").doc(id),snap=await ref.get(),data=snap.data()||{};
+    if(String(data.customerId||data.customerUid||"")!==currentUser.uid)throw new Error("This ride does not belong to you.");
+    const status=String(data.status||"").toLowerCase();if(!["searching","accepted","arrived"].includes(status))return;
+    await ref.update({status:"cancelled",cancelledBy:"customer",cancellationReason:"Cancelled by customer",cancelledAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  }catch(e){if(btn)btn.disabled=false;if(msg)msg.textContent="Could not cancel the ride. Please try again.";}
 }
 async function requestRide(){
   const msg=document.getElementById("rideMsg"),destination=document.getElementById("rideDestination")?.value.trim(),type=document.getElementById("rideType")?.value||"bike";
@@ -787,24 +819,15 @@ async function requestRide(){
   const btn=document.getElementById("requestRideBtn");if(btn)btn.disabled=true;if(msg)msg.textContent="Finding your pickup location...";
   navigator.geolocation.getCurrentPosition(async function(pos){
     try{
-      const lat=pos.coords.latitude,lng=pos.coords.longitude;
-      let pickupAddress="Current location",destinationAddress=destination,dlat=null,dlng=null;
-      try{
-        const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng,{headers:{"Accept":"application/json"}});
-        if(r.ok){const x=await r.json();pickupAddress=x.display_name||pickupAddress;}
-      }catch(_){}
-      try{
-        const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(destination));
-        if(r.ok){const x=await r.json();if(x&&x[0]){dlat=Number(x[0].lat);dlng=Number(x[0].lon);destinationAddress=x[0].display_name||destination;}}
-      }catch(_){}
-      const ref=db.collection("autoRideRequests").doc();
-       const confirmationPin=String(Math.floor(1000+Math.random()*9000));
-      await ref.set({
-        customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerEmail:currentUser.email||"",
-        pickupAddress,destinationAddress,pickupLatitude:lat,pickupLongitude:lng,destinationLatitude:dlat,destinationLongitude:dlng,
-        rideType:type,confirmationPin,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-      });
-      closeModal();showSection("orders");alert("Ride requested. Your 4-digit confirmation number is: "+confirmationPin+"\\n\\nShare this number with your assigned carrier only when they arrive.");
+      const lat=pos.coords.latitude,lng=pos.coords.longitude;let pickupAddress="Current location",destinationAddress=destination,dlat=null,dlng=null;
+      try{const r=await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+lat+"&lon="+lng+"&zoom=18&addressdetails=1",{headers:{"Accept":"application/json"}});if(r.ok){const x=await r.json();pickupAddress=x.display_name||pickupAddress;}}catch(_){}
+      try{const r=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&q="+encodeURIComponent(destination),{headers:{"Accept":"application/json"}});if(r.ok){const x=await r.json();if(x&&x[0]){dlat=Number(x[0].lat);dlng=Number(x[0].lon);destinationAddress=x[0].display_name||destination;}}}catch(_){}
+      const rideRef=db.collection("autoRideRequests").doc(),confirmationPin=String(Math.floor(1000+Math.random()*9000));
+      await rideRef.set({customerId:currentUser.uid,customerUid:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",customerEmail:currentUser.email||"",pickupAddress,destinationAddress,pickupLatitude:lat,pickupLongitude:lng,destinationLatitude:dlat,destinationLongitude:dlng,customerLat:lat,customerLng:lng,rideType:type,confirmationPin,status:"searching",requestedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      if(msg)msg.textContent="Ride requested. Searching for a driver…";
+      const existing=document.getElementById("cancelRideBtn");if(!existing){const cancel=document.createElement("button");cancel.id="cancelRideBtn";cancel.className="secondary";cancel.textContent="Cancel ride";cancel.addEventListener("click",cancelRideRequest);btn?.parentNode?.insertBefore(cancel,btn.nextSibling);}
+      const pinNote=document.getElementById("ridePinNote");if(pinNote)pinNote.textContent="Your 4-digit confirmation number is "+confirmationPin+". Share it only with your assigned driver when they arrive.";
+      startActiveRideWatcher(rideRef.id);
     }catch(e){if(btn)btn.disabled=false;if(msg)msg.textContent="Could not request the ride. Please try again.";}
   },function(){if(btn)btn.disabled=false;if(msg)msg.textContent="Location permission is required to request a ride.";},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
@@ -1147,39 +1170,25 @@ async function resetPassword(){
    CUSTOMER SUPPORT
    ========================================================= */
 async function openSupport(prefill){
-  if(!currentUser){ openAuth(); return; }
-  const content=document.getElementById("authContent"), modal=document.getElementById("authModal");
-  if(!content||!modal)return;
+  if(!currentUser){openAuth();return;}
+  const content=document.getElementById("authContent"),modal=document.getElementById("authModal");if(!content||!modal)return;
   const orderOptions=orders.map(function(o){return '<option value="'+escapeHtml(o.id||o.orderId||'')+'">#'+escapeHtml(o.id||o.orderId||'Order')+'</option>';}).join("");
-  content.innerHTML='<div class="auth-head"><span class="auth-icon">?</span><h2>Customer Support</h2><p class="muted">Choose the issue type so ALLways can route it correctly.</p></div>'+
-    '<label>Area<select id="supportArea" class="field"><option value="Order">Order</option><option value="Ride">Ride</option><option value="Account">Account</option><option value="General">General</option></select></label>'+
+  content.innerHTML='<div class="auth-head"><span class="auth-icon">?</span><h2>Customer Support</h2><p class="muted">Choose what you need help with.</p></div>'+
+    '<label>Issue type<select id="supportArea" class="field"><option value="Item">Item / Shopping issue</option><option value="Ride">Ride issue</option><option value="General">General issue</option></select></label>'+
     '<label id="supportOrderWrap">Order<select id="supportOrder" class="field"><option value="">Select an order</option>'+orderOptions+'</select></label>'+
-    '<label>Issue<select id="supportCategory" class="field"><option>Order problem</option><option>Missing item</option><option>Wrong item</option><option>Damaged item</option><option>Delivery delayed</option><option>Cancellation / refund</option><option>Delivery partner issue</option><option>Ride issue</option><option>Carrier issue</option><option>Account / login</option><option>Suggestion</option><option>General issue</option></select></label>'+
+    '<label>Issue<select id="supportCategory" class="field"></select></label>'+
     '<label>Message<textarea id="supportMessage" class="field" rows="4" placeholder="Tell us what happened..."></textarea></label>'+
     '<button class="primary" id="submitSupportBtn">Create support request</button><p id="supportMsg" class="muted auth-msg"></p>';
-  const area=document.getElementById("supportArea"), orderWrap=document.getElementById("supportOrderWrap");
-  area.value=prefill&&prefill.area?prefill.area:"Order";
-  orderWrap.style.display=area.value==="Order"?"block":"none";
-  area.addEventListener("change",function(){orderWrap.style.display=area.value==="Order"?"block":"none";});
+  const area=document.getElementById("supportArea"),orderWrap=document.getElementById("supportOrderWrap"),category=document.getElementById("supportCategory");
+  const options={Item:["Missing item","Wrong item","Damaged item","Expired item","Quality issue","Delivery delayed","Cancellation / refund","Other item issue"],Ride:["Could not find driver","Driver cancelled","Driver did not arrive","Wrong fare","Ride issue","Safety issue","Lost item","Other ride issue"],General:["Account / login","Payment","App problem","Suggestion","Privacy / data","General issue","Other"]};
+  function refreshCategories(){category.innerHTML=(options[area.value]||options.General).map(function(x){return '<option>'+escapeHtml(x)+'</option>';}).join("");orderWrap.style.display=area.value==="Item"?"block":"none";}
+  area.value=prefill&&prefill.area==="Ride"?"Ride":"Item";refreshCategories();area.addEventListener("change",refreshCategories);
   document.getElementById("submitSupportBtn").addEventListener("click",async function(){
-    const msg=document.getElementById("supportMessage").value.trim();
-    const category=document.getElementById("supportCategory").value;
-    const orderId=document.getElementById("supportOrder").value;
-    const a=area.value;
+    const msg=document.getElementById("supportMessage").value.trim(),selectedCategory=category.value,orderId=document.getElementById("supportOrder").value,a=area.value;
     if(!msg){document.getElementById("supportMsg").textContent="Please describe the issue.";return;}
     const btn=this;btn.disabled=true;document.getElementById("supportMsg").textContent="Submitting...";
-    try{
-      const ride=(a==="Ride");
-      await db.collection("supportTickets").add({
-        requesterId:currentUser.uid,requesterRole:"customer",customerId:currentUser.uid,
-        customerName:currentUser.displayName||currentUser.email||"Customer",queue:"Customer Support",
-        area:a,category:category,subcategory:category,subject:category,
-        message:msg,orderId:orderId||null,rideId:prefill&&prefill.rideId?prefill.rideId:null,
-        priority:category.includes("safety")?"urgent":"normal",status:"open",
-        createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-      });
-      document.getElementById("supportMsg").textContent="Support request created. ALLways will review it.";
-      setTimeout(closeAuth,700);
+    try{await db.collection("supportTickets").add({requesterId:currentUser.uid,requesterRole:"customer",customerId:currentUser.uid,customerName:currentUser.displayName||currentUser.email||"Customer",queue:"Customer Support",area:a,category:selectedCategory,subcategory:selectedCategory,subject:selectedCategory,message:msg,orderId:orderId||null,rideId:prefill&&prefill.rideId?prefill.rideId:null,priority:selectedCategory.toLowerCase().includes("safety")?"urgent":"normal",status:"open",createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      document.getElementById("supportMsg").textContent="Support request created. ALLways will review it.";setTimeout(closeAuth,700);
     }catch(e){btn.disabled=false;document.getElementById("supportMsg").textContent="Could not create the request. Please try again.";}
   });
   modal.classList.remove("hidden");
