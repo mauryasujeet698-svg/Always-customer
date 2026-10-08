@@ -43,3 +43,49 @@
 .rideLocationResults .ridePlace,.rideHistory{width:100%;text-align:left;margin-top:6px}
 .updateBanner{position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;background:#0d6b39;color:#fff;border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .updateBanner button{margin-left:auto;background:#fff;color:#0d6b39;border:0;border-radius:9px;padding:8px 11px;font-weight:900}
+
+
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.themeBtn{min-width:42px;padding:9px 10px;cursor:pointer}
+body.theme-dark{background:#101412;color:#f2f6f3}
+body.theme-dark .topbar,
+body.theme-dark .product,
+body.theme-dark .orderCard,
+body.theme-dark .modal-card,
+body.theme-dark .auth-card,
+body.theme-dark .travel-panel,
+body.theme-dark .travel-card,
+body.theme-dark .empty,
+body.theme-dark .coming-soon,
+body.theme-dark .adminOrder,
+body.theme-dark .admin-summary>div{background:#171c19;color:#f2f6f3;border-color:#303a34}
+body.theme-dark .ghost,
+body.theme-dark .search input,
+body.theme-dark .travel-panel input,
+body.theme-dark .travel-panel select,
+body.theme-dark .field,
+body.theme-dark .googleBtn,
+body.theme-dark .secondary,
+body.theme-dark .cat,
+body.theme-dark .tab,
+body.theme-dark .adminActions select,
+body.theme-dark .adminEta input,
+body.theme-dark .adminNote{background:#111614;color:#f2f6f3;border-color:#3b4740}
+body.theme-dark .muted,
+body.theme-dark .location small,
+body.theme-dark .product small,
+body.theme-dark .section-head span,
+body.theme-dark footer,
+body.theme-dark .coming-soon p{color:#b7c2bb}
+body.theme-dark .free-banner,
+body.theme-dark .etaBox,
+body.theme-dark .adminItems,
+body.theme-dark .ratingDone,
+body.theme-dark .auth-note{background:#193021;color:#d9f2e1}
+body.theme-dark .cat.active{background:#193021;color:#9de2b5;border-color:#4c8b63}
+body.theme-dark .tab.active{background:#087b3e;color:#fff}
+body.theme-dark .qtyControl button,
+body.theme-dark .productQty button{background:#18221c;color:#dff5e6;border-color:#41604a}
+body.theme-dark .cancelOrderBtn,
+body.theme-dark .removeItemBtn{background:#2b1919;color:#ffb9b9;border-color:#6d3b3b}
+body.theme-dark .close{background:#263029;color:#f2f6f3}
