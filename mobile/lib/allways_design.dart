@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+final ValueNotifier<ThemeMode> allwaysThemeNotifier = ValueNotifier(ThemeMode.system);
+
 class AllwaysColors {
   static const background = Color(0xFFFFF8FB);
   static const surface = Colors.white;
   static const text = Color(0xFF17151A);
-  static const muted = Color(0xFF6F6A73);
+  static Color get muted => allwaysThemeNotifier.value == ThemeMode.dark ? const Color(0xFFD1CAD2) : const Color(0xFF6F6A73);
   static const primary = Color(0xFFC5005A);
   static const primaryDark = Color(0xFFAA004D);
   static const primarySoft = Color(0xFFFFE8F1);
