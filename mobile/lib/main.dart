@@ -1575,15 +1575,6 @@ class _ShellState extends State<Shell> {
         if(user!=null) const ActiveRideBanner(),
         Expanded(child:pages[tab]),
       ])),
-      bottomNavigationBar:AllwaysBottomNav(
-        selectedIndex:tab,
-        onSelected:(i)=>setState(()=>tab=i),
-        items:[
-          (icon:Icons.shopping_bag_outlined,activeIcon:Icons.shopping_bag,label:tr('Shop')),
-          (icon:Icons.directions_car_outlined,activeIcon:Icons.directions_car,label:tr('Travel')),
-          (icon:Icons.person_outline,activeIcon:Icons.person,label:tr('Profile')),
-        ],
-      ),
       bottomNavigationBar:_updateMandatory&&updateVersion!=null
           ? null
           : AllwaysBottomNav(
