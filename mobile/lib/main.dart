@@ -4992,36 +4992,23 @@ class _ProfilePageState extends State<ProfilePage>{
 
   Future<void> _checkForUpdate(BuildContext c) async {
     try{
-      final r=await http.get(Uri.parse(updateManifestUrl),headers:const {'Accept':'application/vnd.github+json'}).timeout(const Duration(seconds:8));
+      final manifest=await _fetchAllwaysUpdateManifest();
       if(!c.mounted)return;
-      if(r.statusCode==200){
-        final d=jsonDecode(r.body);
-        if(d is Map){
-          final name=(d['name']??'').toString();
-          final match=RegExp(r'(\d+\.\d+\.\d+)').firstMatch(name);
-          final remote=match?.group(1)??'';
-          final info=await PackageInfo.fromPlatform();
-          if(remote.isNotEmpty&&_versionGreater(remote,info.version)){
-            final assets=d['assets'] is List ? d['assets'] as List : const [];
-            for(final raw in assets){
-              if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
-                final url=(raw['browser_download_url']??'').toString();
-                if(url.isNotEmpty&&c.mounted){
-                  await Navigator.of(c).push(MaterialPageRoute(builder:(_)=>_UpdatePromptPage(
-                    version:remote,notes:(d['body']??'').toString(),url:url,digest:(raw['digest']??'').toString(),
-                  )));
-                }
-                return;
-              }
-            }
-          }
-          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('ALLways is up to date (v'+info.version+').')));
-          return;
-        }
+      final remote=(manifest?['version']??'').toString().trim();
+      final url=(manifest?['url']??'').toString().trim();
+      final info=await PackageInfo.fromPlatform();
+      if(remote.isNotEmpty&&url.isNotEmpty&&_versionGreater(remote,info.version)){
+        await Navigator.of(c).push(MaterialPageRoute(builder:(_)=>_UpdatePromptPage(
+          version:remote,
+          notes:(manifest?['notes']??'').toString(),
+          url:url,
+          digest:(manifest?['digest']??'').toString(),
+        )));
+        return;
       }
-      ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Could not check for updates.')));
+      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('ALLways is up to date (v'+info.version+').')));
     }catch(e){
-      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Could not check for updates: '+e.toString())));
+      if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('Could not check for updates.')));
     }
   }
 
