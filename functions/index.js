@@ -495,7 +495,7 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
 
 // Secure confirmation PIN verification. Only the assigned carrier/delivery partner can
 // advance the protected state, and the PIN itself is never returned by this function.
-exports.verifyConfirmationPin = onCall(async (request) => {
+exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
 
@@ -555,6 +555,50 @@ exports.verifyConfirmationPin = onCall(async (request) => {
     }
 
     return { verified: true };
+  });
+});
+
+
+// Complete a ride only after the assigned driver has verified the passenger PIN.
+exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const rideId = String(request.data?.rideId || "").trim();
+  if (!rideId) throw new HttpsError("invalid-argument", "A ride ID is required.");
+
+  const rideRef = db.collection("autoRideRequests").doc(rideId);
+  const partnerRef = db.collection("ridePartners").doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const rideSnap = await tx.get(rideRef);
+    if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
+
+    const ride = rideSnap.data() || {};
+    const assignedUid = String(ride.driverUid || ride.carrierUid || "").trim();
+    if (assignedUid !== uid) {
+      throw new HttpsError("permission-denied", "You are not assigned to this ride.");
+    }
+
+    const status = String(ride.status || "").toLowerCase();
+    if (status === "completed") return { completed: true, alreadyCompleted: true };
+    if (status !== "started" || ride.ridePinVerified !== true) {
+      throw new HttpsError("failed-precondition", "Verify the passenger PIN and start the ride before completing it.");
+    }
+
+    tx.update(rideRef, {
+      status: "completed",
+      completedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(partnerRef, {
+      status: "available",
+      availableForRides: true,
+      activeRideId: null,
+      statusUpdatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { completed: true };
   });
 });
 
