@@ -12,7 +12,10 @@ permissions:
 jobs:
   customer-qa:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 60
+    timeout-minutes: 100
+    defaults:
+      run:
+        shell: powershell
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,11 +25,27 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.35.2"
-          channel: stable
-          cache: true
+      - name: Install or reuse Flutter SDK
+        run: |
+          $toolRoot = if ($env:RUNNER_TOOL_CACHE) { $env:RUNNER_TOOL_CACHE } else { $env:RUNNER_TEMP }
+          $installRoot = Join-Path $toolRoot "allways-flutter-3.35.2"
+          $flutterBin = Join-Path $installRoot "flutter\bin"
+          $flutterExe = Join-Path $flutterBin "flutter.bat"
+          if (!(Test-Path $flutterExe)) {
+            $archive = Join-Path $env:RUNNER_TEMP "flutter_windows_3.35.2-stable.zip"
+            $extractRoot = Join-Path $env:RUNNER_TEMP "allways-flutter-extract"
+            if (Test-Path $extractRoot) { Remove-Item -LiteralPath $extractRoot -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+            Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.35.2-stable.zip" -OutFile $archive
+            Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot -Force
+            if (!(Test-Path (Join-Path $extractRoot "flutter\bin\flutter.bat"))) { throw "Flutter SDK archive did not contain flutter\bin\flutter.bat." }
+            New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+            Copy-Item -Path (Join-Path $extractRoot "flutter") -Destination $installRoot -Recurse -Force
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $flutterBin
+          $env:PATH = "$flutterBin;$env:PATH"
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) { throw "Flutter SDK setup failed." }
       - uses: android-actions/setup-android@v4
       - name: Install Android SDK platform and build tools
         run: |
@@ -39,38 +58,49 @@ jobs:
           }
           & $sdkManager "--sdk_root=$sdkRoot" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit code $LASTEXITCODE" }
-          @("y","y","y","y","y","y","y","y","y","y","y","y","y","y","y") | flutter doctor --android-licenses
+          @("y","y","y","y","y","y","y","y","y","y","y","y","y","y","y") | & $env:RUNNER_TEMP\allways-flutter-3.35.2\flutter\bin\flutter.bat doctor --android-licenses
           if ($LASTEXITCODE -ne 0) { throw "Android SDK licenses could not be accepted" }
       - name: Install and smoke-test Cloud Functions source (no deployment)
         run: |
           npm install --prefix functions --no-package-lock --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions dependency installation failed." }
           node --check functions/index.js
-          GCLOUD_PROJECT=allways-repair-smoke FIREBASE_CONFIG='{"projectId":"allways-repair-smoke"}' node -e "require('./functions/index.js'); console.log('Cloud Functions module loaded successfully')"
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions source syntax check failed." }
+          $env:GCLOUD_PROJECT = "allways-repair-smoke"
+          $env:FIREBASE_CONFIG = '{"projectId":"allways-repair-smoke"}'
+          node -e "require('./functions/index.js'); console.log('Cloud Functions module loaded successfully')"
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions module failed to load." }
       - name: Install Flutter dependencies
         working-directory: mobile
-        run: flutter pub get
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { throw "Flutter dependency installation failed." }
       - name: Static analysis
         working-directory: mobile
-        run: flutter analyze
+        run: |
+          flutter analyze
+          if ($LASTEXITCODE -ne 0) { throw "Flutter static analysis failed." }
       - name: Tests
         working-directory: mobile
-        run: flutter test
+        run: |
+          flutter test
+          if ($LASTEXITCODE -ne 0) { throw "Flutter tests failed." }
       - name: Build Customer QA APK (debug only, no release publish)
         working-directory: mobile
         env:
           MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
-        run: flutter build apk --debug --target-platform android-arm64 "--dart-define=MAPBOX_PUBLIC_TOKEN=$MAPBOX_PUBLIC_TOKEN"
+        run: |
+          flutter build apk --debug --target-platform android-arm64 "--dart-define=MAPBOX_PUBLIC_TOKEN=$env:MAPBOX_PUBLIC_TOKEN"
+          if ($LASTEXITCODE -ne 0) { throw "Customer QA APK build failed." }
       - name: Validate APK size and SHA-256
         working-directory: mobile
         run: |
-          APK="build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk"
-          test -s "$APK" || APK="build/app/outputs/flutter-apk/app-debug.apk"
-          test -s "$APK"
-          stat -c 'APK=%n SIZE_BYTES=%s' "$APK"
-          sha256sum "$APK"
-          if [ "$(stat -c%s "$APK")" -gt 30000000 ]; then
-            echo "Debug APK exceeds 30 MB; this is diagnostic only. Release build has a separate 30 MB gate."
-          fi
+          $apkDir = Join-Path $PWD "build/app/outputs/flutter-apk"
+          $apk = Get-ChildItem -Path $apkDir -Filter "*debug.apk" -File | Select-Object -First 1
+          if ($null -eq $apk) { throw "Flutter did not produce a debug APK." }
+          Write-Output "APK=$($apk.FullName) SIZE_BYTES=$($apk.Length)"
+          Get-FileHash -Path $apk.FullName -Algorithm SHA256
+          if ($apk.Length -gt 30MB) { Write-Warning "This debug QA APK is diagnostic only; release APK size is checked by a separate release gate." }
       - uses: actions/upload-artifact@v4
         with:
           name: allways-customer-repair-qa-apk
