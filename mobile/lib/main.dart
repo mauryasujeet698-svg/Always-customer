@@ -928,7 +928,12 @@ class Shell extends StatefulWidget { const Shell({super.key}); State<Shell> crea
 class _ShellState extends State<Shell> {
   int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer;
   final Map<String,CartItem> cart={}; List<Map<String,dynamic>> addresses=[]; User? user; final Set<String> wishlistIds={};
-  StreamSubscription<User?>? auth; StreamSubscription<RemoteMessage>? messages;
+  StreamSubscription<User?>? auth;
+  StreamSubscription<RemoteMessage>? messages;
+  StreamSubscription<RemoteMessage>? openedMessages;
+  StreamSubscription<String>? tokenRefresh;
+  Future<void>? _notificationSetupInFlight;
+  String? _notificationSetupUid;
   String? updateVersion;
   String? updateUrl;
   String? updateNotes;
@@ -944,10 +949,10 @@ class _ShellState extends State<Shell> {
       if(u!=null){ setupNotifications(); loadAddresses(); loadWishlist(); }
       else{ addresses=[]; wishlistIds.clear(); }
     });
-    FirebaseMessaging.onMessageOpenedApp.listen((m){
+    openedMessages=FirebaseMessaging.onMessageOpenedApp.listen((m){
       final title=m.notification?.title??m.data['title']??'ALLways';
       final body=m.notification?.body??m.data['body']??'Open ALLways to view this update.';
-      saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString());
+      saveIncomingNotification(title,body,type:(m.data['type']??'announcement').toString(),messageId:m.messageId);
     });
     FirebaseMessaging.instance.getInitialMessage().then((m){
       if(m==null)return;
@@ -965,89 +970,120 @@ class _ShellState extends State<Shell> {
     });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
-  @override void dispose(){timer?.cancel();auth?.cancel();messages?.cancel();super.dispose();}
+  @override void dispose(){timer?.cancel();auth?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
 
   Future<void> setupNotifications() async {
+    final activeUser = user;
+    if (activeUser == null) return;
+    final inFlight = _notificationSetupInFlight;
+    if (inFlight != null && _notificationSetupUid == activeUser.uid) {
+      await inFlight;
+      return;
+    }
+    final task = _setupNotificationsFor(activeUser);
+    _notificationSetupUid = activeUser.uid;
+    _notificationSetupInFlight = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_notificationSetupInFlight, task)) {
+        _notificationSetupInFlight = null;
+        _notificationSetupUid = null;
+      }
+    }
+  }
+
+  Future<void> _setupNotificationsFor(User notificationUser) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool('notifications_enabled') == false) return;
-
-      final settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      if (prefs.getBool('notifications_enabled') == false ||
+          prefs.getBool('allways_notifications_enabled') == false) {
         return;
       }
-
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
+      final settings = await FirebaseMessaging.instance.requestPermission(
+        alert: true, badge: true, sound: true, provisional: false,
       );
-
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        await prefs.setBool('notifications_enabled', false);
+        await prefs.setBool('allways_notifications_enabled', false);
+        if (mounted) setState(() {});
+        return;
+      }
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+        alert: true, badge: true, sound: true,
+      );
       try {
         await const MethodChannel('com.allways.app/apk_installer')
             .invokeMethod('createNotificationChannel');
-      } catch (_) {}
-
-      final notificationsEnabled = prefs.getBool('notifications_enabled') ?? prefs.getBool('allways_notifications_enabled') ?? true;
-      if (!notificationsEnabled) return;
-      await FirebaseMessaging.instance.subscribeToTopic('all_users');
-      await FirebaseMessaging.instance.subscribeToTopic('customers');
-
-      final t = await FirebaseMessaging.instance.getToken();
+      } catch (error) {
+        debugPrint('ALLways notification channel setup failed: $error');
+      }
+      try {
+        await FirebaseMessaging.instance.subscribeToTopic('all_users');
+        await FirebaseMessaging.instance.subscribeToTopic('customers');
+      } catch (error) {
+        debugPrint('ALLways customer topic subscription failed: $error');
+      }
 
       Future<void> save(String token) async {
+        if (token.trim().isEmpty) return;
+        if (FirebaseAuth.instance.currentUser?.uid != notificationUser.uid) return;
         final p = await SharedPreferences.getInstance();
-        final preferenceMap = <String,bool>{
+        final preferenceMap = <String, bool>{
           'orderUpdates': p.getBool('notification_orderUpdates') ?? true,
           'deliveryUpdates': p.getBool('notification_deliveryUpdates') ?? true,
           'travelUpdates': p.getBool('notification_travelUpdates') ?? true,
           'offers': p.getBool('notification_offers') ?? true,
           'announcements': p.getBool('notification_announcements') ?? true,
         };
+        final enabled = p.getBool('notifications_enabled') ?? true;
+        final data = <String, dynamic>{
+          'uid': notificationUser.uid,
+          'email': notificationUser.email ?? '',
+          'token': token,
+          'role': 'customer',
+          'platform': 'android',
+          'notificationsEnabled': enabled,
+          'notificationPreferences': preferenceMap,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        // A denied legacy/root write must not block the real token record.
+        final tokenRef = FirebaseFirestore.instance
+            .collection('fcmTokens').doc(notificationUser.uid)
+            .collection('tokens').doc(token);
+        await tokenRef.set(data, SetOptions(merge: true));
         await p.setString('allways_fcm_token', token);
-        if (user != null) {
-          try {
-            final enabled = p.getBool('notifications_enabled') ?? true;
-            final tokenRef = FirebaseFirestore.instance
-                .collection('fcmTokens')
-                .doc(user!.uid)
-                .collection('tokens')
-                .doc(token);
-            await tokenRef.set({
-              'uid': user!.uid,
-              'email': user!.email ?? '',
-              'token': token,
-              'notificationsEnabled': enabled,
-              'notificationPreferences': preferenceMap,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-            await FirebaseFirestore.instance
-                .collection('fcmTokens')
-                .doc(user!.uid)
-                .set({
-              'uid': user!.uid,
-              'email': user!.email ?? '',
-              'token': token,
-              'notificationsEnabled': enabled,
-              'notificationPreferences': preferenceMap,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-          } catch (_) {}
+        try {
+          await FirebaseFirestore.instance.collection('fcmTokens')
+              .doc(notificationUser.uid).set(data, SetOptions(merge: true));
+        } catch (error) {
+          debugPrint('ALLways legacy FCM token mirror write failed: $error');
         }
       }
 
-      if (t != null && t.isNotEmpty) await save(t);
+      try {
+        final currentToken = await FirebaseMessaging.instance.getToken();
+        if (currentToken != null && currentToken.isNotEmpty) {
+          await save(currentToken);
+        } else {
+          debugPrint('ALLways FCM returned an empty customer token.');
+        }
+      } catch (error, stackTrace) {
+        debugPrint('ALLways customer FCM token registration failed: $error');
+        debugPrint(stackTrace.toString());
+      }
 
-      FirebaseMessaging.instance.onTokenRefresh.listen((t) async {
-        if (t.isNotEmpty) await save(t);
+      await tokenRefresh?.cancel();
+      tokenRefresh = FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+        save(token).catchError((Object error, StackTrace stackTrace) {
+          debugPrint('ALLways customer FCM token refresh failed: $error');
+          debugPrint(stackTrace.toString());
+        });
       });
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('ALLways customer notification setup failed: $error');
+      debugPrint(stackTrace.toString());
+    }
   }
 
   Future<void> saveIncomingNotification(String title,String body,{String type='announcement',String? messageId}) async {
@@ -1090,11 +1126,20 @@ class _ShellState extends State<Shell> {
       await prefs.setBool('notifications_enabled',false);
       if(user!=null){try{
         final token=await FirebaseMessaging.instance.getToken();
-        await FirebaseFirestore.instance.collection('fcmTokens').doc(user!.uid).set({'uid':user!.uid,'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
         if(token!=null&&token.isNotEmpty){
           await FirebaseFirestore.instance.collection('fcmTokens').doc(user!.uid).collection('tokens').doc(token).set({'uid':user!.uid,'token':token,'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+          try {
+            await FirebaseFirestore.instance.collection('fcmTokens').doc(user!.uid).set({'uid':user!.uid,'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
+          } catch (error) {
+            debugPrint('ALLways legacy FCM disable mirror failed: $error');
+          }
         }
-      }catch(_){}}
+      }catch(error, stackTrace){
+        debugPrint('ALLways customer notification disable failed: $error');
+        debugPrint(stackTrace.toString());
+      }}
+      await tokenRefresh?.cancel();
+      tokenRefresh = null;
     }
   }
 
