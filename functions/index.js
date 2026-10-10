@@ -62,8 +62,24 @@ async function sendToUser(uid, title, body, data = {}, role = "") {
     }
   });
   if (invalid.length) {
+    // Tokens may be stored under arbitrary document IDs, so match the token
+    // field instead of assuming the document ID equals the FCM token.
+    const invalidTokens = new Set(invalid);
+    const tokenRef = db.collection("fcmTokens").doc(uid);
+    const tokenDocs = await tokenRef.collection("tokens").get();
     const batch = db.batch();
-    for (const token of invalid) batch.delete(ref.collection("tokens").doc(token));
+    for (const tokenDoc of tokenDocs.docs) {
+      const storedToken = String(tokenDoc.data()?.token || tokenDoc.id || "").trim();
+      if (invalidTokens.has(storedToken)) batch.delete(tokenDoc.ref);
+    }
+    const root = await tokenRef.get();
+    const rootToken = String(root.data()?.token || "").trim();
+    if (invalidTokens.has(rootToken)) {
+      batch.set(tokenRef, {
+        token: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
     await batch.commit();
   }
   return { successCount: result.successCount, failureCount: result.failureCount };
@@ -381,7 +397,7 @@ exports.acceptDeliveryOrder = onCall({ region: "asia-south1" }, async (request) 
       order.carrierUid || order.deliveryPartnerUid || order.assignedPartnerId || ""
     ).trim();
     const approvedStatus = String(partner.approvalStatus || "").trim().toLowerCase();
-    if (approvedStatus && approvedStatus !== "approved") {
+    if (approvedStatus !== "approved") {
       throw new HttpsError("permission-denied", "Admin approval is required before accepting deliveries.");
     }
 
@@ -780,8 +796,12 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
     tx.set(partnerRef, {
-      status: "available",
-      availableForRides: true,
+      // Keep the profile status consistent with Firestore rules: ride partners
+      // must be "online" to receive/observe new requests. The active ride is
+      // cleared here, while an explicit offline choice remains represented by
+      // isOnline === false (if the client stored it).
+      status: ride.isOnline === false ? "offline" : "online",
+      availableForRides: ride.isOnline === false ? false : true,
       activeRideId: null,
       statusUpdatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
