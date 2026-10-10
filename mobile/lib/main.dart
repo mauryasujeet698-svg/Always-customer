@@ -93,6 +93,84 @@ String cloudinarySmartCropUrl(String url) {
   return value.substring(0, after) + 'c_fill,g_auto/' + rest;
 }
 
+
+String _imageVersionString(dynamic value) {
+  if (value is Timestamp) return value.toDate().millisecondsSinceEpoch.toString();
+  if (value is DateTime) return value.millisecondsSinceEpoch.toString();
+  if (value is num) return value.toString();
+  if (value is Map) {
+    final seconds = value['_seconds'] ?? value['seconds'];
+    final nanos = value['_nanoseconds'] ?? value['nanoseconds'] ?? 0;
+    if (seconds is num) {
+      return (seconds * 1000 + (nanos is num ? nanos / 1000000 : 0)).round().toString();
+    }
+  }
+  final text = (value ?? '').toString().trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return '';
+  final parsed = DateTime.tryParse(text);
+  return parsed?.millisecondsSinceEpoch.toString() ?? text;
+}
+
+String _normalizeProductImageUrl(Map<String, dynamic> data) {
+  const imageKeys = <String>[
+    'imageUrl', 'Image URL', 'image_url', 'imageurl',
+    'Product Image URL', 'productImageUrl', 'product_image_url',
+    'Product Image', 'productImage', 'product_image',
+    'Image Link', 'imageLink', 'image_link',
+    'Image URL 1', 'image_url_1', 'image1', 'image_1',
+    'Image', 'image', 'photoUrl', 'Photo URL', 'photo_url', 'photo',
+    'thumbnailUrl', 'thumbnail_url', 'thumbnail', 'picture', 'Images', 'images',
+  ];
+  for (final key in imageKeys) {
+    final raw = data[key];
+    final values = raw is List ? raw : <dynamic>[raw];
+    for (final item in values) {
+      var value = (item ?? '').toString().trim();
+      if (value.isEmpty || value.toLowerCase() == 'null') continue;
+      if (value.startsWith('//')) value = 'https:$value';
+      final uri = Uri.tryParse(value);
+      if (uri == null) return value;
+      if (uri.host == 'drive.google.com' || uri.host == 'docs.google.com') {
+        final id = RegExp(r'/file/d/([^/]+)').firstMatch(uri.path)?.group(1) ?? uri.queryParameters['id'];
+        if (id != null && id.trim().isNotEmpty) {
+          return Uri.https('drive.google.com', '/uc', <String, String>{'export': 'view', 'id': id}).toString();
+        }
+      }
+      if (uri.host == 'dropbox.com' || uri.host.endsWith('.dropbox.com')) {
+        final query = Map<String, String>.from(uri.queryParameters);
+        query.remove('dl');
+        query['raw'] = '1';
+        return uri.replace(queryParameters: query).toString();
+      }
+      return value;
+    }
+  }
+  return '';
+}
+
+String _displayImageUrl(
+  String raw, {
+  required double width,
+  required double height,
+  String version = '',
+}) {
+  final transformed = cloudinaryImageUrl(raw, width: width, height: height);
+  if (transformed.isEmpty || version.trim().isEmpty) return transformed;
+  final uri = Uri.tryParse(transformed);
+  if (uri == null || !uri.hasScheme) return transformed;
+  const signedQueryKeys = <String>{
+    'token', 'signature', 'sig', 'auth', 'policy',
+    'x-amz-signature', 'x-amz-credential', 'x-goog-signature',
+    'x-goog-credential', 'key-pair-id',
+  };
+  if (uri.queryParameters.keys.any((key) => signedQueryKeys.contains(key.toLowerCase()))) {
+    return transformed;
+  }
+  final query = Map<String, String>.from(uri.queryParameters);
+  query['allways_v'] = version.trim();
+  return uri.replace(queryParameters: query).toString();
+}
+
 Future<String> uploadImageToCloudinary(XFile image, {String? folder}) async {
   if (cloudinaryCloudName.isEmpty || cloudinaryUploadPreset.isEmpty) {
     throw Exception('Cloudinary is not configured. Set cloudinaryCloudName and cloudinaryUploadPreset.');
@@ -913,13 +991,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   );
 }
 class Product {
-  final String id,name,category,icon,description,brand,imageUrl;
+  final String id,name,category,icon,description,brand,imageUrl,imageVersion;
   final num price,stock;
-  const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.imageUrl,required this.price,required this.stock});
+  const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.imageUrl,required this.imageVersion,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    final image=(j['imageUrl']??j['Image URL']??j['image_url']??j['imageUrl']??j['Image']??j['image']??j['photoUrl']??j['Photo URL']??j['photo']??'').toString().trim();
-    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
+    final version = _imageVersionString(j['imageVersion'] ?? j['imageUpdatedAt'] ?? j['image_updated_at'] ?? j['updatedAt'] ?? j['updated_at'] ?? j['lastModifiedAt'] ?? j['modifiedAt']);
+    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:_normalizeProductImageUrl(j),imageVersion:version,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
 class CartItem { final Product product; int qty; CartItem(this.product,this.qty); }
@@ -929,6 +1007,7 @@ class _ShellState extends State<Shell> {
   int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer;
   final Map<String,CartItem> cart={}; List<Map<String,dynamic>> addresses=[]; User? user; final Set<String> wishlistIds={};
   StreamSubscription<User?>? auth;
+  StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? productsWatch;
   StreamSubscription<RemoteMessage>? messages;
   StreamSubscription<RemoteMessage>? openedMessages;
   StreamSubscription<String>? tokenRefresh;
@@ -941,7 +1020,7 @@ class _ShellState extends State<Shell> {
   bool _updateMandatory=false;
 
   @override void initState(){
-    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); checkForUpdate();
+    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); checkForUpdate();
     timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);checkForUpdate();});
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
@@ -970,7 +1049,7 @@ class _ShellState extends State<Shell> {
     });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
-  @override void dispose(){timer?.cancel();auth?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
+  @override void dispose(){timer?.cancel();auth?.cancel();productsWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
 
   Future<void> setupNotifications() async {
     final activeUser = user;
@@ -1277,6 +1356,32 @@ class _ShellState extends State<Shell> {
     } catch (_) {}
 
     return <Product>[];
+  }
+
+  void listenForProductChanges() {
+    productsWatch?.cancel();
+    try {
+      productsWatch = FirebaseFirestore.instance.collection('products').limit(1000).snapshots().listen((snapshot) {
+        if (snapshot.docs.isEmpty) return;
+        final updated = snapshot.docs.map((d) {
+          final data = Map<String,dynamic>.from(d.data());
+          data['id'] = d.id;
+          if (data['icon'] == null && data['emoji'] != null) data['icon'] = data['emoji'];
+          if (data['available'] == false) data['stock'] = 0;
+          return Product.fromJson(data);
+        }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
+        if (updated.isEmpty || !mounted) return;
+        setState(() {
+          products = updated;
+          loading = false;
+          error = null;
+        });
+      }, onError: (e) {
+        debugPrint('[ALLways catalog stream] product updates failed: $e');
+      });
+    } catch (e) {
+      debugPrint('[ALLways catalog stream] could not attach product listener: $e');
+    }
   }
 
   Future<void> loadInventory({bool silent=false}) async {
@@ -1927,7 +2032,7 @@ class _ShopPageState extends State<ShopPage>{
                     ),
                     child:p.imageUrl.isNotEmpty
                          ? Image.network(
-                             p.imageUrl,
+                             _displayImageUrl(p.imageUrl, width: 360, height: 240, version: p.imageVersion),
                              fit:BoxFit.cover,
                              width:double.infinity,
                              height:96,
@@ -2086,7 +2191,7 @@ class _ShopPageState extends State<ShopPage>{
                 final raw=bannerSnap.data?.data()?['imageUrls'];
                 final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(7).toList():<String>[];
                 if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle),const Spacer(),Text(deliveryText,style:const TextStyle(color:green,fontWeight:FontWeight.w900))]));
-                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(urls[bannerIndex%urls.length],fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
+                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(_displayImageUrl(urls[bannerIndex%urls.length],width:1000,height:450,version:_imageVersionString(bannerSnap.data?.data()?['imageUpdatedAt']??bannerSnap.data?.data()?['updatedAt'])),fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
               },
             ),
             const SizedBox(height:14),
@@ -2132,7 +2237,7 @@ class CategoryProductsPage extends StatelessWidget{
             Stack(children:[
               Container(height:150,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(14)),
                 child:p.imageUrl.isNotEmpty
-                    ? Image.network(p.imageUrl,fit:BoxFit.cover,width:double.infinity,height:150,errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:60)))
+                    ? Image.network(_displayImageUrl(p.imageUrl,width:480,height:450,version:p.imageVersion),fit:BoxFit.cover,width:double.infinity,height:150,errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:60)))
                     : Text(p.icon,style:const TextStyle(fontSize:60))),
               Positioned(right:0,top:0,child:IconButton(onPressed:()=>onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red))),
             ]),
@@ -2255,7 +2360,7 @@ class ProductScreen extends StatelessWidget{
        decoration:BoxDecoration(color:Theme.of(c).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),
        clipBehavior:Clip.antiAlias,
        child:product.imageUrl.isNotEmpty
-           ? Image.network(product.imageUrl,fit:BoxFit.cover,width:double.infinity,height:220,errorBuilder:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
+           ? Image.network(_displayImageUrl(product.imageUrl,width:800,height:800,version:product.imageVersion),fit:BoxFit.cover,width:double.infinity,height:220,errorBuilder:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
            : Text(product.icon,style:const TextStyle(fontSize:70)),
      ),const SizedBox(height:20),
     Text(product.name,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:8),Text(product.category,style:TextStyle(color:AllwaysColors.muted)),
@@ -2653,7 +2758,7 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget _singleThumb(BuildContext context, dynamic item) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final m = item is Map ? Map<String,dynamic>.from(item) : <String,dynamic>{};
-    final img = (m['imageUrl'] ?? m['image'] ?? '').toString();
+    final img = _displayImageUrl(_normalizeProductImageUrl(m), width: 180, height: 180, version: _imageVersionString(m['imageVersion'] ?? m['imageUpdatedAt'] ?? m['updatedAt']));
     final fallback = m['icon']?.toString() ?? '';
     final background = dark ? const Color(0xFF24262C) : const Color(0xFFF7F5F6);
     final border = dark ? const Color(0xFF343740) : const Color(0xFFE8E6E8);
