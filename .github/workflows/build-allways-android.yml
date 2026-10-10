@@ -89,12 +89,60 @@ jobs:
             Add-Content -Path $env:GITHUB_OUTPUT -Value "installed=false"
           }
       - name: Set up Flutter
+        id: flutter_action
         if: steps.flutter_probe.outputs.installed != 'true'
+        continue-on-error: true
+        timeout-minutes: 12
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.35.2"
           channel: stable
           cache: true
+
+      - name: Bootstrap pinned Flutter SDK if setup action fails
+        if: steps.flutter_probe.outputs.installed != 'true' && steps.flutter_action.outcome == 'failure'
+        timeout-minutes: 90
+        shell: powershell -ExecutionPolicy Bypass -NoProfile -File {0}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '3.35.2'
+          $expectedSha256 = '85060320e2aadbfd33122157c4186a143971af6384c78b1e5537b5ef038a1738'
+          $sdkHome = Join-Path $env:USERPROFILE ('developer-tools\flutter-' + $version)
+          $sdkBin = Join-Path $sdkHome 'flutter\bin'
+          $flutterBat = Join-Path $sdkBin 'flutter.bat'
+          if (Test-Path $flutterBat) {
+            Write-Host "Using existing pinned Flutter SDK at $sdkBin"
+            Add-Content -Path $env:GITHUB_PATH -Value $sdkBin
+            Add-Content -Path $env:GITHUB_ENV -Value ("FLUTTER_ROOT=" + (Join-Path $sdkHome 'flutter'))
+            & $flutterBat --version
+            if ($LASTEXITCODE -ne 0) { throw 'Cached Flutter SDK did not run successfully.' }
+            exit 0
+          }
+          $driveLetter = $env:USERPROFILE.Substring(0,1)
+          $drive = Get-PSDrive -Name $driveLetter
+          if (-not $drive -or $drive.Free -lt 6GB) {
+            $free = if ($drive) { [math]::Round($drive.Free / 1GB, 2) } else { 'unknown' }
+            throw "Flutter SDK bootstrap needs at least 6 GiB free on drive $driveLetter. Available: $free GiB."
+          }
+          $archive = Join-Path $env:RUNNER_TEMP ('flutter_windows_' + $version + '-stable.zip')
+          $url = 'https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_' + $version + '-stable.zip'
+          New-Item -ItemType Directory -Force -Path $sdkHome | Out-Null
+          Write-Host "Downloading pinned Flutter $version archive from the official Flutter release host."
+          & curl.exe --location --fail --retry 3 --retry-delay 5 --connect-timeout 30 --output $archive $url
+          if ($LASTEXITCODE -ne 0) { throw "Flutter archive download failed with curl exit code $LASTEXITCODE." }
+          $actualSha256 = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            Remove-Item -Force -ErrorAction SilentlyContinue $archive
+            throw "Flutter archive SHA-256 mismatch; expected $expectedSha256, got $actualSha256."
+          }
+          Write-Host 'Flutter archive SHA-256 verified.'
+          Expand-Archive -LiteralPath $archive -DestinationPath $sdkHome -Force
+          if (-not (Test-Path $flutterBat)) { throw "Flutter SDK extraction completed but $flutterBat was not found." }
+          Add-Content -Path $env:GITHUB_PATH -Value $sdkBin
+          Add-Content -Path $env:GITHUB_ENV -Value ("FLUTTER_ROOT=" + (Join-Path $sdkHome 'flutter'))
+          & $flutterBat --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapped Flutter SDK could not execute.' }
+          Remove-Item -Force -ErrorAction SilentlyContinue $archive
 
       - name: Verify Flutter SDK
         run: |
