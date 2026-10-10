@@ -542,9 +542,13 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
       });
     } else {
       const status = String(data.status || "").toLowerCase();
-      if (status !== "out for delivery") {
+      // The Delivery Partner app asks for the confirmation PIN after the
+      // partner marks the order as Arrived. Accept that state as well as the
+      // legacy "Out for delivery" state, while still requiring the assigned
+      // partner and a matching server-side PIN.
+      if (!["out for delivery", "arrived"].includes(status)) {
         if (status === "delivered") return { verified: true, alreadyDelivered: true };
-        throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
+        throw new HttpsError("failed-precondition", "Mark the order as arrived before verifying the delivery PIN.");
       }
       tx.update(ref, {
         status: "Delivered",
