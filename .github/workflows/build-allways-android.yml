@@ -30,7 +30,7 @@ jobs:
       # intentionally remain Bash scripts; put Git for Windows' Bash on PATH
       # before any step that uses the job-level Bash shell.
       - name: Locate Bash on self-hosted Windows runner
-        shell: powershell
+        shell: powershell -ExecutionPolicy Bypass -NoProfile -File {0}
         run: |
           $candidates = @(
             "$env:ProgramFiles\Git\bin",
