@@ -66,8 +66,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit code $LASTEXITCODE" }
           flutter doctor --android-licenses
           if ($LASTEXITCODE -ne 0) { throw "Android SDK licenses could not be accepted" }
-      - name: Check Cloud Function source syntax (no deployment)
-        run: node --check functions/index.js
+      - name: Install and smoke-test Cloud Functions source (no deployment)
+        run: |
+          npm install --prefix functions --no-package-lock --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions dependency installation failed." }
+          node --check functions/index.js
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions source syntax check failed." }
+          $env:GCLOUD_PROJECT = "allways-repair-smoke"
+          $env:FIREBASE_CONFIG = '{"projectId":"allways-repair-smoke"}'
+          node -e "require('./functions/index.js'); console.log('Cloud Functions module loaded successfully')"
+          if ($LASTEXITCODE -ne 0) { throw "Cloud Functions module failed to load." }
       - name: Install Flutter dependencies
         working-directory: mobile
         run: flutter pub get
