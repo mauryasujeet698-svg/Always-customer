@@ -21,11 +21,21 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: bash
     steps:
+      - name: Diagnose self-hosted runner
+        run: |
+          echo "Runner name: ${RUNNER_NAME:-unknown}"
+          echo "Runner OS: ${RUNNER_OS:-unknown} / ${RUNNER_ARCH:-unknown}"
+          echo "Workspace: ${GITHUB_WORKSPACE:-unknown}"
+          echo "JAVA_HOME: ${JAVA_HOME:-not-set}"
+          echo "ANDROID_HOME: ${ANDROID_HOME:-not-set}"
+          echo "ANDROID_SDK_ROOT: ${ANDROID_SDK_ROOT:-not-set}"
+          command -v bash
+          command -v python3 || command -v python
       - name: Checkout
         uses: actions/checkout@v4
 
