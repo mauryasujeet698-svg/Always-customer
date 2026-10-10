@@ -4799,7 +4799,7 @@ class _TripCard extends StatelessWidget {
             Expanded(child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.warning_amber_outlined,size:18),label:const Text('Report Issue'))),
           ]),
         if(isRide&&terminal&&status.toLowerCase()=='completed')
-          Padding(padding:const EdgeInsets.only(top:8),child:SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.refresh,size:18),label:const Text('Book Again')))),
+          Padding(padding:const EdgeInsets.only(top:8),child:SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:const ['bike','auto','car'].contains(_s(data['rideType']??data['vehicleType']).toLowerCase())?_s(data['rideType']??data['vehicleType']).toLowerCase():'bike'))),icon:const Icon(Icons.refresh,size:18),label:const Text('Book Again')))),
       ]),
     );
   }
@@ -4830,12 +4830,14 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
   @override void dispose(){details.dispose();super.dispose();}
   Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _customerOrders(String uid) async {
     final merged=<String,QueryDocumentSnapshot<Map<String,dynamic>>>{};
+    Object? lastError;
     for(final field in ['customerId','customerUid']){
       try{
         final snap=await FirebaseFirestore.instance.collection('orders').where(field,isEqualTo:uid).limit(50).get();
         for(final d in snap.docs)merged[d.id]=d;
-      }catch(_){}
+      }catch(e){lastError=e;}
     }
+    if(merged.isEmpty&&lastError!=null)throw Exception('Your order history could not be read. Check that you are signed in and your order access is enabled. '+lastError.toString());
     final list=merged.values.toList();
     list.sort((a,b){
       dynamic av=a.data()['createdAt'],bv=b.data()['createdAt'];
@@ -4846,7 +4848,9 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
   }
   Future<Map<String,dynamic>?> _pickItem() async {
     final u=FirebaseAuth.instance.currentUser;if(u==null)return null;
-    final orders=await _customerOrders(u.uid);if(!mounted)return null;
+    List<QueryDocumentSnapshot<Map<String,dynamic>>> orders;
+    try{orders=await _customerOrders(u.uid);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));return null;}
+    if(!mounted)return null;
     if(orders.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('No orders found to attach to this support request.')));return null;}
     return showModalBottomSheet<Map<String,dynamic>>(context:context,isScrollControlled:true,showDragHandle:true,builder:(sheet)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       const Padding(padding:EdgeInsets.fromLTRB(20,8,20,10),child:Align(alignment:Alignment.centerLeft,child:Text('Pick the affected item',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)))),
@@ -4886,6 +4890,10 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
     if(category=='Item')value=await _pickItem();
     if(category=='Ride')value=await _pickRide();
     if(value!=null&&mounted)setState(()=>selectedReference=value);
+  }
+  Future<void> _chooseSupportCategory(String value) async {
+    setState((){category=value;issue=null;selectedReference=null;});
+    if(value=='Item'||value=='Ride')await _chooseReference();
   }
   Future<void> submit()async{
     final u=FirebaseAuth.instance.currentUser;if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
@@ -4954,7 +4962,7 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
     return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
       const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),const SizedBox(height:6),
       Text('Choose Item, Ride or General support, then select the affected item or ride.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),const SizedBox(height:16),
-      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_){setState((){category=x;issue=null;selectedReference=null;});}))) ]),
+      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(selected){if(selected)_chooseSupportCategory(x);}))) ]),
       if(category!=null)...[
         const SizedBox(height:16),
         if(category!='General')SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:_chooseReference,icon:Icon(category=='Item'?Icons.shopping_bag_outlined:Icons.directions_car_outlined),label:Text(selectedReference==null?'Pick the affected '+category!.toLowerCase():'Change selected '+category!.toLowerCase()))),
