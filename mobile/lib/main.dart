@@ -128,8 +128,23 @@ String _normalizeProductImageUrl(Map<String, dynamic> data) {
       var value = (item ?? '').toString().trim();
       if (value.isEmpty || value.toLowerCase() == 'null') continue;
       if (value.startsWith('//')) value = 'https:$value';
+      final lowerValue = value.toLowerCase();
+      if (lowerValue.startsWith('paste ') ||
+          lowerValue.startsWith('replace ') ||
+          lowerValue.startsWith('insert ') ||
+          lowerValue.startsWith('your ') ||
+          lowerValue.startsWith('placeholder') ||
+          lowerValue.startsWith('todo') ||
+          lowerValue.startsWith('upload ')) {
+        continue;
+      }
       final uri = Uri.tryParse(value);
-      if (uri == null) return value;
+      if (uri == null ||
+          !<String>{'http', 'https'}.contains(uri.scheme.toLowerCase()) ||
+          uri.host.isEmpty) {
+        // An invalid first alias must not mask a valid secondary image field.
+        continue;
+      }
       if (uri.host == 'drive.google.com' || uri.host == 'docs.google.com') {
         final id = RegExp(r'/file/d/([^/]+)').firstMatch(uri.path)?.group(1) ?? uri.queryParameters['id'];
         if (id != null && id.trim().isNotEmpty) {

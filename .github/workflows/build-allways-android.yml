@@ -66,6 +66,7 @@ jobs:
           if ($env:USERPROFILE) {
             $candidateBins += (Join-Path $env:USERPROFILE 'flutter\bin')
             $candidateBins += (Join-Path $env:USERPROFILE 'development\flutter\bin')
+            $candidateBins += (Join-Path $env:USERPROFILE 'developer-tools\flutter-3.35.2\flutter\bin')
           }
           if ($env:LOCALAPPDATA) { $candidateBins += (Join-Path $env:LOCALAPPDATA 'Programs\Flutter\bin') }
           if ($env:ProgramFiles) { $candidateBins += (Join-Path $env:ProgramFiles 'flutter\bin') }
