@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   customer-qa:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +30,17 @@ jobs:
       - uses: android-actions/setup-android@v4
       - name: Install Android SDK platform and build tools
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-          yes | flutter doctor --android-licenses
+          $sdkRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } elseif ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { throw "Android SDK root was not set by setup-android." }
+          $sdkManager = Join-Path $sdkRoot "cmdline-tools\latest\bin\sdkmanager.bat"
+          if (!(Test-Path $sdkManager)) {
+            $found = Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+            if ($null -eq $found) { throw "Android sdkmanager.bat was not found at $sdkManager." }
+            $sdkManager = $found.Source
+          }
+          & $sdkManager "--sdk_root=$sdkRoot" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit code $LASTEXITCODE" }
+          @("y","y","y","y","y","y","y","y","y","y","y","y","y","y","y") | flutter doctor --android-licenses
+          if ($LASTEXITCODE -ne 0) { throw "Android SDK licenses could not be accepted" }
       - name: Install and smoke-test Cloud Functions source (no deployment)
         run: |
           npm install --prefix functions --no-package-lock --ignore-scripts
