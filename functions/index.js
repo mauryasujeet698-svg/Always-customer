@@ -746,14 +746,43 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
 // Automatic Google Sheets -> Firestore catalog synchronization.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
+function catalogColumnKey(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 function catalogValue(row, headers, name, fallback = "") {
+  const target = catalogColumnKey(name);
   if (row && !Array.isArray(row) && typeof row === "object") {
-    const key = Object.keys(row).find(k => String(k).trim().toLowerCase() === name.toLowerCase());
-    return key ? row[key] : fallback;
+    const key = Object.keys(row).find(k => catalogColumnKey(k) === target);
+    return key !== undefined ? row[key] : fallback;
   }
   if (!Array.isArray(row) || !Array.isArray(headers)) return fallback;
-  const index = headers.findIndex(h => String(h).trim().toLowerCase() === name.toLowerCase());
+  const index = headers.findIndex(h => catalogColumnKey(h) === target);
   return index >= 0 ? row[index] : fallback;
+}
+function catalogImageUrl(row, headers) {
+  const aliases = ["Image URL", "Product Image URL", "Image Link", "Image", "Photo URL", "Photo", "imageUrl"];
+  let raw = "";
+  for (const alias of aliases) {
+    const candidate = catalogValue(row, headers, alias, "");
+    if (candidate !== null && candidate !== undefined && String(candidate).trim()) {
+      raw = String(candidate).trim();
+      break;
+    }
+  }
+  if (!raw) return "";
+  const formula = /^=IMAGE\(\s*"([^"]+)"/i.exec(raw);
+  if (formula) raw = formula[1].trim();
+  if (raw.startsWith("//")) raw = "https:" + raw;
+  let parsed;
+  try { parsed = new URL(raw); } catch (_) { return ""; }
+  if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) return "";
+  if (parsed.hostname === "drive.google.com" || parsed.hostname.endsWith(".drive.google.com")) {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const d = parts.indexOf("d");
+    const id = (d >= 0 && parts[d + 1]) || parsed.searchParams.get("id");
+    if (id) return "https://drive.google.com/uc?export=view&id=" + encodeURIComponent(id);
+  }
+  return raw;
 }
 function catalogBool(value, fallback = true) {
   if (typeof value === "boolean") return value;
@@ -803,7 +832,7 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
           stock: catalogNumber(catalogValue(row, headers, "Stock", 0)),
           available: catalogBool(catalogValue(row, headers, "Available", true), true),
           maxQty: catalogNumber(catalogValue(row, headers, "Max Qty", 10), 10),
-          imageUrl: String(catalogValue(row, headers, "Image URL", "")).trim(),
+          imageUrl: catalogImageUrl(row, headers),
           updatedAt: FieldValue.serverTimestamp(),
           source: "google_sheets",
         };
