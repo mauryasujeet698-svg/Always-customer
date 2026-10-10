@@ -23,6 +23,16 @@ jobs:
           node-version: "22"
       - name: Verify the preinstalled Java runtime
         run: java -version
+      - name: Add Git for Windows Bash to PATH
+        run: |
+          $gitCommand = (Get-Command git.exe).Source
+          $gitRoot = Split-Path (Split-Path $gitCommand -Parent) -Parent
+          $bashDirectory = Join-Path $gitRoot "bin"
+          $bashExe = Join-Path $bashDirectory "bash.exe"
+          if (!(Test-Path $bashExe)) { throw "Git Bash was not found at $bashExe. Install Git for Windows with Bash enabled." }
+          Add-Content -Path $env:GITHUB_PATH -Value $bashDirectory
+          $env:PATH = "$bashDirectory;$env:PATH"
+          & $bashExe --version
       - name: Set up Flutter on the self-hosted Windows runner
         uses: subosito/flutter-action@v2
         with:
