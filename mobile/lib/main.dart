@@ -58,6 +58,24 @@ String _mapboxTilesUrl({bool dark=false}) {
 const cloudinaryCloudName='busdtvia';
 const cloudinaryUploadPreset='allways_preset';
 
+// Accept direct image URLs and common Google Sheets IMAGE()/Drive sharing URLs.
+String normalizeCatalogImageUrl(dynamic raw) {
+  var value=(raw??'').toString().trim();
+  if(value.isEmpty)return '';
+  final formula=RegExp(r'^=IMAGE\(\s*"([^"]+)"',caseSensitive:false).firstMatch(value);
+  if(formula!=null)value=formula.group(1)!.trim();
+  if(value.startsWith('//'))value='https:$value';
+  final uri=Uri.tryParse(value);
+  if(uri==null||uri.host.isEmpty||!const {'http','https'}.contains(uri.scheme.toLowerCase()))return '';
+  if(uri.host=='drive.google.com'||uri.host.endsWith('.drive.google.com')){
+    final segments=uri.pathSegments;
+    final d=segments.indexOf('d');
+    final id=(d>=0&&d+1<segments.length?segments[d+1]:null)??uri.queryParameters['id'];
+    if(id!=null&&id.isNotEmpty)return 'https://drive.google.com/uc?export=view&id=${Uri.encodeComponent(id)}';
+  }
+  return value;
+}
+
 String cloudinaryImageUrl(String url, {required double width, required double height}) {
   final value = url.trim();
   if (value.isEmpty || !value.contains('res.cloudinary.com/')) return value;
@@ -918,7 +936,7 @@ class Product {
   const Product({required this.id,required this.name,required this.category,required this.icon,required this.description,required this.brand,required this.imageUrl,required this.price,required this.stock});
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
-    final image=(j['imageUrl']??j['Image URL']??j['image_url']??j['imageUrl']??j['Image']??j['image']??j['photoUrl']??j['Photo URL']??j['photo']??'').toString().trim();
+    final image=normalizeCatalogImageUrl(j['imageUrl']??j['Image URL']??j['image_url']??j['Image Url']??j['Product Image URL']??j['Image Link']??j['Image']??j['image']??j['photoUrl']??j['Photo URL']??j['photo']??'');
     return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
@@ -4566,6 +4584,7 @@ class _TripBookingSection extends StatefulWidget {
 
 class _TripBookingSectionState extends State<_TripBookingSection> {
   String filter='All';
+  String bookingType='ride';
   String _status(dynamic v)=>v.toString().trim().toLowerCase();
   bool _matches(Map<String,dynamic> d){
     final s=_status(d['status']);
@@ -4586,8 +4605,8 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
   @override Widget build(BuildContext context){
     final user=FirebaseAuth.instance.currentUser;
     if(user==null)return const SizedBox.shrink();
-    final collection=widget.type=='ride'?'rideBookings':'vehicleBookings';
-    final isRide=widget.type=='ride';
+    final isRide=bookingType=='ride';
+    final collection=isRide?'autoRideRequests':'vehicleBookings';
     return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
       stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
       builder:(context,snapshot){
@@ -4603,8 +4622,8 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
             padding:const EdgeInsets.all(4),
             decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(16),border:Border.all(color:AllwaysColors.border)),
             child:Row(children:[
-              Expanded(child:_sectionTab('My Ride Bookings',isRide)),
-              Expanded(child:_sectionTab('My Vehicle Bookings',!isRide)),
+              Expanded(child:_sectionTab('My Ride Bookings','ride')),
+              Expanded(child:_sectionTab('My Vehicle Bookings','vehicle')),
             ]),
           ),
           if(isRide)...[const SizedBox(height:18),_filters()],
@@ -4614,22 +4633,25 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
           else if(filtered.isEmpty)_TripEmpty(message:isRide?'No bookings in this section.':'No vehicle bookings yet.')
           else ...filtered.take(20).map((doc)=>Padding(
             padding:const EdgeInsets.only(bottom:12),
-            child:_TripCard(data:doc.data(),bookingId:doc.id,isRide:isRide,dateText:_date(doc.data()['createdAt'])),
+            child:_TripCard(data:doc.data(),bookingId:doc.id,isRide:isRide,collection:collection,dateText:_date(doc.data()['createdAt'])),
           )),
         ]);
       },
     );
   }
 
-  Widget _sectionTab(String label,bool selected)=>InkWell(
-    borderRadius:BorderRadius.circular(12),
-    onTap:()=>setState(()=>filter='All'),
-    child:Container(
-      padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),
-      decoration:BoxDecoration(color:selected?const Color(0xFFFFDDE8):Colors.transparent,borderRadius:BorderRadius.circular(12)),
-      child:Text(label,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:selected?AllwaysColors.primary:AllwaysColors.text,fontSize:12)),
-    ),
-  );
+  Widget _sectionTab(String label,String value) {
+    final selected=bookingType==value;
+    return InkWell(
+      borderRadius:BorderRadius.circular(12),
+      onTap:()=>setState((){bookingType=value;filter='All';}),
+      child:Container(
+        padding:const EdgeInsets.symmetric(vertical:11,horizontal:8),
+        decoration:BoxDecoration(color:selected?const Color(0xFFFFDDE8):Colors.transparent,borderRadius:BorderRadius.circular(12)),
+        child:Text(label,textAlign:TextAlign.center,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:selected?AllwaysColors.primary:AllwaysColors.text,fontSize:12)),
+      ),
+    );
+  }
 
   Widget _filters()=>SingleChildScrollView(
     scrollDirection:Axis.horizontal,
@@ -4647,9 +4669,9 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
 
 class _TripCard extends StatelessWidget {
   final Map<String,dynamic> data;
-  final String bookingId,dateText;
+  final String bookingId,dateText,collection;
   final bool isRide;
-  const _TripCard({required this.data,required this.bookingId,required this.isRide,required this.dateText});
+  const _TripCard({required this.data,required this.bookingId,required this.isRide,required this.collection,required this.dateText});
 
   String _s(dynamic v)=>v?.toString().trim()??'';
   String get status=>_s(data['status']);
@@ -4657,14 +4679,46 @@ class _TripCard extends StatelessWidget {
 
   Future<void> _cancel(BuildContext context) async {
     if(!isRide)return;
+    final user=FirebaseAuth.instance.currentUser;
+    if(user==null)return;
     try{
-      await FirebaseFirestore.instance.collection('rideBookings').doc(bookingId).update({
-        'status':'Cancelled','cancelledBy':'customer','cancellationReason':'Customer cancelled the ride','cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
+      final ref=FirebaseFirestore.instance.collection(collection).doc(bookingId);
+      await FirebaseFirestore.instance.runTransaction((tx)async{
+        final snap=await tx.get(ref);
+        if(!snap.exists)throw Exception('This ride could not be found.');
+        final current=snap.data()??<String,dynamic>{};
+        if((current['customerUid']??'').toString()!=user.uid)throw Exception('This ride does not belong to your account.');
+        final currentStatus=(current['status']??'').toString().toLowerCase();
+        if(['cancelled','rejected','completed','delivered','expired'].contains(currentStatus))throw Exception('This ride can no longer be cancelled.');
+        if(currentStatus=='started')throw Exception('A ride that has started cannot be cancelled from the app. Contact support for help.');
+        tx.update(ref,{
+          'status':'cancelled','cancelledBy':'customer','cancellationReason':'Customer cancelled the ride',
+          'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
+        });
       });
       if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride cancelled.')));
     }catch(e){
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel ride: '+e.toString())));
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel ride: '+e.toString().replaceFirst('Exception: ',''))));
     }
+  }
+
+  Future<void> _viewDetails(BuildContext context) async {
+    final phone=_s(data['partnerPhone']??data['driverPhone']??data['carrierPhone']??data['ownerPhone']);
+    final fare=data['fare']??data['price']??data['amount']??data['listedPrice'];
+    await showDialog<void>(context:context,builder:(d)=>AlertDialog(
+      title:Text(isRide?'Ride details':'Vehicle booking details'),
+      content:SingleChildScrollView(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+        Text('Status: ${status.isEmpty?'Unknown':status}'),
+        const SizedBox(height:8),Text('Pickup: ${_s(data['pickupAddress']??data['pickup']??data['from']??'Not provided')}'),
+        const SizedBox(height:8),Text('Destination: ${_s(data['destinationAddress']??data['destination']??data['to']??'Not provided')}'),
+        const SizedBox(height:8),Text('Vehicle: ${_s(data['vehicleType']??data['carrierVehicleType']??data['category']??(isRide?'Ride':'Vehicle'))}'),
+        const SizedBox(height:8),Text('Partner: ${_s(data['partnerName']??data['driverName']??data['carrierName']??data['ownerName']??'Not assigned')}'),
+        if(phone.isNotEmpty)...[const SizedBox(height:8),Text('Contact: '+phone)],
+        if(fare!=null)...[const SizedBox(height:8),Text('Fare / price: ₹'+fare.toString())],
+        if(data['createdAt'] is Timestamp)...[const SizedBox(height:8),Text('Created: ${(data['createdAt'] as Timestamp).toDate().toLocal()}')],
+      ])),
+      actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))],
+    ));
   }
 
   Future<void> _report(BuildContext context) async {
@@ -4734,18 +4788,18 @@ class _TripCard extends StatelessWidget {
         const SizedBox(height:10),
         if(!terminal&&isRide)
           Row(children:[
-            Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:'rideBookings',docId:bookingId,title:'Live ride tracking',mode:'ride',broadcastPrefix:'customer',allowCancel:true))),icon:const Icon(Icons.location_on_outlined,size:18),label:const Text('Track Ride'))),
+            Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:collection,docId:bookingId,title:'Live ride tracking',mode:'ride',broadcastPrefix:'customer',allowCancel:true))),icon:const Icon(Icons.location_on_outlined,size:18),label:const Text('Track Ride'))),
             const SizedBox(width:8),
             Expanded(child:OutlinedButton.icon(onPressed:()=>_cancel(context),icon:const Icon(Icons.close,size:18),label:const Text('Cancel'))),
           ]),
         if(terminal||!isRide)
           Row(children:[
-            Expanded(child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.description_outlined,size:18),label:const Text('View Details'))),
+            Expanded(child:OutlinedButton.icon(onPressed:()=>_viewDetails(context),icon:const Icon(Icons.description_outlined,size:18),label:const Text('View Details'))),
             const SizedBox(width:8),
             Expanded(child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.warning_amber_outlined,size:18),label:const Text('Report Issue'))),
           ]),
         if(isRide&&terminal&&status.toLowerCase()=='completed')
-          Padding(padding:const EdgeInsets.only(top:8),child:SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:()=>_report(context),icon:const Icon(Icons.refresh,size:18),label:const Text('Book Again')))),
+          Padding(padding:const EdgeInsets.only(top:8),child:SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>OnDemandRidePage(rideType:const ['bike','auto','car'].contains(_s(data['rideType']??data['vehicleType']).toLowerCase())?_s(data['rideType']??data['vehicleType']).toLowerCase():'bike'))),icon:const Icon(Icons.refresh,size:18),label:const Text('Book Again')))),
       ]),
     );
   }
@@ -4776,12 +4830,14 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
   @override void dispose(){details.dispose();super.dispose();}
   Future<List<QueryDocumentSnapshot<Map<String,dynamic>>>> _customerOrders(String uid) async {
     final merged=<String,QueryDocumentSnapshot<Map<String,dynamic>>>{};
+    Object? lastError;
     for(final field in ['customerId','customerUid']){
       try{
         final snap=await FirebaseFirestore.instance.collection('orders').where(field,isEqualTo:uid).limit(50).get();
         for(final d in snap.docs)merged[d.id]=d;
-      }catch(_){}
+      }catch(e){lastError=e;}
     }
+    if(merged.isEmpty&&lastError!=null)throw Exception('Your order history could not be read. Check that you are signed in and your order access is enabled. '+lastError.toString());
     final list=merged.values.toList();
     list.sort((a,b){
       dynamic av=a.data()['createdAt'],bv=b.data()['createdAt'];
@@ -4792,7 +4848,9 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
   }
   Future<Map<String,dynamic>?> _pickItem() async {
     final u=FirebaseAuth.instance.currentUser;if(u==null)return null;
-    final orders=await _customerOrders(u.uid);if(!mounted)return null;
+    List<QueryDocumentSnapshot<Map<String,dynamic>>> orders;
+    try{orders=await _customerOrders(u.uid);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString().replaceFirst('Exception: ',''))));return null;}
+    if(!mounted)return null;
     if(orders.isEmpty){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('No orders found to attach to this support request.')));return null;}
     return showModalBottomSheet<Map<String,dynamic>>(context:context,isScrollControlled:true,showDragHandle:true,builder:(sheet)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[
       const Padding(padding:EdgeInsets.fromLTRB(20,8,20,10),child:Align(alignment:Alignment.centerLeft,child:Text('Pick the affected item',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)))),
@@ -4832,6 +4890,10 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
     if(category=='Item')value=await _pickItem();
     if(category=='Ride')value=await _pickRide();
     if(value!=null&&mounted)setState(()=>selectedReference=value);
+  }
+  Future<void> _chooseSupportCategory(String value) async {
+    setState((){category=value;issue=null;selectedReference=null;});
+    if(value=='Item'||value=='Ride')await _chooseReference();
   }
   Future<void> submit()async{
     final u=FirebaseAuth.instance.currentUser;if(u==null||category==null||issue==null||details.text.trim().isEmpty)return;
@@ -4900,7 +4962,7 @@ class _HelpSupportPageState extends State<HelpSupportPage>{
     return Scaffold(backgroundColor:Theme.of(context).colorScheme.surface,appBar:AppBar(title:const Text('Help & Support')),body:ListView(padding:const EdgeInsets.fromLTRB(20,8,20,28),children:[
       const Text('How can we help?',style:TextStyle(fontSize:27,fontWeight:FontWeight.w900)),const SizedBox(height:6),
       Text('Choose Item, Ride or General support, then select the affected item or ride.',style:TextStyle(color:cs.onSurfaceVariant,fontSize:14)),const SizedBox(height:16),
-      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(_){setState((){category=x;issue=null;selectedReference=null;});}))) ]),
+      Row(children:[for(final x in const ['Item','Ride','General'])Expanded(child:Padding(padding:const EdgeInsets.only(right:8),child:ChoiceChip(label:Text(x),selected:category==x,onSelected:(selected){if(selected)_chooseSupportCategory(x);}))) ]),
       if(category!=null)...[
         const SizedBox(height:16),
         if(category!='General')SizedBox(width:double.infinity,child:OutlinedButton.icon(onPressed:_chooseReference,icon:Icon(category=='Item'?Icons.shopping_bag_outlined:Icons.directions_car_outlined),label:Text(selectedReference==null?'Pick the affected '+category!.toLowerCase():'Change selected '+category!.toLowerCase()))),
@@ -5533,17 +5595,28 @@ class VehicleBookingPage extends StatefulWidget {
 }
 
 class _VehicleBookingPageState extends State<VehicleBookingPage> {
+  String? selectedCategory;
+  String _categoryKey(String value)=>value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'),'');
+
   Future<void> _book(DocumentSnapshot<Map<String,dynamic>> doc,{required bool negotiate}) async {
     final user=FirebaseAuth.instance.currentUser;
     if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
     final d=doc.data()??{};
-    await FirebaseFirestore.instance.collection('vehicleBookings').add({'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],'ownerPhone':d['ownerPhone'],'customerUid':user.uid,'customerName':user.displayName??'ALLways customer','customerEmail':user.email??'','category':d['category'],'listedPrice':d['price'],'mode':negotiate?'negotiation':'book','status':'Booked','createdAt':FieldValue.serverTimestamp()});
-    if(!mounted)return;
-    await showDialog<void>(context:context,builder:(c)=>AlertDialog(
-      title:Text(negotiate?'Booking request sent':'Vehicle booked'),
-      content:Text(negotiate?'The vehicle owner can now contact you to negotiate and confirm the final price.':'Booking confirmed. You can now contact the vehicle owner.'),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Done')),FilledButton.icon(onPressed:()=>_call(d['ownerPhone']?.toString()??''),icon:const Icon(Icons.call),label:const Text('Contact owner'))],
-    ));
+    try{
+      final status=(d['status']??d['listingStatus']??'available').toString().toLowerCase();
+      if(d['available']==false||!const {'available','active','published','listed'}.contains(status)){
+        throw Exception('This vehicle is no longer available. Please refresh the list.');
+      }
+      await FirebaseFirestore.instance.collection('vehicleBookings').add({'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],'ownerPhone':d['ownerPhone'],'customerUid':user.uid,'customerName':user.displayName??'ALLways customer','customerEmail':user.email??'','category':d['category']??d['vehicleType'],'listedPrice':d['price']??d['pricePerKm'],'mode':negotiate?'negotiation':'book','status':'Booked','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+      if(!mounted)return;
+      await showDialog<void>(context:context,builder:(c)=>AlertDialog(
+        title:Text(negotiate?'Booking request sent':'Vehicle booking request sent'),
+        content:Text(negotiate?'The vehicle owner can now contact you to negotiate and confirm the final price.':'Your booking request was sent. The vehicle owner can contact you to confirm the booking.'),
+        actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Done')),FilledButton.icon(onPressed:()=>_call(d['ownerPhone']?.toString()??''),icon:const Icon(Icons.call),label:const Text('Contact owner'))],
+      ));
+    }catch(e){
+      if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not book this vehicle: '+e.toString().replaceFirst('Exception: ',''))));
+    }
   }
 
   Future<void> _call(String phone) async { if(phone.trim().isEmpty)return; await launchUrl(Uri.parse('tel:'+phone.trim())); }
@@ -5561,7 +5634,9 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
           final status=(d['status']??d['listingStatus']??'available').toString().trim().toLowerCase();
           final active=d['available'];
           final explicitlyUnavailable=active is bool && active==false;
-          return !explicitlyUnavailable && const {'available','active','published','listed'}.contains(status);
+          final category=(d['category']??d['vehicleType']??'Vehicle').toString();
+          final categoryMatches=selectedCategory==null||_categoryKey(category)==_categoryKey(selectedCategory!);
+          return !explicitlyUnavailable && const {'available','active','published','listed'}.contains(status) && categoryMatches;
         }).toList()
           ..sort((a,b){
             final av=a.data()['createdAt'];final bv=b.data()['createdAt'];
@@ -5573,7 +5648,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
           const SizedBox(height:4),const Text('Available vehicles',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),
           if(snapshot.hasError)const InfoCard(title:'Could not load vehicles',detail:'Please check your connection and Firebase access.'),
           if(!snapshot.hasData)const Padding(padding:EdgeInsets.all(20),child:Center(child:CircularProgressIndicator())),
-          if(snapshot.hasData&&docs.isEmpty)const InfoCard(title:'No vehicles listed yet',detail:'Vehicle owners publish and manage vehicles from the ALLways Carrier app.'),
+          if(snapshot.hasData&&docs.isEmpty)InfoCard(title:selectedCategory==null?'No vehicles listed yet':'No ${selectedCategory!} listed',detail:selectedCategory==null?'Vehicle owners publish and manage vehicles from the ALLways Driver Partner app.':'No available ${selectedCategory!} is currently listed. Try another category or check back later.'),
           ...docs.map((doc){final d=doc.data();final allow=d['allowNegotiation']==true;return Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
             Row(children:[const Icon(Icons.directions_car_outlined),const SizedBox(width:10),Expanded(child:Text((d['category']??d['vehicleType']??'Vehicle').toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))),Text('₹'+(d['price']??0).toString(),style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900))]),
             const SizedBox(height:6),Text('Owner: '+(d['ownerName']??'ALLways vehicle owner').toString()+(d['capacity']!=null&&d['capacity'].toString()!='0'?' • Capacity: '+d['capacity'].toString():'')),
@@ -5581,7 +5656,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
             Row(children:[Expanded(child:FilledButton(onPressed:()=>_book(doc,negotiate:false),child:const Text('Book'))),if(allow)...[const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_book(doc,negotiate:true),child:const Text('Book & negotiate')))]])
           ])));}),
           const SizedBox(height:14),TravelBookingsSection(type:'vehicle'),const SizedBox(height:14),const Text('25 popular vehicle categories',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-          Wrap(spacing:8,runSpacing:8,children:vehicleCategories.map((x)=>Chip(label:Text(x))).toList()),
+          Wrap(spacing:8,runSpacing:8,children:vehicleCategories.map((x)=>GestureDetector(behavior:HitTestBehavior.opaque,onTap:()=>setState(()=>selectedCategory=selectedCategory==x?null:x),child:Chip(label:Text(x)))).toList()),
         ]);
       },
     ));

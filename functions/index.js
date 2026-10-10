@@ -1,6 +1,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
 
@@ -62,8 +63,24 @@ async function sendToUser(uid, title, body, data = {}, role = "") {
     }
   });
   if (invalid.length) {
+    // Tokens may be stored under arbitrary document IDs, so match the token
+    // field instead of assuming the document ID equals the FCM token.
+    const invalidTokens = new Set(invalid);
+    const tokenRef = db.collection("fcmTokens").doc(uid);
+    const tokenDocs = await tokenRef.collection("tokens").get();
     const batch = db.batch();
-    for (const token of invalid) batch.delete(ref.collection("tokens").doc(token));
+    for (const tokenDoc of tokenDocs.docs) {
+      const storedToken = String(tokenDoc.data()?.token || tokenDoc.id || "").trim();
+      if (invalidTokens.has(storedToken)) batch.delete(tokenDoc.ref);
+    }
+    const root = await tokenRef.get();
+    const rootToken = String(root.data()?.token || "").trim();
+    if (invalidTokens.has(rootToken)) {
+      batch.set(tokenRef, {
+        token: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
     await batch.commit();
   }
   return { successCount: result.successCount, failureCount: result.failureCount };
@@ -356,6 +373,186 @@ await db.collection("deliveryPartners").doc(oldPartner).set({
   }
 );
 
+// Accept delivery assignments through a trusted callable instead of allowing
+// an unassigned partner client to claim an order directly.
+exports.acceptDeliveryOrder = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const orderId = String(request.data?.orderId || "").trim();
+  if (!orderId) throw new HttpsError("invalid-argument", "A valid order ID is required.");
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const partnerRef = db.collection("deliveryPartners").doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    const partnerSnap = await tx.get(partnerRef);
+    if (!orderSnap.exists) throw new HttpsError("not-found", "This delivery order could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Complete your delivery partner profile first.");
+
+    const order = orderSnap.data() || {};
+    const partner = partnerSnap.data() || {};
+    const status = String(order.status || "").trim().toLowerCase();
+    const assignedUid = String(
+      order.carrierUid || order.deliveryPartnerUid || order.assignedPartnerId || ""
+    ).trim();
+    const approvedStatus = String(partner.approvalStatus || "").trim().toLowerCase();
+    if (approvedStatus !== "approved") {
+      throw new HttpsError("permission-denied", "Admin approval is required before accepting deliveries.");
+    }
+
+    if (assignedUid && assignedUid !== uid) {
+      throw new HttpsError("already-exists", "This order has already been assigned to another partner.");
+    }
+
+    const currentOrderId = String(partner.currentOrderId || "").trim();
+    const pendingOrderId = String(partner.pendingOrderId || "").trim();
+    if ((currentOrderId && currentOrderId !== orderId) ||
+        (pendingOrderId && pendingOrderId !== orderId)) {
+      throw new HttpsError("failed-precondition", "Finish your current delivery before accepting another order.");
+    }
+
+    const alreadyInProgress = assignedUid === uid && (
+      ["picked up", "out for delivery", "arrived", "delivered"].includes(status) ||
+      (status === "assigned" && currentOrderId === orderId)
+    );
+    if (alreadyInProgress) return { accepted: true, alreadyAccepted: true, orderId };
+
+    const pendingAutoAssignment = status === "pending_acceptance" && assignedUid === uid;
+    const eligibleUnassignedStatus = [
+      "new order", "searching", "ready", "pending", "pending_acceptance", "assigned"
+    ].includes(status);
+    if (!pendingAutoAssignment && !eligibleUnassignedStatus) {
+      throw new HttpsError("failed-precondition", "This order is no longer available to accept.");
+    }
+
+    if (!pendingAutoAssignment) {
+      const partnerStatus = String(partner.status || "").trim().toLowerCase();
+      const online = partnerStatus === "online" &&
+        partner.isOnline !== false &&
+        partner.availableForDeliveries !== false;
+      if (!online) {
+        throw new HttpsError("failed-precondition", "Go online and enable delivery availability before accepting orders.");
+      }
+    }
+
+    const partnerName = String(partner.name || partner.displayName || partner.email || "ALLways Delivery Partner");
+    const partnerPhone = String(partner.phone || partner.mobileNumber || "");
+    const partnerVehicle = String(partner.vehicleType || "bike");
+
+    tx.update(orderRef, {
+      carrierUid: uid,
+      deliveryPartnerUid: uid,
+      assignedPartnerId: uid,
+      carrierName: partnerName,
+      carrierPhone: partnerPhone,
+      carrierVehicleType: partnerVehicle,
+      carrierAccepted: true,
+      assignmentRejected: false,
+      assignmentMethod: pendingAutoAssignment ? "automatic" : "manual",
+      assignmentStatus: "accepted",
+      status: "Assigned",
+      statusNote: "A delivery partner accepted this order.",
+      customerMessage: "Your delivery partner accepted the order.",
+      assignedAt: order.assignedAt || FieldValue.serverTimestamp(),
+      acceptedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(partnerRef, {
+      pendingOrderId: null,
+      currentOrderId: orderId,
+      availableForDeliveries: false,
+      dutyStatus: "on_delivery",
+      statusUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { accepted: true, alreadyAccepted: false, orderId };
+  });
+});
+
+// Allow only the assigned delivery partner to advance the order through the
+// pickup -> dispatch -> arrival stages. Delivery itself requires the PIN callable.
+exports.updateDeliveryOrderStatus = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const orderId = String(request.data?.orderId || "").trim();
+  const requestedStatus = String(request.data?.status || "").trim().toLowerCase();
+  const allowedTargets = new Set(["picked up", "out for delivery", "arrived"]);
+  if (!orderId || !allowedTargets.has(requestedStatus)) {
+    throw new HttpsError("invalid-argument", "A valid order ID and delivery status are required.");
+  }
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const partnerRef = db.collection("deliveryPartners").doc(uid);
+  const normalizedTarget = {
+    "picked up": "Picked Up",
+    "out for delivery": "Out for delivery",
+    "arrived": "Arrived",
+  }[requestedStatus];
+
+  return db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    const partnerSnap = await tx.get(partnerRef);
+    if (!orderSnap.exists) throw new HttpsError("not-found", "This delivery order could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Delivery partner profile not found.");
+
+    const order = orderSnap.data() || {};
+    const partner = partnerSnap.data() || {};
+    const assignedUid = String(
+      order.carrierUid || order.deliveryPartnerUid || order.assignedPartnerId || ""
+    ).trim();
+    if (assignedUid !== uid) {
+      throw new HttpsError("permission-denied", "You are not assigned to this delivery.");
+    }
+
+    const currentOrderId = String(partner.currentOrderId || partner.pendingOrderId || "").trim();
+    if (currentOrderId && currentOrderId !== orderId) {
+      throw new HttpsError("failed-precondition", "This delivery is not your active order.");
+    }
+
+    const currentStatus = String(order.status || "").trim().toLowerCase();
+    if (currentStatus === requestedStatus) {
+      return { updated: true, alreadyAtStatus: true, orderId, status: normalizedTarget };
+    }
+
+    const validTransition =
+      (requestedStatus === "picked up" && ["assigned", "pending_acceptance"].includes(currentStatus)) ||
+      (requestedStatus === "out for delivery" && currentStatus === "picked up") ||
+      (requestedStatus === "arrived" && currentStatus === "out for delivery");
+    if (!validTransition) {
+      throw new HttpsError("failed-precondition", "The delivery status changed. Refresh the order before trying again.");
+    }
+
+    const update = {
+      status: normalizedTarget,
+      statusNote: "Delivery partner updated the status to " + normalizedTarget + ".",
+      customerMessage: requestedStatus === "picked up"
+        ? "Your order has been picked up by the delivery partner."
+        : requestedStatus === "out for delivery"
+          ? "Your order is out for delivery."
+          : "Your delivery partner has arrived. Please provide the 4-digit confirmation PIN.",
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (requestedStatus === "picked up") update.pickedUpAt = FieldValue.serverTimestamp();
+    if (requestedStatus === "out for delivery") update.outForDeliveryAt = FieldValue.serverTimestamp();
+    if (requestedStatus === "arrived") update.arrivedAt = FieldValue.serverTimestamp();
+
+    tx.update(orderRef, update);
+    tx.set(partnerRef, {
+      currentOrderId: orderId,
+      pendingOrderId: null,
+      availableForDeliveries: false,
+      dutyStatus: "on_delivery",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { updated: true, alreadyAtStatus: false, orderId, status: normalizedTarget };
+  });
+});
+
 async function rideMatchingRadiusKm() {
   try {
     const snap = await db.collection("settings").doc("ride").get();
@@ -528,6 +725,12 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
       throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
     }
 
+    if (type === "delivery" &&
+        String(data.paymentMethod || "COD").toUpperCase() === "COD" &&
+        request.data?.cashCollected !== true) {
+      throw new HttpsError("failed-precondition", "Confirm that COD cash was collected before completing this delivery.");
+    }
+
     if (type === "ride") {
       const status = String(data.status || "").toLowerCase();
       if (!["accepted", "arrived"].includes(status)) {
@@ -542,9 +745,13 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
       });
     } else {
       const status = String(data.status || "").toLowerCase();
-      if (status !== "out for delivery") {
+      // The Delivery Partner app asks for the confirmation PIN after the
+      // partner marks the order as Arrived. Accept that state as well as the
+      // legacy "Out for delivery" state, while still requiring the assigned
+      // partner and a matching server-side PIN.
+      if (!["out for delivery", "arrived"].includes(status)) {
         if (status === "delivered") return { verified: true, alreadyDelivered: true };
-        throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
+        throw new HttpsError("failed-precondition", "Mark the order as arrived before verifying the delivery PIN.");
       }
       tx.update(ref, {
         status: "Delivered",
@@ -572,9 +779,12 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
 
   return db.runTransaction(async (tx) => {
     const rideSnap = await tx.get(rideRef);
+    const partnerSnap = await tx.get(partnerRef);
     if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Driver profile not found.");
 
     const ride = rideSnap.data() || {};
+    const partner = partnerSnap.data() || {};
     const assignedUid = String(ride.driverUid || ride.carrierUid || "").trim();
     if (assignedUid !== uid) {
       throw new HttpsError("permission-denied", "You are not assigned to this ride.");
@@ -591,11 +801,16 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const shouldGoOnline = partner.isOnline !== false;
     tx.set(partnerRef, {
-      status: "available",
-      availableForRides: true,
+      // Preserve the driver's latest online/offline preference. When online,
+      // restore the exact status value required by ride-partner Firestore rules.
+      status: shouldGoOnline ? "online" : "offline",
+      isOnline: shouldGoOnline,
+      availableForRides: shouldGoOnline,
       activeRideId: null,
       statusUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
     return { completed: true };
@@ -744,16 +959,44 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.
-const { onSchedule } = require("firebase-functions/v2/scheduler");
 const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
+function catalogColumnKey(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 function catalogValue(row, headers, name, fallback = "") {
+  const target = catalogColumnKey(name);
   if (row && !Array.isArray(row) && typeof row === "object") {
-    const key = Object.keys(row).find(k => String(k).trim().toLowerCase() === name.toLowerCase());
-    return key ? row[key] : fallback;
+    const key = Object.keys(row).find(k => catalogColumnKey(k) === target);
+    return key !== undefined ? row[key] : fallback;
   }
   if (!Array.isArray(row) || !Array.isArray(headers)) return fallback;
-  const index = headers.findIndex(h => String(h).trim().toLowerCase() === name.toLowerCase());
+  const index = headers.findIndex(h => catalogColumnKey(h) === target);
   return index >= 0 ? row[index] : fallback;
+}
+function catalogImageUrl(row, headers) {
+  const aliases = ["Image URL", "Product Image URL", "Image Link", "Image", "Photo URL", "Photo", "imageUrl"];
+  let raw = "";
+  for (const alias of aliases) {
+    const candidate = catalogValue(row, headers, alias, "");
+    if (candidate !== null && candidate !== undefined && String(candidate).trim()) {
+      raw = String(candidate).trim();
+      break;
+    }
+  }
+  if (!raw) return "";
+  const formula = /^=IMAGE\(\s*"([^"]+)"/i.exec(raw);
+  if (formula) raw = formula[1].trim();
+  if (raw.startsWith("//")) raw = "https:" + raw;
+  let parsed;
+  try { parsed = new URL(raw); } catch (_) { return ""; }
+  if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) return "";
+  if (parsed.hostname === "drive.google.com" || parsed.hostname.endsWith(".drive.google.com")) {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const d = parts.indexOf("d");
+    const id = (d >= 0 && parts[d + 1]) || parsed.searchParams.get("id");
+    if (id) return "https://drive.google.com/uc?export=view&id=" + encodeURIComponent(id);
+  }
+  return raw;
 }
 function catalogBool(value, fallback = true) {
   if (typeof value === "boolean") return value;
@@ -803,7 +1046,7 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
           stock: catalogNumber(catalogValue(row, headers, "Stock", 0)),
           available: catalogBool(catalogValue(row, headers, "Available", true), true),
           maxQty: catalogNumber(catalogValue(row, headers, "Max Qty", 10), 10),
-          imageUrl: String(catalogValue(row, headers, "Image URL", "")).trim(),
+          imageUrl: catalogImageUrl(row, headers),
           updatedAt: FieldValue.serverTimestamp(),
           source: "google_sheets",
         };
