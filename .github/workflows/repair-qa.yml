@@ -58,7 +58,8 @@ jobs:
           }
           & $sdkManager "--sdk_root=$sdkRoot" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
           if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit code $LASTEXITCODE" }
-          @("y","y","y","y","y","y","y","y","y","y","y","y","y","y","y") | & $env:RUNNER_TEMP\allways-flutter-3.35.2\flutter\bin\flutter.bat doctor --android-licenses
+          $flutterCommand = Get-Command flutter.bat -ErrorAction Stop
+          @("y","y","y","y","y","y","y","y","y","y","y","y","y","y","y") | & $flutterCommand.Source doctor --android-licenses
           if ($LASTEXITCODE -ne 0) { throw "Android SDK licenses could not be accepted" }
       - name: Install and smoke-test Cloud Functions source (no deployment)
         run: |
