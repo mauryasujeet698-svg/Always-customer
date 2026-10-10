@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 100
     defaults:
       run:
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
