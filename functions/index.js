@@ -356,6 +356,184 @@ await db.collection("deliveryPartners").doc(oldPartner).set({
   }
 );
 
+// Accept delivery assignments through a trusted callable instead of allowing
+// an unassigned partner client to claim an order directly.
+exports.acceptDeliveryOrder = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const orderId = String(request.data?.orderId || "").trim();
+  if (!orderId) throw new HttpsError("invalid-argument", "A valid order ID is required.");
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const partnerRef = db.collection("deliveryPartners").doc(uid);
+
+  return db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    const partnerSnap = await tx.get(partnerRef);
+    if (!orderSnap.exists) throw new HttpsError("not-found", "This delivery order could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Complete your delivery partner profile first.");
+
+    const order = orderSnap.data() || {};
+    const partner = partnerSnap.data() || {};
+    const status = String(order.status || "").trim().toLowerCase();
+    const assignedUid = String(
+      order.carrierUid || order.deliveryPartnerUid || order.assignedPartnerId || ""
+    ).trim();
+    const approvedStatus = String(partner.approvalStatus || "").trim().toLowerCase();
+    if (approvedStatus && approvedStatus !== "approved") {
+      throw new HttpsError("permission-denied", "Admin approval is required before accepting deliveries.");
+    }
+
+    if (assignedUid && assignedUid !== uid) {
+      throw new HttpsError("already-exists", "This order has already been assigned to another partner.");
+    }
+
+    const currentOrderId = String(partner.currentOrderId || "").trim();
+    const pendingOrderId = String(partner.pendingOrderId || "").trim();
+    if ((currentOrderId && currentOrderId !== orderId) ||
+        (pendingOrderId && pendingOrderId !== orderId)) {
+      throw new HttpsError("failed-precondition", "Finish your current delivery before accepting another order.");
+    }
+
+    const alreadyInProgress = assignedUid === uid &&
+      ["assigned", "picked up", "out for delivery", "arrived"].includes(status);
+    if (alreadyInProgress) return { accepted: true, alreadyAccepted: true, orderId };
+
+    const pendingAutoAssignment = status === "pending_acceptance" && assignedUid === uid;
+    const eligibleUnassignedStatus = [
+      "new order", "searching", "ready", "pending", "pending_acceptance", "assigned"
+    ].includes(status);
+    if (!pendingAutoAssignment && !eligibleUnassignedStatus) {
+      throw new HttpsError("failed-precondition", "This order is no longer available to accept.");
+    }
+
+    if (!pendingAutoAssignment) {
+      const partnerStatus = String(partner.status || "").trim().toLowerCase();
+      const online = partnerStatus === "online" &&
+        partner.isOnline !== false &&
+        partner.availableForDeliveries !== false;
+      if (!online) {
+        throw new HttpsError("failed-precondition", "Go online and enable delivery availability before accepting orders.");
+      }
+    }
+
+    const partnerName = String(partner.name || partner.displayName || partner.email || "ALLways Delivery Partner");
+    const partnerPhone = String(partner.phone || partner.mobileNumber || "");
+    const partnerVehicle = String(partner.vehicleType || "bike");
+
+    tx.update(orderRef, {
+      carrierUid: uid,
+      deliveryPartnerUid: uid,
+      assignedPartnerId: uid,
+      carrierName: partnerName,
+      carrierPhone: partnerPhone,
+      carrierVehicleType: partnerVehicle,
+      carrierAccepted: true,
+      assignmentRejected: false,
+      assignmentMethod: pendingAutoAssignment ? "automatic" : "manual",
+      assignmentStatus: "accepted",
+      status: "Assigned",
+      statusNote: "A delivery partner accepted this order.",
+      customerMessage: "Your delivery partner accepted the order.",
+      assignedAt: order.assignedAt || FieldValue.serverTimestamp(),
+      acceptedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(partnerRef, {
+      pendingOrderId: null,
+      currentOrderId: orderId,
+      availableForDeliveries: false,
+      dutyStatus: "on_delivery",
+      statusUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { accepted: true, alreadyAccepted: false, orderId };
+  });
+});
+
+// Allow only the assigned delivery partner to advance the order through the
+// pickup -> dispatch -> arrival stages. Delivery itself requires the PIN callable.
+exports.updateDeliveryOrderStatus = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
+  const orderId = String(request.data?.orderId || "").trim();
+  const requestedStatus = String(request.data?.status || "").trim().toLowerCase();
+  const allowedTargets = new Set(["picked up", "out for delivery", "arrived"]);
+  if (!orderId || !allowedTargets.has(requestedStatus)) {
+    throw new HttpsError("invalid-argument", "A valid order ID and delivery status are required.");
+  }
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const partnerRef = db.collection("deliveryPartners").doc(uid);
+  const normalizedTarget = {
+    "picked up": "Picked Up",
+    "out for delivery": "Out for delivery",
+    "arrived": "Arrived",
+  }[requestedStatus];
+
+  return db.runTransaction(async (tx) => {
+    const orderSnap = await tx.get(orderRef);
+    const partnerSnap = await tx.get(partnerRef);
+    if (!orderSnap.exists) throw new HttpsError("not-found", "This delivery order could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Delivery partner profile not found.");
+
+    const order = orderSnap.data() || {};
+    const partner = partnerSnap.data() || {};
+    const assignedUid = String(
+      order.carrierUid || order.deliveryPartnerUid || order.assignedPartnerId || ""
+    ).trim();
+    if (assignedUid !== uid) {
+      throw new HttpsError("permission-denied", "You are not assigned to this delivery.");
+    }
+
+    const currentOrderId = String(partner.currentOrderId || partner.pendingOrderId || "").trim();
+    if (currentOrderId && currentOrderId !== orderId) {
+      throw new HttpsError("failed-precondition", "This delivery is not your active order.");
+    }
+
+    const currentStatus = String(order.status || "").trim().toLowerCase();
+    if (currentStatus === requestedStatus) {
+      return { updated: true, alreadyAtStatus: true, orderId, status: normalizedTarget };
+    }
+
+    const validTransition =
+      (requestedStatus === "picked up" && ["assigned", "pending_acceptance"].includes(currentStatus)) ||
+      (requestedStatus === "out for delivery" && currentStatus === "picked up") ||
+      (requestedStatus === "arrived" && currentStatus === "out for delivery");
+    if (!validTransition) {
+      throw new HttpsError("failed-precondition", "The delivery status changed. Refresh the order before trying again.");
+    }
+
+    const update = {
+      status: normalizedTarget,
+      statusNote: "Delivery partner updated the status to " + normalizedTarget + ".",
+      customerMessage: requestedStatus === "picked up"
+        ? "Your order has been picked up by the delivery partner."
+        : requestedStatus === "out for delivery"
+          ? "Your order is out for delivery."
+          : "Your delivery partner has arrived. Please provide the 4-digit confirmation PIN.",
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (requestedStatus === "picked up") update.pickedUpAt = FieldValue.serverTimestamp();
+    if (requestedStatus === "out for delivery") update.outForDeliveryAt = FieldValue.serverTimestamp();
+    if (requestedStatus === "arrived") update.arrivedAt = FieldValue.serverTimestamp();
+
+    tx.update(orderRef, update);
+    tx.set(partnerRef, {
+      currentOrderId: orderId,
+      pendingOrderId: null,
+      availableForDeliveries: false,
+      dutyStatus: "on_delivery",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return { updated: true, alreadyAtStatus: false, orderId, status: normalizedTarget };
+  });
+});
+
 async function rideMatchingRadiusKm() {
   try {
     const snap = await db.collection("settings").doc("ride").get();
@@ -526,6 +704,12 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
     const expected = String(data.confirmationPin || "").trim();
     if (!expected || expected !== pin) {
       throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+    }
+
+    if (type === "delivery" &&
+        String(data.paymentMethod || "COD").toUpperCase() === "COD" &&
+        request.data?.cashCollected !== true) {
+      throw new HttpsError("failed-precondition", "Confirm that COD cash was collected before completing this delivery.");
     }
 
     if (type === "ride") {
