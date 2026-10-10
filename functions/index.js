@@ -776,9 +776,12 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
 
   return db.runTransaction(async (tx) => {
     const rideSnap = await tx.get(rideRef);
+    const partnerSnap = await tx.get(partnerRef);
     if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Driver profile not found.");
 
     const ride = rideSnap.data() || {};
+    const partner = partnerSnap.data() || {};
     const assignedUid = String(ride.driverUid || ride.carrierUid || "").trim();
     if (assignedUid !== uid) {
       throw new HttpsError("permission-denied", "You are not assigned to this ride.");
@@ -795,15 +798,16 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const shouldGoOnline = partner.isOnline !== false;
     tx.set(partnerRef, {
-      // Keep the profile status consistent with Firestore rules: ride partners
-      // must be "online" to receive/observe new requests. The active ride is
-      // cleared here, while an explicit offline choice remains represented by
-      // isOnline === false (if the client stored it).
-      status: ride.isOnline === false ? "offline" : "online",
-      availableForRides: ride.isOnline === false ? false : true,
+      // Preserve the driver's latest online/offline preference. When online,
+      // restore the exact status value required by ride-partner Firestore rules.
+      status: shouldGoOnline ? "online" : "offline",
+      isOnline: shouldGoOnline,
+      availableForRides: shouldGoOnline,
       activeRideId: null,
       statusUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
     return { completed: true };
