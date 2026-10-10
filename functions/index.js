@@ -20,12 +20,19 @@ function notificationChannelForRole(role) {
 async function tokensForUser(uid) {
   const ref = db.collection("fcmTokens").doc(uid);
   const tokens = new Set();
-  const root = await ref.get();
-  const rootToken = String(root.data()?.token || "").trim();
-  if (rootToken) tokens.add(rootToken);
+  const rootSnap = await ref.get();
+  const root = rootSnap.data() || {};
+
+  // The root token is retained for backwards compatibility. Respect its
+  // notification switch, but still inspect individual devices independently.
+  const rootToken = String(root.token || "").trim();
+  if (rootToken && root.notificationsEnabled !== false) tokens.add(rootToken);
+
   const snap = await ref.collection("tokens").get();
   for (const doc of snap.docs) {
-    const token = String(doc.data()?.token || doc.id || "").trim();
+    const data = doc.data() || {};
+    if (data.notificationsEnabled === false) continue;
+    const token = String(data.token || doc.id || "").trim();
     if (token) tokens.add(token);
   }
   return [...tokens];
@@ -34,6 +41,8 @@ async function tokensForUser(uid) {
 async function sendToUser(uid, title, body, data = {}, role = "") {
   const tokens = await tokensForUser(uid);
   if (!tokens.length) return { successCount: 0, failureCount: 0 };
+
+  const rootRef = db.collection("fcmTokens").doc(uid);
   const channelId = notificationChannelForRole(role);
   const urgent = channelId === "allways_urgent_v2";
   const messageBase = {
@@ -51,6 +60,7 @@ async function sendToUser(uid, title, body, data = {}, role = "") {
       },
     },
   };
+
   const result = await getMessaging().sendEachForMulticast({ ...messageBase, tokens });
   const invalid = [];
   result.responses.forEach((response, index) => {
@@ -61,10 +71,33 @@ async function sendToUser(uid, title, body, data = {}, role = "") {
       }
     }
   });
+
   if (invalid.length) {
     const batch = db.batch();
-    for (const token of invalid) batch.delete(ref.collection("tokens").doc(token));
+    for (const token of invalid) {
+      batch.delete(rootRef.collection("tokens").doc(token));
+    }
+    const root = await rootRef.get();
+    const rootToken = String(root.data()?.token || "").trim();
+    if (rootToken && invalid.includes(rootToken)) {
+      batch.set(rootRef, {
+        token: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
     await batch.commit();
+  }
+
+  if (result.failureCount > 0) {
+    // Log counts and error codes only; never log device tokens.
+    const failures = result.responses
+      .filter((response) => !response.success)
+      .map((response) => String(response.error?.code || "unknown"));
+    console.warn("ALLways FCM user send had failures", {
+      failureCount: result.failureCount,
+      successCount: result.successCount,
+      errorCodes: [...new Set(failures)],
+    });
   }
   return { successCount: result.successCount, failureCount: result.failureCount };
 }
@@ -659,37 +692,73 @@ exports.onNotificationBroadcastCreated = onDocumentCreated(
   async (event) => {
     const ref = event.data?.ref;
     if (!ref) return;
-    const data = event.data.data() || {};
-    const title = String(data.title || "ALLways");
-    const body = String(data.body || data.message || "");
-    const topic = String(data.topic || data.targetAudience || "all_users").toLowerCase();
-    if (!body) return;
+
+    const latest = await ref.get();
+    const data = latest.data() || event.data.data() || {};
+    if (String(data.status || "").toLowerCase() === "sent") return;
+
+    const title = String(data.title || "ALLways").trim();
+    const body = String(data.body || data.message || "").trim();
+    const topic = String(data.topic || data.targetAudience || "all_users").trim().toLowerCase();
     const allowed = new Set(["all_users", "customers", "admins", "carriers", "delivery_partners"]);
     const safeTopic = allowed.has(topic) ? topic : "all_users";
-    await sendToTopic(safeTopic, title, body, { type: "broadcast", notificationId: event.params.notificationId });
-    await ref.set({
-      status: "sent",
-      sentTopic: safeTopic,
-      sentAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+
+    if (!body) {
+      await ref.set({
+        status: "failed",
+        error: "Notification message is empty.",
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return;
+    }
+
+    try {
+      await ref.set({
+        status: "sending",
+        attemptedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        error: FieldValue.delete(),
+      }, { merge: true });
+      const messageId = await sendToTopic(safeTopic, title, body, {
+        type: "broadcast",
+        notificationId: event.params.notificationId,
+      });
+      await ref.set({
+        status: "sent",
+        sentTopic: safeTopic,
+        fcmMessageId: messageId,
+        sentAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        error: FieldValue.delete(),
+      }, { merge: true });
+    } catch (error) {
+      const message = String(error?.message || error || "Unknown FCM error").slice(0, 800);
+      console.error("ALLways broadcast notification failed:", message);
+      await ref.set({
+        status: "failed",
+        error: message,
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
   }
 );
 
 exports.onAllwaysAnnouncementCreated = onDocumentCreated(
   "announcements/{announcementId}",
   async (event) => {
-    const announcement = event.data?.data();
-    if (!announcement) return;
+    const ref = event.data?.ref;
+    if (!ref) return;
+    const latest = await ref.get();
+    const announcement = latest.data() || event.data.data() || {};
+    if (String(announcement.status || "").toLowerCase() === "sent") return;
 
-    const title = String(announcement.title || "ALLways");
-    const body = String(announcement.body || "");
-    if (!body) return;
-
+    const title = String(announcement.title || "ALLways").trim();
+    const body = String(announcement.body || "").trim();
     const rawAudience = String(
       announcement.topic || announcement.targetAudience || "all_users"
     ).trim().toLowerCase();
-
     const allowedTopics = new Set([
       "all_users",
       "customers",
@@ -697,18 +766,47 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
       "carriers",
       "delivery_partners",
     ]);
-
     const topic = allowedTopics.has(rawAudience) ? rawAudience : "all_users";
 
-    await sendToTopic(topic, title, body, { type: "announcement", announcementId: event.params.announcementId });
-    await event.data.ref.set(
-      {
+    if (!body) {
+      await ref.set({
+        status: "failed",
+        error: "Announcement message is empty.",
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return;
+    }
+
+    try {
+      await ref.set({
+        status: "sending",
+        attemptedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        error: FieldValue.delete(),
+      }, { merge: true });
+      const messageId = await sendToTopic(topic, title, body, {
+        type: "announcement",
+        announcementId: event.params.announcementId,
+      });
+      await ref.set({
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),
         sentTopic: topic,
-      },
-      { merge: true }
-    );
+        fcmMessageId: messageId,
+        updatedAt: FieldValue.serverTimestamp(),
+        error: FieldValue.delete(),
+      }, { merge: true });
+    } catch (error) {
+      const message = String(error?.message || error || "Unknown FCM error").slice(0, 800);
+      console.error("ALLways announcement notification failed:", message);
+      await ref.set({
+        status: "failed",
+        error: message,
+        failedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
   }
 );
 
