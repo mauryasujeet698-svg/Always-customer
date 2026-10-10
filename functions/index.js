@@ -413,8 +413,10 @@ exports.acceptDeliveryOrder = onCall({ region: "asia-south1" }, async (request) 
       throw new HttpsError("failed-precondition", "Finish your current delivery before accepting another order.");
     }
 
-    const alreadyInProgress = assignedUid === uid &&
-      ["assigned", "picked up", "out for delivery", "arrived"].includes(status);
+    const alreadyInProgress = assignedUid === uid && (
+      ["picked up", "out for delivery", "arrived", "delivered"].includes(status) ||
+      (status === "assigned" && currentOrderId === orderId)
+    );
     if (alreadyInProgress) return { accepted: true, alreadyAccepted: true, orderId };
 
     const pendingAutoAssignment = status === "pending_acceptance" && assignedUid === uid;
