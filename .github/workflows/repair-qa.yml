@@ -39,7 +39,7 @@ jobs:
         continue-on-error: true
       - name: Build customer QA APK (debug, no release)
         working-directory: mobile
-        run: flutter build apk --debug --target-platform android-arm64 --shrink
+        run: flutter build apk --debug --target-platform android-arm64
       - name: Validate APK size and SHA-256
         working-directory: mobile
         run: |
