@@ -5656,7 +5656,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
             Row(children:[Expanded(child:FilledButton(onPressed:()=>_book(doc,negotiate:false),child:const Text('Book'))),if(allow)...[const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_book(doc,negotiate:true),child:const Text('Book & negotiate')))]])
           ])));}),
           const SizedBox(height:14),TravelBookingsSection(type:'vehicle'),const SizedBox(height:14),const Text('25 popular vehicle categories',style:TextStyle(fontSize:18,fontWeight:FontWeight.w900)),const SizedBox(height:8),
-          Wrap(spacing:8,runSpacing:8,children:vehicleCategories.map((x)=>ChoiceChip(label:Text(x),selected:selectedCategory==x,onSelected:(selected)=>setState(()=>selectedCategory=selected?x:null))).toList()),
+          Wrap(spacing:8,runSpacing:8,children:vehicleCategories.map((x)=>GestureDetector(behavior:HitTestBehavior.opaque,onTap:()=>setState(()=>selectedCategory=selectedCategory==x?null:x),child:Chip(label:Text(x)))).toList()),
         ]);
       },
     ));
