@@ -1111,33 +1111,76 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> setNotificationsEnabled(bool enabled) async {
-    final prefs=await SharedPreferences.getInstance();
-    if(enabled){
-      final settings=await FirebaseMessaging.instance.requestPermission(alert:true,badge:true,sound:true,provisional:false);
-      if(settings.authorizationStatus==AuthorizationStatus.denied){await prefs.setBool('allways_notifications_enabled',false);await prefs.setBool('notifications_enabled',false);return;}
-      await FirebaseMessaging.instance.subscribeToTopic('all_users');
-      await prefs.setBool('allways_notifications_enabled',true);
-      await prefs.setBool('notifications_enabled',true);
-      await setupNotifications();
-    }else{
-      await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
-      await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
-      await prefs.setBool('allways_notifications_enabled',false);
-      await prefs.setBool('notifications_enabled',false);
-      if(user!=null){try{
-        final token=await FirebaseMessaging.instance.getToken();
-        if(token!=null&&token.isNotEmpty){
-          await FirebaseFirestore.instance.collection('fcmTokens').doc(user!.uid).collection('tokens').doc(token).set({'uid':user!.uid,'token':token,'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
-          try {
-            await FirebaseFirestore.instance.collection('fcmTokens').doc(user!.uid).set({'uid':user!.uid,'notificationsEnabled':false,'updatedAt':FieldValue.serverTimestamp()},SetOptions(merge:true));
-          } catch (error) {
-            debugPrint('ALLways legacy FCM disable mirror failed: $error');
+    final prefs = await SharedPreferences.getInstance();
+    if (enabled) {
+      try {
+        final settings = await FirebaseMessaging.instance.requestPermission(
+          alert: true, badge: true, sound: true, provisional: false,
+        );
+        if (settings.authorizationStatus == AuthorizationStatus.denied) {
+          await prefs.setBool('allways_notifications_enabled', false);
+          await prefs.setBool('notifications_enabled', false);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Allow notifications in Android app settings to receive ALLways updates.')),
+            );
           }
+          return;
         }
-      }catch(error, stackTrace){
-        debugPrint('ALLways customer notification disable failed: $error');
+        await prefs.setBool('allways_notifications_enabled', true);
+        await prefs.setBool('notifications_enabled', true);
+        await setupNotifications();
+      } catch (error, stackTrace) {
+        debugPrint('ALLways customer notification enable failed: $error');
         debugPrint(stackTrace.toString());
-      }}
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not enable notifications. Check your connection and try again.')),
+          );
+        }
+      }
+    } else {
+      // Persist the opt-out first, so a topic unsubscribe failure cannot leave
+      // this device locally marked as enabled.
+      await prefs.setBool('allways_notifications_enabled', false);
+      await prefs.setBool('notifications_enabled', false);
+      try {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
+        await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
+      } catch (error) {
+        debugPrint('ALLways customer topic unsubscribe failed: $error');
+      }
+
+      final activeUser = user;
+      if (activeUser != null) {
+        try {
+          final token = await FirebaseMessaging.instance.getToken();
+          if (token != null && token.isNotEmpty) {
+            await FirebaseFirestore.instance.collection('fcmTokens')
+                .doc(activeUser.uid).collection('tokens').doc(token).set({
+              'uid': activeUser.uid,
+              'token': token,
+              'role': 'customer',
+              'platform': 'android',
+              'notificationsEnabled': false,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            try {
+              await FirebaseFirestore.instance.collection('fcmTokens')
+                  .doc(activeUser.uid).set({
+                'uid': activeUser.uid,
+                'notificationsEnabled': false,
+                'updatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+            } catch (error) {
+              debugPrint('ALLways legacy FCM disable mirror failed: $error');
+            }
+          }
+        } catch (error, stackTrace) {
+          debugPrint('ALLways customer notification disable failed: $error');
+          debugPrint(stackTrace.toString());
+        }
+      }
       await tokenRefresh?.cancel();
       tokenRefresh = null;
     }
