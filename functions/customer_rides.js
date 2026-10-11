@@ -41,6 +41,7 @@ const createCustomerRide=onCall({region:"asia-south1",maxInstances:100},async re
  const profileRef=db.collection("customers").doc(uid);
  const settingsRef=db.collection("settings").doc("ridePricing");
  const idemRef=db.collection("rideIdempotency").doc(crypto.createHash("sha256").update(uid+":"+clientRequestId).digest("hex"));
+ const rateRef=db.collection("serverRateLimits").doc(crypto.createHash("sha256").update(uid+":ride_booking").digest("hex"));
  const requestId="RIDE"+crypto.randomBytes(7).toString("hex").toUpperCase();
  const rideRef=db.collection("autoRideRequests").doc(requestId);
  const pinRef=db.collection("customerPrivatePins").doc("ride_"+requestId);
@@ -54,6 +55,11 @@ const createCustomerRide=onCall({region:"asia-south1",maxInstances:100},async re
    if(existing?.exists)return {requestId:existingId,estimatedFare:Number(existing.data()?.estimatedFare||0),distanceKm:Number(existing.data()?.distanceKm||0),alreadyPlaced:true};
    throw new HttpsError("failed-precondition","The earlier ride request is unavailable. Contact support.");
   }
+  const rateSnap=await tx.get(rateRef);
+  const nowMs=Date.now(),rate=rateSnap.data()||{},rateStart=Number(rate.windowStartedAtMs||0);
+  const activeWindow=nowMs-rateStart<10*60*1000;
+  const used=activeWindow?Math.max(0,Number(rate.count||0)):0;
+  if(used>=8)throw new HttpsError("resource-exhausted","Too many ride requests. Please wait a few minutes before trying again.");
   const [profileSnap,settingsSnap]=await Promise.all([tx.get(profileRef),tx.get(settingsRef)]);
   const profile=profileSnap.data()||{},settings=settingsSnap.data()||{};
   const configured=settings[type]&&typeof settings[type]==="object"?settings[type]:{};
@@ -112,6 +118,7 @@ const createCustomerRide=onCall({region:"asia-south1",maxInstances:100},async re
    attempts:0,createdAt,expiresAt:new Date(Date.now()+30*24*60*60*1000),
   });
   tx.set(idemRef,{customerUid:uid,clientRequestId,requestId,createdAt,expiresAt:new Date(Date.now()+48*60*60*1000)});
+  tx.set(rateRef,{count:used+1,windowStartedAtMs:activeWindow?rateStart:nowMs,expiresAt:new Date(nowMs+60*60*1000),updatedAt:createdAt});
   return {requestId,estimatedFare:fare,distanceKm:pricedDistance,alreadyPlaced:false};
  });
  return {ok:true,...result};
