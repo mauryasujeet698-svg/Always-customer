@@ -8,6 +8,9 @@ initializeApp();
 
 const db = getFirestore();
 
+// Partner shift, assignment, and stale-location controls.
+Object.assign(exports, require('./partner_security'));
+
 const { getMessaging } = require("firebase-admin/messaging");
 
 function notificationChannelForRole(role) {
