@@ -57,6 +57,7 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
   }
   const idempotencyId = crypto.createHash("sha256").update(uid + ":" + clientRequestId).digest("hex");
   const idempotencyRef = db.collection("checkoutIdempotency").doc(idempotencyId);
+  const rateRef = db.collection("serverRateLimits").doc(crypto.createHash("sha256").update(uid + ":checkout").digest("hex"));
 
   const paymentMethod = String(request.data?.paymentMethod || "COD").trim().toUpperCase();
   // UPI/card options are displayed as unavailable in the UI. The server refuses
@@ -132,6 +133,15 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
         alreadyPlaced: true,
       };
     }
+
+    // Enforce a per-account checkout rate limit in the same transaction.
+    const rateSnap = await tx.get(rateRef);
+    const nowMs = Date.now();
+    const rate = rateSnap.data() || {};
+    const rateStart = Number(rate.windowStartedAtMs || 0);
+    const activeWindow = nowMs - rateStart < 60 * 1000;
+    const used = activeWindow ? Math.max(0, Number(rate.count || 0)) : 0;
+    if (used >= 5) throw new HttpsError("resource-exhausted", "Too many checkout attempts. Please wait a minute and try again.");
 
     // All reads happen before the first write; Firestore may retry this transaction.
     const baseReads = [tx.get(settingsRef)];
@@ -313,6 +323,12 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
       orderId,
       createdAt,
       expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+    });
+    tx.set(rateRef, {
+      count: used + 1,
+      windowStartedAtMs: activeWindow ? rateStart : nowMs,
+      expiresAt: new Date(nowMs + 60 * 60 * 1000),
+      updatedAt: createdAt,
     });
 
     return { orderId, subtotal, deliveryFee: money(deliveryFee), total, deliveryDistanceKm: distance, alreadyPlaced: false };
