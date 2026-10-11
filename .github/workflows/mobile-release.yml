@@ -1,6 +1,15 @@
 name: ALLways Customer App Release
 
 on:
+  push:
+    branches:
+      - hardening/shift-privacy-retention-2026-10
+    paths:
+      - "mobile/**"
+      - "functions/**"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - ".github/workflows/mobile-release.yml"
   workflow_dispatch:
     inputs:
       publish_update:
