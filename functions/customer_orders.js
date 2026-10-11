@@ -175,10 +175,7 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
     const centerLng = finite(settings.pilotCenterLng) ?? 0;
     const radius = finite(settings.pilotRadiusKm) ?? 4;
     let distance = 0;
-    if (centerLat !== 0 && centerLng !== 0) {
-      if (latitude == null || longitude == null) {
-        throw new HttpsError("failed-precondition", "Current location is needed to verify this delivery zone.");
-      }
+    if (centerLat !== 0 && centerLng !== 0 && latitude != null && longitude != null) {
       distance = distanceKm(latitude, longitude, centerLat, centerLng);
       if (radius > 0 && distance > radius) {
         throw new HttpsError("failed-precondition", "This address is outside the current ALLways delivery area.");
