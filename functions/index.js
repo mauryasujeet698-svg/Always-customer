@@ -784,11 +784,30 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 10
         if (status === "delivered") return { verified: true, alreadyDelivered: true };
         throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
       }
+
+      // Payment status is server-owned. For COD, require an explicit partner
+      // confirmation before the delivery can be finalized. Online payments
+      // remain blocked at checkout until a verified provider is integrated.
+      const paymentMethod = String(data.paymentMethod || "COD").trim().toUpperCase();
+      if (paymentMethod === "COD" && request.data?.cashCollected !== true) {
+        throw new HttpsError("failed-precondition", "Confirm cash collection before completing this COD delivery.");
+      }
+      if (paymentMethod !== "COD" && String(data.paymentStatus || "").trim().toLowerCase() !== "paid") {
+        throw new HttpsError("failed-precondition", "The order payment has not been confirmed by the payment provider.");
+      }
+
+      const completedAt = FieldValue.serverTimestamp();
       tx.update(ref, {
         status: "Delivered",
         deliveryPinVerified: true,
-        deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
+        deliveryPinVerifiedAt: completedAt,
+        updatedAt: completedAt,
+        ...(paymentMethod === "COD" ? {
+          cashCollected: true,
+          cashCollectedAt: completedAt,
+          cashCollectedBy: uid,
+          paymentStatus: "cash_collected",
+        } : {}),
         carrierLat: FieldValue.delete(),
         carrierLng: FieldValue.delete(),
         carrierLocationUpdatedAt: FieldValue.delete(),
