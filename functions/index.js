@@ -701,9 +701,6 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 10
         ridePinVerified: true,
         ridePinVerifiedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-        driverLat: FieldValue.delete(),
-        driverLng: FieldValue.delete(),
-        driverLocationUpdatedAt: FieldValue.delete(),
       });
     } else {
       const status = String(data.status || "").toLowerCase();
