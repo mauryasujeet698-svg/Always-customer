@@ -119,7 +119,9 @@ app.post("/v1/shift", requireFirebaseUser, async (req, res) => {
         await redis.expire(shiftKey(role, uid), SHIFT_TTL_SECONDS);
         await db.collection("partnerPublicPresence").doc(uid).set({
           uid, role, displayName: previous.displayName || previous.name || "",
-          vehicleType: previous.vehicleType || "", onDuty: true, lastSeenAt: FieldValue.serverTimestamp(),
+          vehicleType: previous.vehicleType || "", onDuty: true,
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          lastSeenAt: FieldValue.serverTimestamp(),
         }, { merge: true });
         return res.status(200).json({ ok: true, shiftSessionId: existingId, alreadyOnDuty: true });
       }
@@ -270,6 +272,7 @@ app.post("/v1/locations", requireFirebaseUser, async (req, res) => {
         vehicleType: profile.vehicleType || "",
         onDuty: String(profile.shiftStatus || "").toLowerCase() === "on_duty",
         locationCell: cell,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
     }
