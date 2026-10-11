@@ -180,8 +180,10 @@ const searchPlaces = onCall({
   return { places, cached: false };
 });
 
-module.exports = {
-  searchPlaces,
-  // Exported for deterministic Node tests; these helpers do not access network or Firebase.
-  _test: { validCoordinatePair, cacheKeyFor, placeFromFeature },
-};
+module.exports = { searchPlaces };
+// Keep test helpers non-enumerable so Firebase Functions discovery exports only
+// the callable endpoint when index.js copies this module's public exports.
+Object.defineProperty(module.exports, "_test", {
+  enumerable: false,
+  value: { validCoordinatePair, cacheKeyFor, placeFromFeature },
+});
