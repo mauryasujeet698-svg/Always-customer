@@ -14,6 +14,7 @@ Object.assign(exports, require('./partner_security'));
 Object.assign(exports, require('./customer_orders'));
 Object.assign(exports, require('./customer_rides'));
 Object.assign(exports, require('./retention'));
+Object.assign(exports, require('./geocoding'));
 
 const { getMessaging } = require("firebase-admin/messaging");
 
