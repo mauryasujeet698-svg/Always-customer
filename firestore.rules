@@ -117,8 +117,24 @@ service cloud.firestore {
 
     match /vehicles/{vehicleId} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if isAdmin() || (signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.get('verified', false) != true
+        && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('isAdmin', false) != true);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'listingStatus', 'available', 'updatedAt', 'price', 'pricePerKm',
+          'capacity', 'imageUrl', 'vehicleImageUrl', 'allowNegotiation', 'description',
+          'vehicleModel', 'vehicleColor', 'category', 'vehicleType'
+        ])
+        && request.resource.data.get('verified', resource.data.get('verified', false)) == resource.data.get('verified', false)
+        && request.resource.data.get('isVerified', resource.data.get('isVerified', false)) == resource.data.get('isVerified', false)
+        && request.resource.data.get('approvalStatus', resource.data.get('approvalStatus', 'pending')) == resource.data.get('approvalStatus', 'pending'));
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
     }
 
     match /fcmTokens/{uid} {
@@ -338,25 +354,92 @@ service cloud.firestore {
     }
 
     match /onboarding_requests/{requestId} {
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      // A user may submit and maintain their own application, but must not be
+      // able to mark it approved/verified or change its identity/role fields.
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.get('role', 'customer') != 'admin'
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('status', 'pending') != 'approved'
+        && request.resource.data.get('verified', false) != true
+        && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('isAdmin', false) != true;
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow update: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'approvalStatus', 'status', 'approved', 'approvedAt', 'approvedBy',
+          'verified', 'isVerified', 'verificationStatus', 'verifiedAt', 'verifiedBy',
+          'rejectedAt', 'rejectedBy', 'reviewedAt', 'reviewedBy', 'isAdmin', 'accountStatus'
+        ]));
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
     match /sellers/{uid} {
-      allow read: if true;
-      allow write: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      // Seller roots can contain private owner details. The customer app does
+      // not need unauthenticated access to these private records.
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.get('role', 'seller') != 'admin'
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('status', 'pending') != 'approved'
+        && request.resource.data.get('verified', false) != true
+        && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('isAdmin', false) != true);
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'businessName', 'name', 'description', 'about', 'openingHours',
+          'isOpen', 'items', 'updatedAt', 'photoUrl', 'logoUrl'
+        ])
+        && request.resource.data.get('approvalStatus', resource.data.get('approvalStatus', 'pending')) == resource.data.get('approvalStatus', 'pending')
+        && request.resource.data.get('status', resource.data.get('status', 'pending')) == resource.data.get('status', 'pending')
+        && request.resource.data.get('verified', resource.data.get('verified', false)) == resource.data.get('verified', false)
+        && request.resource.data.get('isVerified', resource.data.get('isVerified', false)) == resource.data.get('isVerified', false));
+      allow delete: if isAdmin();
+
+      match /offers/{offerId} {
+        allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+        allow create: if isAdmin() || (signedIn() && request.auth.uid == uid
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.get('title', '').size() <= 120
+          && request.resource.data.get('details', '') is string
+          && request.resource.data.get('details', '').size() <= 1000
+          && request.resource.data.get('active', true) is bool);
+        allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'details', 'active', 'updatedAt'
+          ])
+          && request.resource.data.get('title', resource.data.get('title', '')) is string
+          && request.resource.data.get('title', resource.data.get('title', '')).size() <= 120
+          && request.resource.data.get('details', resource.data.get('details', '')) is string
+          && request.resource.data.get('details', resource.data.get('details', '')).size() <= 1000
+          && request.resource.data.get('active', true) is bool);
+        allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      }
     }
 
     match /customers/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.get('role', 'customer') != 'admin');
+        && request.resource.data.get('role', 'customer') != 'admin'
+        && request.resource.data.get('isAdmin', false) != true
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('isVerified', false) != true;
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'displayName', 'email', 'phone', 'mobileNumber',
+            'photoUrl', 'photoURL', 'profilePhotoUrl', 'avatarUrl',
+            'address', 'defaultAddress', 'city', 'state', 'pincode', 'postalCode',
+            'updatedAt', 'profileUpdatedAt', 'lastSeenAt'
+          ])
           && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
           && request.resource.data.get('role', 'customer') != 'admin');
+
+      match /travelFavorites/{favoriteId} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
     }
   }
 }
