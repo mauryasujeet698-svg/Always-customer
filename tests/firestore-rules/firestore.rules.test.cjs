@@ -1,0 +1,153 @@
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const {
+  initializeTestEnvironment,
+  assertFails,
+  assertSucceeds,
+} = require("@firebase/rules-unit-testing");
+const {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+} = require("firebase/firestore");
+
+let env;
+
+test.before(async () => {
+  env = await initializeTestEnvironment({
+    projectId: "demo-allways-rules",
+    firestore: {
+      rules: fs.readFileSync(path.resolve(__dirname, "../../firestore.rules"), "utf8"),
+    },
+  });
+});
+
+test.after(async () => {
+  await env?.cleanup();
+});
+
+test.beforeEach(async () => {
+  await env.clearFirestore();
+});
+
+test("seller cannot self-approve; allowed profile fields remain editable", async () => {
+  const db = env.authenticatedContext("seller-1").firestore();
+  const seller = doc(db, "sellers/seller-1");
+
+  await assertSucceeds(setDoc(seller, {
+    role: "seller",
+    name: "Seller",
+    approvalStatus: "pending",
+    status: "pending",
+    businessName: "First Name",
+    items: [],
+  }));
+
+  await assertSucceeds(updateDoc(seller, { businessName: "Updated Shop" }));
+  await assertFails(updateDoc(seller, { approvalStatus: "approved" }));
+  await assertFails(updateDoc(seller, { status: "approved" }));
+  await assertFails(updateDoc(seller, { isVerified: true }));
+});
+
+test("seller records containing private owner details are not public-readable", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "sellers/seller-1"), {
+      businessName: "Private Seller",
+      phone: "9999999999",
+    });
+  });
+
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), "sellers/seller-1")));
+  await assertSucceeds(getDoc(doc(env.authenticatedContext("seller-1").firestore(), "sellers/seller-1")));
+});
+
+test("seller-owned offers can be created and toggled but are bounded", async () => {
+  const db = env.authenticatedContext("seller-1").firestore();
+  const offer = doc(db, "sellers/seller-1/offers/offer-1");
+
+  await assertSucceeds(setDoc(offer, {
+    title: "Local offer",
+    details: "Limited-time discount",
+    active: true,
+    createdAt: new Date(),
+  }));
+  await assertSucceeds(updateDoc(offer, { active: false }));
+  await assertFails(setDoc(doc(db, "sellers/another-seller/offers/offer-2"), {
+    title: "Cross-seller write",
+    details: "Should fail",
+    active: true,
+  }));
+  await assertFails(setDoc(doc(db, "sellers/seller-1/offers/offer-3"), {
+    title: "x".repeat(121),
+    details: "Too long",
+    active: true,
+  }));
+});
+
+test("customer cannot edit protected account state but can update display profile", async () => {
+  const db = env.authenticatedContext("customer-1").firestore();
+  const customer = doc(db, "customers/customer-1");
+
+  await assertSucceeds(setDoc(customer, {
+    role: "customer",
+    displayName: "Customer",
+  }));
+  await assertSucceeds(updateDoc(customer, { displayName: "Updated Name" }));
+  await assertFails(updateDoc(customer, { accountStatus: "blocked" }));
+  await assertFails(updateDoc(customer, { role: "admin" }));
+  await assertFails(updateDoc(customer, { approvalStatus: "approved" }));
+});
+
+test("onboarding applicant cannot set or later change approval state", async () => {
+  const db = env.authenticatedContext("applicant-1").firestore();
+  const application = doc(db, "onboarding_requests/application-1");
+
+  await assertFails(setDoc(application, {
+    uid: "applicant-1",
+    role: "delivery_partner",
+    status: "approved",
+    approvalStatus: "approved",
+  }));
+
+  await assertSucceeds(setDoc(application, {
+    uid: "applicant-1",
+    role: "delivery_partner",
+    status: "pending",
+    name: "Applicant",
+  }));
+  await assertFails(updateDoc(application, { status: "approved" }));
+  await assertFails(updateDoc(application, { approvalStatus: "approved" }));
+});
+
+test("vehicle owner cannot transfer ownership or self-verify", async () => {
+  const db = env.authenticatedContext("owner-1").firestore();
+  const vehicle = doc(db, "vehicles/vehicle-1");
+
+  await assertSucceeds(setDoc(vehicle, {
+    ownerUid: "owner-1",
+    status: "available",
+    listingStatus: "active",
+    available: true,
+    verified: false,
+  }));
+  await assertSucceeds(updateDoc(vehicle, { available: false, status: "paused" }));
+  await assertFails(updateDoc(vehicle, { ownerUid: "attacker-2" }));
+  await assertFails(updateDoc(vehicle, { verified: true }));
+});
+
+test("customers can use their own travel favorites but not another user's", async () => {
+  const alice = env.authenticatedContext("alice").firestore();
+  const bob = env.authenticatedContext("bob").firestore();
+  const favorite = doc(alice, "customers/alice/travelFavorites/prayagraj");
+
+  await assertSucceeds(setDoc(favorite, {
+    destination: "Prayagraj",
+    createdAt: new Date(),
+  }));
+  await assertFails(getDoc(doc(bob, "customers/alice/travelFavorites/prayagraj")));
+});
