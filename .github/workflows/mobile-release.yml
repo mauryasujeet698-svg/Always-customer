@@ -66,8 +66,8 @@ jobs:
           chmod 600 android/app/upload-keystore.jks
           alias="${ANDROID_KEY_ALIAS:-}"
           if [ -z "$alias" ]; then
-            aliases="$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk '/^Alias name: / {name=substr($0, index($0, \": ") + 2)} /^Entry type: PrivateKeyEntry$/ {if (name != \"\") print name; name=\"\"}')"
-            alias_count="$(printf '%s\\n' "$aliases" | sed '/^$/d' | wc -l | tr -d ' ')"
+            aliases="$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk '/^Alias name: / {name=substr($0, index($0, ": ") + 2)} /^Entry type: PrivateKeyEntry$/ {if (name != "") print name; name=""}')"
+            alias_count="$(printf '%s\n' "$aliases" | sed '/^$/d' | wc -l | tr -d ' ')"
             if [ "$alias_count" -ne 1 ]; then
               echo "::error::Expected exactly one private-key alias in the keystore. Set ANDROID_KEY_ALIAS as an Actions secret if multiple keys exist or alias detection fails."
               exit 1
