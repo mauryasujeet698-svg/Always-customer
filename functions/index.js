@@ -665,6 +665,35 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     const newStatus = String(after.status || "").toLowerCase();
     if (oldStatus === newStatus) return;
 
+    const requestId = event.params.requestId;
+    const terminalStatuses = new Set(["cancelled", "completed", "expired", "rejected"]);
+    if (newStatus === "accepted" || terminalStatuses.has(newStatus)) {
+      const offers = await db.collectionGroup("requests")
+        .where("rideId", "==", requestId)
+        .limit(100)
+        .get();
+      const batch = db.batch();
+      let writes = 0;
+      const winningUid = String(after.driverUid || after.carrierUid || "").trim();
+      for (const offerDoc of offers.docs) {
+        const offer = offerDoc.data() || {};
+        const ownerUid = offerDoc.ref.parent.parent?.id || "";
+        const isWinner = newStatus === "accepted" && ownerUid === winningUid;
+        const nextStatus = isWinner ? "accepted" : "expired";
+        if (String(offer.status || "").toLowerCase() !== nextStatus) {
+          batch.set(offerDoc.ref, {
+            status: nextStatus,
+            resolvedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+          writes++;
+        }
+      }
+      if (writes) await batch.commit();
+      if (terminalStatuses.has(newStatus)) {
+        await db.collection("customerPrivatePins").doc("ride_" + requestId).delete().catch(() => {});
+      }
+    }
+
     const customerUid = String(after.customerUid || after.customerId || "").trim();
     if (!customerUid) return;
 
