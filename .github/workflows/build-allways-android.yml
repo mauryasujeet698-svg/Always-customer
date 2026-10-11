@@ -704,6 +704,11 @@ jobs:
           grep -q "collection('settings').doc('homepage')" lib/main.dart
           echo "PASS: Customer catalog has primary inventory source, Firestore fallback, and homepage configuration integration."
 
+      - name: Set up Node.js for Cloud Functions validation
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Verify Cloud Functions source (deployment deferred until Blaze)
         run: |
           node --check functions/index.js
