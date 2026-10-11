@@ -1607,7 +1607,7 @@ class _ShellState extends State<Shell> {
   Future<void> loadWishlist() async {
     if(user==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').limit(200).get();
       wishlistIds..clear()..addAll(snap.docs.map((d)=>d.id));
       if(mounted)setState((){});
     }catch(_){}
@@ -1648,7 +1648,7 @@ class _ShellState extends State<Shell> {
   Future<void> loadAddresses() async {
     if(user==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').limit(100).get();
       final list=snap.docs.map((d)=>{'id':d.id,...d.data()}).toList();
       list.sort((a,b){
         final av=a['createdAt'], bv=b['createdAt'];
@@ -1963,7 +1963,7 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
     final user=FirebaseAuth.instance.currentUser;
     if(user==null)return const SizedBox.shrink();
     return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:user.uid).snapshots(includeMetadataChanges:true),
+      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(50).snapshots(includeMetadataChanges:true),
       builder:(context,s){
         if(!s.hasData || s.data!.metadata.isFromCache)return const SizedBox.shrink();
         final docs=(s.data!.docs).where((d){
@@ -3024,6 +3024,8 @@ class _OrdersPageState extends State<OrdersPage> {
               stream: FirebaseFirestore.instance
                   .collection('orders')
                   .where('customerId', isEqualTo: widget.user!.uid)
+                  .orderBy('createdAt', descending: true)
+                  .limit(100)
                   .snapshots(),
               builder: (context, primarySnapshot) {
                 if (primarySnapshot.hasError) {
@@ -3037,6 +3039,8 @@ class _OrdersPageState extends State<OrdersPage> {
                   stream: FirebaseFirestore.instance
                       .collection('orders')
                       .where('customerUid', isEqualTo: widget.user!.uid)
+                      .orderBy('createdAt', descending: true)
+                      .limit(100)
                       .snapshots(),
                   builder: (context, legacySnapshot) {
                     final merged = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
@@ -3264,7 +3268,7 @@ class _TravelPageState extends State<TravelPage> {
     final u=FirebaseAuth.instance.currentUser;
     if(u==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').limit(100).get();
       if(!mounted)return;
       setState((){
         _favoriteDestinations
@@ -4752,7 +4756,7 @@ class TravelBookingsSection extends StatelessWidget {
       title:Text(type=='ride'?'My ride bookings':'My vehicle bookings',style:const TextStyle(fontWeight:FontWeight.w900)),
       children:[
         StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-          stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
+          stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(100).snapshots(),
           builder:(context,snapshot){
             if(snapshot.hasError)return const Padding(padding:EdgeInsets.all(16),child:Text('Bookings unavailable.'));
             if(!snapshot.hasData)return const Padding(padding:EdgeInsets.all(16),child:CircularProgressIndicator());
@@ -4842,7 +4846,7 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
     final collection=widget.type=='ride'?'rideBookings':'vehicleBookings';
     final isRide=widget.type=='ride';
     return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
+      stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(100).snapshots(),
       builder:(context,snapshot){
         final docs=[...(snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[])];
         docs.sort((a,b){
@@ -5806,7 +5810,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
     return Scaffold(appBar:AppBar(title:const Text('Book / Rent a Vehicle')),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
       // Read the feed without a compound status query so older carrier listings
       // (Available/Published/Active) continue to appear after migrations.
-      stream:FirebaseFirestore.instance.collection('vehicles').snapshots(),
+      stream:FirebaseFirestore.instance.collection('vehicles').orderBy('createdAt',descending:true).limit(100).snapshots(),
       builder:(context,snapshot){
         final allDocs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
         final docs=allDocs.where((doc){
@@ -5997,7 +6001,7 @@ class _WishlistPageState extends State<WishlistPage> {
       return;
     }
     try {
-      final snap = await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('wishlist').orderBy('addedAt', descending: true).get();
+      final snap = await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('wishlist').orderBy('addedAt', descending: true).limit(200).get();
       final list = snap.docs.map((d) => Product.fromJson(d.data())).toList();
       if (mounted) setState(() { items = list; loading = false; error = null; });
     } catch (_) {
