@@ -356,6 +356,44 @@ try {
 );
 
 // Order updates: partner assignment/acceptance and customer status state remain server-side.
+async function settleInventoryReservation(orderId, terminalStatus) {
+  const normalized = String(terminalStatus || "").trim().toLowerCase();
+  const disposition = normalized === "delivered" || normalized === "completed"
+    ? "consumed"
+    : (normalized === "cancelled" || normalized === "canceled" ? "released" : "");
+  if (!disposition) return;
+
+  const reservationRef = db.collection("inventoryReservations").doc(orderId);
+  await db.runTransaction(async (tx) => {
+    const reservationSnap = await tx.get(reservationRef);
+    if (!reservationSnap.exists) return;
+    const reservation = reservationSnap.data() || {};
+    if (reservation.status !== "reserved") return;
+
+    const items = Array.isArray(reservation.items) ? reservation.items : [];
+    const refs = items.map((item) => db.collection("inventory").doc(String(item.productId || "")));
+    const inventorySnaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    const now = FieldValue.serverTimestamp();
+    for (let i = 0; i < items.length; i++) {
+      const snap = inventorySnaps[i];
+      if (!snap.exists) continue;
+      const current = snap.data() || {};
+      const qty = Math.max(0, Number(items[i].qty || 0));
+      const reservedQty = Math.max(0, Number(current.reservedQty || 0));
+      const patch = { reservedQty: Math.max(0, reservedQty - qty), updatedAt: now };
+      if (disposition === "consumed") {
+        patch.stock = Math.max(0, Number(current.stock || 0) - qty);
+      }
+      tx.update(refs[i], patch);
+    }
+    tx.update(reservationRef, {
+      status: disposition,
+      settledAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
 exports.onAllwaysOrderUpdated = onDocumentUpdated(
   "orders/{orderId}",
   async (event) => {
@@ -366,6 +404,12 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     const newStatus = String(after.status || "");
     const oldPartner = String(before.carrierUid || before.assignedPartnerId || "");
     const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
+
+    if (oldStatus !== newStatus &&
+        ["delivered", "completed", "cancelled", "canceled"].includes(newStatus.trim().toLowerCase())) {
+      await settleInventoryReservation(orderId, newStatus);
+      await db.collection("customerPrivatePins").doc("delivery_" + orderId).delete().catch(() => {});
+    }
 
     if (newPartner && newPartner !== oldPartner) {
       await sendToUser(
