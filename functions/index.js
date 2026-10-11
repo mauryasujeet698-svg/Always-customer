@@ -160,14 +160,48 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
     order.customerLongitude ?? order.pickupLongitude ?? order.customerLng ?? order.pickupLng
   );
 
-  const snap = await db.collection("deliveryPartners")
-    .where("approvalStatus", "==", "approved")
-    .where("status", "==", "online")
-    .get();
+  let candidates = [];
+  const serviceUrl = String(process.env.LOCATION_SERVICE_URL || "").replace(/\\/+$/, "");
+  const serviceToken = String(process.env.LOCATION_SERVICE_TOKEN || "");
+  if (serviceUrl && serviceToken && Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+    const response = await fetch(serviceUrl + "/v1/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Location-Service-Token": serviceToken },
+      body: JSON.stringify({
+        role: "delivery_partner",
+        latitude: pickupLat,
+        longitude: pickupLng,
+        radiusKm: 10,
+        limit: 30,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error("H3 delivery matching returned HTTP " + response.status);
+    const payload = await response.json();
+    const ids = [...new Set((Array.isArray(payload.candidates) ? payload.candidates : [])
+      .map((candidate) => String(candidate.uid || "").trim())
+      .filter(Boolean))].slice(0, 30);
+    if (ids.length) {
+      const docs = await db.getAll(...ids.map((uid) => db.collection("deliveryPartners").doc(uid)));
+      candidates = docs.filter((doc) => doc.exists);
+    }
+  } else {
+    // Compatibility mode only until the private H3/Redis service is configured.
+    const snap = await db.collection("deliveryPartners")
+      .where("approvalStatus", "==", "approved")
+      .where("shiftStatus", "==", "on_duty")
+      .where("status", "==", "online")
+      .limit(500)
+      .get();
+    candidates = snap.docs;
+  }
 
-  const candidates = snap.docs.filter((doc) => {
+  candidates = candidates.filter((doc) => {
     const p = doc.data() || {};
-    return p.availableForDeliveries !== false &&
+    return String(p.approvalStatus || "").toLowerCase() === "approved" &&
+      String(p.shiftStatus || "").toLowerCase() === "on_duty" &&
+      p.locationTrackingActive !== false &&
+      p.availableForDeliveries !== false &&
       p.isOnline !== false &&
       !String(p.currentOrderId || "").trim() &&
       !String(p.pendingOrderId || "").trim();
