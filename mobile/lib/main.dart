@@ -232,22 +232,30 @@ const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/release
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://api.github.com/repos/mauryasujeet698-svg/Always-website/releases/tags/allways-latest';
 
+String _normalUpdateDigest(dynamic value) =>
+    (value ?? '').toString().trim().toLowerCase().replaceFirst(RegExp(r'^sha256:'), '');
+
+bool _validUpdateManifest(Map<String,dynamic> data) {
+  final version=(data['version']??'').toString().trim();
+  final url=(data['apkUrl']??data['url']??'').toString().trim();
+  final digest=_normalUpdateDigest(data['sha256']??data['digest']);
+  final uri=Uri.tryParse(url);
+  return version.isNotEmpty && uri!=null && uri.scheme=='https' &&
+      RegExp(r'^[a-f0-9]{64}$').hasMatch(digest);
+}
+
 Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
   try {
     final snap=await FirebaseFirestore.instance.collection('settings').doc('appUpdate').get();
     final data=snap.data();
-    if(data!=null){
-      final version=(data['version']??'').toString().trim();
-      final apkUrl=(data['apkUrl']??data['url']??'').toString().trim();
-      if(version.isNotEmpty&&apkUrl.isNotEmpty){
-        return <String,dynamic>{
-          'version':version,
-          'url':apkUrl,
-          'digest':(data['sha256']??data['digest']??'').toString().trim(),
-          'notes':(data['notes']??'').toString(),
-          'mandatory':data['mandatory']!=false,
-        };
-      }
+    if(data!=null&&_validUpdateManifest(data)) {
+      return <String,dynamic>{
+        'version':(data['version']??'').toString(),
+        'url':(data['apkUrl']??data['url']??'').toString(),
+        'digest':_normalUpdateDigest(data['sha256']??data['digest']),
+        'notes':(data['notes']??'').toString(),
+        'mandatory':data['mandatory']!=false,
+      };
     }
   }catch(_){}
 
@@ -261,15 +269,12 @@ Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
     for(final raw in assets){
       if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
         final url=(raw['browser_download_url']??'').toString().trim();
-        if(remote.isNotEmpty&&url.isNotEmpty){
-          return <String,dynamic>{
-            'version':remote,
-            'url':url,
-            'digest':(raw['digest']??'').toString().trim(),
-            'notes':(data['body']??'').toString(),
-            'mandatory':true,
-          };
-        }
+        final digest=_normalUpdateDigest(raw['digest']);
+        final manifest=<String,dynamic>{
+          'version':remote,'url':url,'digest':digest,
+          'notes':(data['body']??'').toString(),'mandatory':true,
+        };
+        if(_validUpdateManifest(manifest))return manifest;
       }
     }
   }catch(_){}
@@ -1020,10 +1025,11 @@ class CartItem { final Product product; int qty; CartItem(this.product,this.qty)
 
 class Shell extends StatefulWidget { const Shell({super.key}); State<Shell> createState()=>_ShellState(); }
 class _ShellState extends State<Shell> {
-  int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer;
+  int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer; Timer? updateTimer;
   final Map<String,CartItem> cart={}; List<Map<String,dynamic>> addresses=[]; User? user; final Set<String> wishlistIds={};
   StreamSubscription<User?>? auth;
   StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? productsWatch;
+  StreamSubscription<DocumentSnapshot<Map<String,dynamic>>>? updateManifestWatch;
   StreamSubscription<RemoteMessage>? messages;
   StreamSubscription<RemoteMessage>? openedMessages;
   StreamSubscription<String>? tokenRefresh;
@@ -1036,8 +1042,9 @@ class _ShellState extends State<Shell> {
   bool _updateMandatory=false;
 
   @override void initState(){
-    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); checkForUpdate();
-    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);checkForUpdate();});
+    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); listenForUpdateManifest(); checkForUpdate();
+    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);});
+    updateTimer=Timer.periodic(const Duration(minutes:15),(_){checkForUpdate();});
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
       setState(() { user=u; });
@@ -1065,7 +1072,7 @@ class _ShellState extends State<Shell> {
     });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
-  @override void dispose(){timer?.cancel();auth?.cancel();productsWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
+  @override void dispose(){timer?.cancel();updateTimer?.cancel();auth?.cancel();productsWatch?.cancel();updateManifestWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
 
   Future<void> setupNotifications() async {
     final activeUser = user;
@@ -1281,71 +1288,35 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  void listenForUpdateManifest() {
+    updateManifestWatch=FirebaseFirestore.instance
+        .collection('settings').doc('appUpdate').snapshots().listen((snapshot){
+      final data=snapshot.data();
+      if(data!=null) applyUpdateManifest(data);
+    },onError:(_){});
+  }
+
+  Future<void> applyUpdateManifest(Map<String,dynamic> manifest) async {
+    if(!_validUpdateManifest(manifest))return;
+    final remote=(manifest['version']??'').toString().trim();
+    final url=(manifest['apkUrl']??manifest['url']??'').toString().trim();
+    final digest=_normalUpdateDigest(manifest['sha256']??manifest['digest']);
+    final info=await PackageInfo.fromPlatform();
+    if(!mounted||!_versionGreater(remote,info.version))return;
+    setState((){
+      updateVersion=remote;
+      updateUrl=url;
+      updateNotes=(manifest['notes']??'').toString();
+      _updateDigest=digest;
+      _updateMandatory=manifest['mandatory']!=false;
+    });
+  }
+
   Future<void> checkForUpdate() async {
-    try{
-      final manifest=await _fetchAllwaysUpdateManifest();
-      if(manifest==null)return;
-      final remote=(manifest['version']??'').toString().trim();
-      final url=(manifest['url']??'').toString().trim();
-      if(remote.isEmpty||url.isEmpty)return;
-      final info=await PackageInfo.fromPlatform();
-      if(_versionGreater(remote,info.version)){
-        if(!mounted)return;
-        setState((){
-          updateVersion=remote;
-          updateUrl=url;
-          updateNotes=(manifest['notes']??'').toString();
-          _updateDigest=(manifest['digest']??'').toString().trim();
-          _updateMandatory=manifest['mandatory']!=false;
-        });
-      }
-    }catch(_){}
-  }
-
-  bool _versionGreater(String remote,String local){
-    List<int> p(String v)=>v.split('.').map((x)=>int.tryParse(x.replaceAll(RegExp(r'[^0-9]'),''))??0).toList();
-    final a=p(remote),b=p(local);
-    for(var i=0;i<3;i++){final x=i<a.length?a[i]:0,y=i<b.length?b[i]:0;if(x!=y)return x>y;}
-    return false;
-  }
-
-  Future<void> openUpdate() async {
-    final u=updateUrl;
-    if(u==null||u.isEmpty)return;
-    final messenger=ScaffoldMessenger.of(context);
-    final controller=ValueNotifier<double>(0);
     try {
-      showDialog(context:context,barrierDismissible:false,builder:(_)=>AlertDialog(
-        title:const Text('Updating ALLways'),
-        content:ValueListenableBuilder<double>(valueListenable:controller,builder:(_,p,__)=>Column(
-          mainAxisSize:MainAxisSize.min,
-          children:[LinearProgressIndicator(value:p>0?p:null),const SizedBox(height:12),
-            Text(p>0?'Downloading '+(p*100).toStringAsFixed(0)+'%':'Downloading secure update…')]
-        )),
-      ));
-      final file=File(Directory.systemTemp.path+'/allways_update_'+DateTime.now().millisecondsSinceEpoch.toString()+'.apk');
-      final downloadUrl=u+(u.contains('?')?'&':'?')+'cacheBust='+DateTime.now().millisecondsSinceEpoch.toString();
-      await Dio().download(downloadUrl,file.path,deleteOnError:true,onReceiveProgress:(received,total){if(total>0)controller.value=received/total;});
-      final expected=(_updateDigest??'').replaceFirst(RegExp(r'^sha256:'),'').trim().toLowerCase();
-      if(expected.isNotEmpty){
-        final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
-        if(actual!=expected){
-          try{await file.delete();}catch(_){}
-          throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
-        }
-      }
-      if(mounted)Navigator.of(context).pop();
-      final result=await const MethodChannel('com.allways.app/apk_installer').invokeMethod<String>('installApk',{'path':file.path});
-      if(result=='permission_required'){
-        try{await const MethodChannel('com.allways.app/apk_installer').invokeMethod('openInstallSettings');}catch(_){}
-        messenger.showSnackBar(const SnackBar(content:Text('Allow ALLways to install updates, then tap Update again.')));
-      } else if(result!='started') {
-        messenger.showSnackBar(SnackBar(content:Text('Could not start installation: '+(result??'unknown error'))));
-      }
-    }catch(e){
-      if(mounted&&Navigator.of(context).canPop())Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(content:Text('Update failed: '+e.toString().replaceFirst('Exception: ',''))));
-    }finally{controller.dispose();}
+      final manifest=await _fetchAllwaysUpdateManifest();
+      if(manifest!=null)await applyUpdateManifest(manifest);
+    }catch(_){}
   }
 
   Future<List<Product>> _loadInventoryFallback() async {
