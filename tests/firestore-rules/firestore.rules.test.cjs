@@ -288,6 +288,38 @@ test("partners cannot self-enable shifts during registration", async () => {
     availableForDeliveries: false,
   }));
 
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-uid"), {
+    uid: "someone-else",
+    role: "carrier",
+    approvalStatus: "pending",
+    status: "pending",
+    shiftStatus: "off_duty",
+    isOnline: false,
+    availableForRides: false,
+  }));
+
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-admin"), {
+    uid: "driver-self-enable",
+    role: "carrier",
+    approvalStatus: "pending",
+    status: "pending",
+    shiftStatus: "off_duty",
+    isAdmin: true,
+    isOnline: false,
+    availableForRides: false,
+  }));
+
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-verification"), {
+    uid: "driver-self-enable",
+    role: "carrier",
+    approvalStatus: "pending",
+    status: "pending",
+    shiftStatus: "off_duty",
+    verified: true,
+    isOnline: false,
+    availableForRides: false,
+  }));
+
   const deliveryDb = env.authenticatedContext("delivery-self-enable").firestore();
   await assertFails(setDoc(doc(deliveryDb, "deliveryPartners/delivery-self-enable"), {
     role: "delivery_partner",
