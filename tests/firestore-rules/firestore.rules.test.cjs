@@ -231,3 +231,54 @@ test("vehicle bookings must refer to the real vehicle owner and start unconfirme
     createdAt: new Date(),
   }));
 });
+
+test("partners cannot self-enable shifts during registration", async () => {
+  const driverDb = env.authenticatedContext("driver-self-enable").firestore();
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-self-enable"), {
+    role: "carrier",
+    approvalStatus: "pending",
+    status: "online",
+    shiftStatus: "off_duty",
+    isOnline: true,
+    availableForRides: true,
+    locationTrackingActive: true,
+  }));
+
+  await assertSucceeds(setDoc(doc(driverDb, "ridePartners/driver-pending"), {
+    role: "carrier",
+    approvalStatus: "pending",
+    status: "pending",
+    shiftStatus: "off_duty",
+    isOnline: false,
+    availableForRides: false,
+    availableForDeliveries: false,
+  }));
+
+  const deliveryDb = env.authenticatedContext("delivery-self-enable").firestore();
+  await assertFails(setDoc(doc(deliveryDb, "deliveryPartners/delivery-self-enable"), {
+    role: "delivery_partner",
+    approvalStatus: "pending",
+    status: "online",
+    shiftStatus: "off_duty",
+    isOnline: true,
+    availableForDeliveries: true,
+    locationTrackingActive: true,
+  }));
+});
+
+test("service areas are readable but writable only by an administrator", async () => {
+  const customerDb = env.authenticatedContext("ordinary-user").firestore();
+  await assertSucceeds(getDoc(doc(customerDb, "serviceAreas/public-zone")));
+  await assertFails(setDoc(doc(customerDb, "serviceAreas/forged-zone"), {
+    name: "Forged zone",
+    active: true,
+  }));
+
+  const adminDb = env.authenticatedContext("admin-user", {
+    email: "mauryasujeet698@gmail.com",
+  }).firestore();
+  await assertSucceeds(setDoc(doc(adminDb, "serviceAreas/real-zone"), {
+    name: "Pilot zone",
+    active: true,
+  }));
+});
