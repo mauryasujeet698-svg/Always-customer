@@ -1672,6 +1672,7 @@ class _ShellState extends State<Shell> {
     final grand=sub+delivery;
     final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
 
+    final confirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
     final order={
       'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'',
       'name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),
@@ -1691,7 +1692,6 @@ class _ShellState extends State<Shell> {
       'deliveryZoneId':pincode.isNotEmpty?'pincode_'+pincode:'pilot_zone','deliveryZoneName':pincode.isNotEmpty?'PIN '+pincode:'ALLways Pilot Zone','deliveryPincode':pincode,
       'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
       'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
-      'confirmationPin':math.Random.secure().nextInt(10000).toString().padLeft(4,'0'),
       'deliveryPinVerified':false,'deliveryPinVerifiedAt':null,
       'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
       'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
@@ -1700,7 +1700,15 @@ class _ShellState extends State<Shell> {
       'time':DateTime.now().toLocal().toString(),
     };
     try{
-      await FirebaseFirestore.instance.collection('orders').doc(id).set(order);
+      final orderRef=FirebaseFirestore.instance.collection('orders').doc(id);
+      final pinRef=FirebaseFirestore.instance.collection('customerPrivatePins').doc('delivery_'+id);
+      final batch=FirebaseFirestore.instance.batch();
+      batch.set(orderRef,order);
+      batch.set(pinRef,{
+        'customerUid':user!.uid,'recordId':id,'type':'delivery',
+        'confirmationPin':confirmationPin,'createdAt':FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
       await saveAddress(name.trim(),ph,address.trim(),latitude:latitude,longitude:longitude);
       setState(()=>cart.clear());
       if(mounted){
@@ -2601,6 +2609,20 @@ class _CartScreenState extends State<CartScreen>{
                     Align(alignment:Alignment.centerLeft,child:Text(scheduledFree?'Scheduled delivery: FREE':'Scheduled delivery: ₹'+scheduledFee.toStringAsFixed(0)+' • '+km.toString()+' km',style:TextStyle(color:AllwaysColors.muted))),
                   if(deliveryType=='instant')
                     Align(alignment:Alignment.centerLeft,child:Text('Instant delivery: ₹'+instantFee.toStringAsFixed(0)+' • base ₹'+deliveryNum(deliverySettings,'instantBaseFee',35).toStringAsFixed(0)+' + '+km.toString()+' km',style:TextStyle(color:AllwaysColors.muted))),
+                ]),
+              ),
+              const SizedBox(height:10),
+              AllwaysCard(
+                child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  const Text('Payment method',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:8),
+                  Wrap(spacing:8,runSpacing:8,children:[
+                    ChoiceChip(label:const Text('Cash on Delivery · Selected'),selected:true,onSelected:null),
+                    ChoiceChip(label:const Text('UPI · Currently unavailable'),selected:false,onSelected:null),
+                    ChoiceChip(label:const Text('Credit/debit card · Currently unavailable'),selected:false,onSelected:null),
+                  ]),
+                  const SizedBox(height:6),
+                  Text('UPI and card payments will be enabled after a secure payment gateway is configured.',style:TextStyle(color:AllwaysColors.muted,fontSize:12)),
                 ]),
               ),
               const SizedBox(height:10),
@@ -4318,7 +4340,10 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     // Generate the customer-visible ride confirmation PIN at booking time.
     // This keeps the PIN available even before Cloud Functions are deployed.
     final rideConfirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
-    final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
+    final ref=FirebaseFirestore.instance.collection('autoRideRequests').doc();
+    final pinRef=FirebaseFirestore.instance.collection('customerPrivatePins').doc('ride_'+ref.id);
+    final batch=FirebaseFirestore.instance.batch();
+    batch.set(ref,{
       'customerUid':u.uid,
       'customerName':u.displayName??customer['name']??'ALLways customer',
       'customerPhone':phone,
@@ -4340,12 +4365,16 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
       'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
       'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
       'rejectedBy':<String>[],
-      'confirmationPin':rideConfirmationPin,
       'ridePinVerified':false,
       'customerActive':true,
       'createdAt':FieldValue.serverTimestamp(),
       'updatedAt':FieldValue.serverTimestamp(),
     });
+    batch.set(pinRef,{
+      'customerUid':u.uid,'recordId':ref.id,'type':'ride',
+      'confirmationPin':rideConfirmationPin,'createdAt':FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
 
     if(mounted)Navigator.push(context,MaterialPageRoute(
       builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
