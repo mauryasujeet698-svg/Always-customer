@@ -1,0 +1,46 @@
+name: Firestore Rules Tests
+
+on:
+  pull_request:
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "functions/**"
+      - "tests/firestore-rules/**"
+      - ".github/workflows/firestore-rules-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rules-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Parse Cloud Functions JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in functions/*.js; do
+            node --check "$file"
+          done
+      - name: Install Cloud Functions dependencies
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Test geocoding normalization and input safety
+        run: npm test --prefix functions
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Install rules-test dependencies
+        working-directory: tests/firestore-rules
+        run: npm install --no-audit --no-fund
+      - name: Validate and test Firestore Rules in the Emulator
+        run: firebase emulators:exec --only firestore --project demo-allways-rules "npm test --prefix tests/firestore-rules"

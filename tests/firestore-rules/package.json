@@ -1,0 +1,16 @@
+{
+  "name": "allways-firestore-rules-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Emulator tests for ALLways Firestore security rules",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test firestore.rules.test.cjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^12.0.0"
+  }
+}

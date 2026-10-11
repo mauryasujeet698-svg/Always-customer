@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -18,8 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-// Mapbox public token is injected at build time from GitHub Actions Secrets.
-// It is intentionally a public pk.* token; never use a Mapbox sk.* secret in the app.
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/services.dart';
@@ -33,8 +32,10 @@ import 'screens/notifications_settings_screen.dart';
 import 'screens/order_details_screen.dart';
 import 'allways_design.dart';
 
-const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
-const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=';
+const _mapTilesUrl = String.fromEnvironment(
+  'MAP_TILE_URL',
+  defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+);
 int _editDistance(String a,String b){
   if(a==b)return 0;
   final prev=List<int>.generate(b.length+1,(i)=>i);
@@ -50,10 +51,56 @@ int _editDistance(String a,String b){
 }
 
 
-String _mapboxTilesUrl({bool dark=false}) {
-  if (_mapboxPublicToken.trim().isEmpty) return _mapboxStyleTiles + _mapboxPublicToken;
-  final style = dark ? 'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}?access_token=' : _mapboxStyleTiles;
-  return style + _mapboxPublicToken;
+
+Future<List<Map<String, dynamic>>> _searchPlaces(
+  String query, {
+  double? latitude,
+  double? longitude,
+}) async {
+  final q = query.trim();
+  if (q.length < 2 || q.length > 120) return <Map<String, dynamic>>[];
+  final request = <String, dynamic>{'query': q};
+  if (latitude != null && longitude != null &&
+      latitude.isFinite && longitude.isFinite &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180) {
+    request['latitude'] = latitude;
+    request['longitude'] = longitude;
+  }
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+      .httpsCallable(
+    'searchPlaces',
+    options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+  );
+  final response = await callable.call(request);
+  final payload = response.data;
+  final rawPlaces = payload is Map ? payload['places'] : null;
+  if (rawPlaces is! List) return <Map<String, dynamic>>[];
+  final places = <Map<String, dynamic>>[];
+  for (final item in rawPlaces) {
+    if (item is! Map) continue;
+    final place = Map<String, dynamic>.from(item);
+    final latValue = place['lat'];
+    final lonValue = place['lon'];
+    if (latValue is! num || lonValue is! num) continue;
+    final lat = latValue.toDouble();
+    final lon = lonValue.toDouble();
+    if (!lat.isFinite || !lon.isFinite || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+    final name = (place['name'] ?? 'Place').toString().trim();
+    final address = (place['address'] ?? name).toString().trim();
+    final distanceKm = latitude == null || longitude == null
+        ? double.infinity
+        : Geolocator.distanceBetween(latitude, longitude, lat, lon) / 1000;
+    places.add({
+      'name': name.isEmpty ? 'Place' : name,
+      'address': address.isEmpty ? name : address,
+      'display_name': address.isEmpty ? name : address,
+      'lat': lat,
+      'lon': lon,
+      '_distanceKm': distanceKm,
+    });
+  }
+  return places;
 }
 const cloudinaryCloudName='busdtvia';
 const cloudinaryUploadPreset='allways_preset';
@@ -231,22 +278,30 @@ const shareApkUrl='https://github.com/mauryasujeet698-svg/Always-website/release
 const inventoryEndpoint='https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec';
 const updateManifestUrl='https://api.github.com/repos/mauryasujeet698-svg/Always-website/releases/tags/allways-latest';
 
+String _normalUpdateDigest(dynamic value) =>
+    (value ?? '').toString().trim().toLowerCase().replaceFirst(RegExp(r'^sha256:'), '');
+
+bool _validUpdateManifest(Map<String,dynamic> data) {
+  final version=(data['version']??'').toString().trim();
+  final url=(data['apkUrl']??data['url']??'').toString().trim();
+  final digest=_normalUpdateDigest(data['sha256']??data['digest']);
+  final uri=Uri.tryParse(url);
+  return version.isNotEmpty && uri!=null && uri.scheme=='https' &&
+      RegExp(r'^[a-f0-9]{64}$').hasMatch(digest);
+}
+
 Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
   try {
     final snap=await FirebaseFirestore.instance.collection('settings').doc('appUpdate').get();
     final data=snap.data();
-    if(data!=null){
-      final version=(data['version']??'').toString().trim();
-      final apkUrl=(data['apkUrl']??data['url']??'').toString().trim();
-      if(version.isNotEmpty&&apkUrl.isNotEmpty){
-        return <String,dynamic>{
-          'version':version,
-          'url':apkUrl,
-          'digest':(data['sha256']??data['digest']??'').toString().trim(),
-          'notes':(data['notes']??'').toString(),
-          'mandatory':data['mandatory']!=false,
-        };
-      }
+    if(data!=null&&_validUpdateManifest(data)) {
+      return <String,dynamic>{
+        'version':(data['version']??'').toString(),
+        'url':(data['apkUrl']??data['url']??'').toString(),
+        'digest':_normalUpdateDigest(data['sha256']??data['digest']),
+        'notes':(data['notes']??'').toString(),
+        'mandatory':data['mandatory']!=false,
+      };
     }
   }catch(_){}
 
@@ -260,15 +315,12 @@ Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
     for(final raw in assets){
       if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
         final url=(raw['browser_download_url']??'').toString().trim();
-        if(remote.isNotEmpty&&url.isNotEmpty){
-          return <String,dynamic>{
-            'version':remote,
-            'url':url,
-            'digest':(raw['digest']??'').toString().trim(),
-            'notes':(data['body']??'').toString(),
-            'mandatory':true,
-          };
-        }
+        final digest=_normalUpdateDigest(raw['digest']);
+        final manifest=<String,dynamic>{
+          'version':remote,'url':url,'digest':digest,
+          'notes':(data['body']??'').toString(),'mandatory':true,
+        };
+        if(_validUpdateManifest(manifest))return manifest;
       }
     }
   }catch(_){}
@@ -955,13 +1007,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             ),
             children:[
               TileLayer(
-                urlTemplate:_mapboxTilesUrl(),
+                urlTemplate:_mapTilesUrl,
                 tileSize:256,
                 maxZoom:19,
                 userAgentPackageName:'com.allways.app',
               ),
               RichAttributionWidget(attributions:[
-                TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                TextSourceAttribution('© OpenStreetMap contributors'),
               ]),
               if(_routePoints.isNotEmpty)PolylineLayer(
                 polylines:[Polyline(points:_routePoints,color:const Color(0xFF673AB7),strokeWidth:5)],
@@ -1019,10 +1071,11 @@ class CartItem { final Product product; int qty; CartItem(this.product,this.qty)
 
 class Shell extends StatefulWidget { const Shell({super.key}); State<Shell> createState()=>_ShellState(); }
 class _ShellState extends State<Shell> {
-  int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer;
+  int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer; Timer? updateTimer;
   final Map<String,CartItem> cart={}; List<Map<String,dynamic>> addresses=[]; User? user; final Set<String> wishlistIds={};
   StreamSubscription<User?>? auth;
   StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? productsWatch;
+  StreamSubscription<DocumentSnapshot<Map<String,dynamic>>>? updateManifestWatch;
   StreamSubscription<RemoteMessage>? messages;
   StreamSubscription<RemoteMessage>? openedMessages;
   StreamSubscription<String>? tokenRefresh;
@@ -1035,8 +1088,9 @@ class _ShellState extends State<Shell> {
   bool _updateMandatory=false;
 
   @override void initState(){
-    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); checkForUpdate();
-    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);checkForUpdate();});
+    super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); listenForUpdateManifest(); checkForUpdate();
+    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);});
+    updateTimer=Timer.periodic(const Duration(minutes:15),(_){checkForUpdate();});
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
       setState(() { user=u; });
@@ -1064,7 +1118,7 @@ class _ShellState extends State<Shell> {
     });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
-  @override void dispose(){timer?.cancel();auth?.cancel();productsWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
+  @override void dispose(){timer?.cancel();updateTimer?.cancel();auth?.cancel();productsWatch?.cancel();updateManifestWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
 
   Future<void> setupNotifications() async {
     final activeUser = user;
@@ -1280,29 +1334,39 @@ class _ShellState extends State<Shell> {
     }
   }
 
+  void listenForUpdateManifest() {
+    updateManifestWatch=FirebaseFirestore.instance
+        .collection('settings').doc('appUpdate').snapshots().listen((snapshot){
+      final data=snapshot.data();
+      if(data!=null) applyUpdateManifest(data);
+    },onError:(_){});
+  }
+
+  Future<void> applyUpdateManifest(Map<String,dynamic> manifest) async {
+    if(!_validUpdateManifest(manifest))return;
+    final remote=(manifest['version']??'').toString().trim();
+    final url=(manifest['apkUrl']??manifest['url']??'').toString().trim();
+    final digest=_normalUpdateDigest(manifest['sha256']??manifest['digest']);
+    final info=await PackageInfo.fromPlatform();
+    if(!mounted||!_versionGreater(remote,info.version))return;
+    setState((){
+      updateVersion=remote;
+      updateUrl=url;
+      updateNotes=(manifest['notes']??'').toString();
+      _updateDigest=digest;
+      _updateMandatory=manifest['mandatory']!=false;
+    });
+  }
+
   Future<void> checkForUpdate() async {
-    try{
+    try {
       final manifest=await _fetchAllwaysUpdateManifest();
-      if(manifest==null)return;
-      final remote=(manifest['version']??'').toString().trim();
-      final url=(manifest['url']??'').toString().trim();
-      if(remote.isEmpty||url.isEmpty)return;
-      final info=await PackageInfo.fromPlatform();
-      if(_versionGreater(remote,info.version)){
-        if(!mounted)return;
-        setState((){
-          updateVersion=remote;
-          updateUrl=url;
-          updateNotes=(manifest['notes']??'').toString();
-          _updateDigest=(manifest['digest']??'').toString().trim();
-          _updateMandatory=manifest['mandatory']!=false;
-        });
-      }
+      if(manifest!=null)await applyUpdateManifest(manifest);
     }catch(_){}
   }
 
   bool _versionGreater(String remote,String local){
-    List<int> p(String v)=>v.split('.').map((x)=>int.tryParse(x.replaceAll(RegExp(r'[^0-9]'),''))??0).toList();
+    List<int> p(String v)=>v.replaceFirst(RegExp(r'^[^0-9]*'),'').split('.').map((x)=>int.tryParse(x.replaceAll(RegExp(r'[^0-9]'),''))??0).toList();
     final a=p(remote),b=p(local);
     for(var i=0;i<3;i++){final x=i<a.length?a[i]:0,y=i<b.length?b[i]:0;if(x!=y)return x>y;}
     return false;
@@ -1326,12 +1390,14 @@ class _ShellState extends State<Shell> {
       final downloadUrl=u+(u.contains('?')?'&':'?')+'cacheBust='+DateTime.now().millisecondsSinceEpoch.toString();
       await Dio().download(downloadUrl,file.path,deleteOnError:true,onReceiveProgress:(received,total){if(total>0)controller.value=received/total;});
       final expected=(_updateDigest??'').replaceFirst(RegExp(r'^sha256:'),'').trim().toLowerCase();
-      if(expected.isNotEmpty){
-        final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
-        if(actual!=expected){
-          try{await file.delete();}catch(_){}
-          throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
-        }
+      if(!RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)){
+        try{await file.delete();}catch(_){}
+        throw Exception('Update manifest is missing a valid SHA-256 digest. The APK was not installed.');
+      }
+      final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
+      if(actual!=expected){
+        try{await file.delete();}catch(_){}
+        throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
       }
       if(mounted)Navigator.of(context).pop();
       final result=await const MethodChannel('com.allways.app/apk_installer').invokeMethod<String>('installApk',{'path':file.path});
@@ -1343,7 +1409,7 @@ class _ShellState extends State<Shell> {
       }
     }catch(e){
       if(mounted&&Navigator.of(context).canPop())Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(content:Text('Update failed: '+e.toString().replaceFirst('Exception: ',''))));
+      if(mounted)messenger.showSnackBar(SnackBar(content:Text('Update failed: '+e.toString().replaceFirst('Exception: ',''))));
     }finally{controller.dispose();}
   }
 
@@ -1541,7 +1607,7 @@ class _ShellState extends State<Shell> {
   Future<void> loadWishlist() async {
     if(user==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').limit(200).get();
       wishlistIds..clear()..addAll(snap.docs.map((d)=>d.id));
       if(mounted)setState((){});
     }catch(_){}
@@ -1582,7 +1648,7 @@ class _ShellState extends State<Shell> {
   Future<void> loadAddresses() async {
     if(user==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('addresses').limit(100).get();
       final list=snap.docs.map((d)=>{'id':d.id,...d.data()}).toList();
       list.sort((a,b){
         final av=a['createdAt'], bv=b['createdAt'];
@@ -1671,44 +1737,48 @@ class _ShellState extends State<Shell> {
         : deliveryNum(settings,'instantBaseFee',35)+km*deliveryNum(settings,'instantPerKm',11);
     final grand=sub+delivery;
     final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
-
-    final order={
-      'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'',
-      'name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),
-      'customerLatitude':latitude,'customerLongitude':longitude,
-      'locationSource':latitude!=null&&longitude!=null?'gps':'address',
-      'items':cart.values.map((x)=>{'id':x.product.id,'name':x.product.name,'qty':x.qty,'price':x.product.price}).toList(),
-      'subtotal':sub,'delivery':delivery,'deliveryFee':delivery,'total':grand,
-      'deliveryType':scheduled?'scheduled':'instant',
-      'scheduledFor':scheduledFor?.millisecondsSinceEpoch,
-      'deliveryDistanceKm':distanceKm,
-      'deliveryChargeableKm':km,
-      'freeScheduledDelivery':scheduledFree,
-      'freeScheduledThreshold':threshold,
-      'deliveryPricingRule':scheduled
-          ? (scheduledFree?'scheduled_free_over_threshold':'scheduled_per_km')
-          : 'instant_base_plus_per_km',
-      'deliveryZoneId':pincode.isNotEmpty?'pincode_'+pincode:'pilot_zone','deliveryZoneName':pincode.isNotEmpty?'PIN '+pincode:'ALLways Pilot Zone','deliveryPincode':pincode,
-      'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
-      'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
-      'confirmationPin':math.Random.secure().nextInt(10000).toString().padLeft(4,'0'),
-      'deliveryPinVerified':false,'deliveryPinVerifiedAt':null,
-      'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
-      'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
-      'customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
-      'createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,
-      'time':DateTime.now().toLocal().toString(),
-    };
-    try{
-      await FirebaseFirestore.instance.collection('orders').doc(id).set(order);
-      await saveAddress(name.trim(),ph,address.trim(),latitude:latitude,longitude:longitude);
-      setState(()=>cart.clear());
-      if(mounted){
-        Navigator.of(context).pop();
-        setState(()=>tab=0);
-        await _showOrderSuccess(id);
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('createCustomerOrder')
+          .call(<String, dynamic>{
+        'clientRequestId': id,
+        'name': name.trim(),
+        'phone': ph,
+        'address': address.trim(),
+        'note': note.trim(),
+        'latitude': latitude,
+        'longitude': longitude,
+        'deliveryPincode': pincode,
+        'deliveryType': scheduled ? 'scheduled' : 'instant',
+        'scheduledFor': scheduledFor?.millisecondsSinceEpoch,
+        'paymentMethod': 'COD',
+        'items': cart.values.map((item) => <String, dynamic>{
+          'id': item.product.id,
+          'qty': item.qty,
+        }).toList(),
+      });
+      final data = response.data;
+      if (data is! Map || data['ok'] != true || (data['orderId'] ?? '').toString().isEmpty) {
+        throw StateError('The server did not confirm this order.');
       }
-    }catch(e){msg('Order could not be saved. Please try again.');}
+      final orderId = data['orderId'].toString();
+      final serverTotal = num.tryParse((data['total'] ?? '').toString());
+      await saveAddress(name.trim(), ph, address.trim(), latitude: latitude, longitude: longitude);
+      setState(() => cart.clear());
+      if (mounted) {
+        Navigator.of(context).pop();
+        setState(() => tab = 0);
+        if (serverTotal != null && (serverTotal - grand).abs() >= 0.01) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Order placed. Final server-calculated total: ₹${serverTotal.toStringAsFixed(2)}')),
+          );
+        }
+        await _showOrderSuccess(orderId);
+      }
+    } catch (e) {
+      debugPrint('ALLways secure checkout failed: $e');
+      msg('Order could not be saved. Please check availability and try again.');
+    }
   }
 
   Future<void> _enableOrderNotifications() async {
@@ -1893,7 +1963,7 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
     final user=FirebaseAuth.instance.currentUser;
     if(user==null)return const SizedBox.shrink();
     return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:user.uid).snapshots(includeMetadataChanges:true),
+      stream:FirebaseFirestore.instance.collection('autoRideRequests').where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(50).snapshots(includeMetadataChanges:true),
       builder:(context,s){
         if(!s.hasData || s.data!.metadata.isFromCache)return const SizedBox.shrink();
         final docs=(s.data!.docs).where((d){
@@ -1945,13 +2015,17 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             child:ListTile(
               leading:CircleAvatar(backgroundColor:const Color(0x1A5B1ACF),child:Icon(accepted?Icons.navigation:Icons.search,color:const Color(0xFF5B1ACF))),
               title:Text(accepted?'Your ride is confirmed':'Ride request is active',style:const TextStyle(fontWeight:FontWeight.w900)),
-              subtitle:Text(
-                accepted
-                    ? ((x['confirmationPin'] ?? '').toString().length == 4
-                        ? 'Confirmation number: ${x['confirmationPin']} • Share it with your carrier'
-                        : 'Partner accepted • Tap to track live')
-                    : 'Searching for a nearby partner…',
-              ),
+              subtitle: accepted
+                  ? StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+                      stream: FirebaseFirestore.instance.collection('customerPrivatePins').doc('ride_${d.id}').snapshots(),
+                      builder: (context, pinSnapshot) {
+                        final pin = (pinSnapshot.data?.data()?['confirmationPin'] ?? '').toString();
+                        return Text(pin.length == 4
+                            ? 'Confirmation number: $pin • Share it with your carrier'
+                            : 'Partner accepted • Tap to track live');
+                      },
+                    )
+                  : const Text('Searching for a nearby partner…'),
               trailing:accepted?Wrap(
                 spacing:0,
                 children:[
@@ -2605,6 +2679,20 @@ class _CartScreenState extends State<CartScreen>{
               ),
               const SizedBox(height:10),
               AllwaysCard(
+                child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+                  const Text('Payment method',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900)),
+                  const SizedBox(height:8),
+                  Wrap(spacing:8,runSpacing:8,children:[
+                    ChoiceChip(label:const Text('Cash on Delivery · Selected'),selected:true,onSelected:null),
+                    ChoiceChip(label:const Text('UPI · Currently unavailable'),selected:false,onSelected:null),
+                    ChoiceChip(label:const Text('Credit/debit card · Currently unavailable'),selected:false,onSelected:null),
+                  ]),
+                  const SizedBox(height:6),
+                  Text('UPI and card payments will be enabled after a secure payment gateway is configured.',style:TextStyle(color:AllwaysColors.muted,fontSize:12)),
+                ]),
+              ),
+              const SizedBox(height:10),
+              AllwaysCard(
                 child:Column(children:[
                   const Align(alignment:Alignment.centerLeft,child:Text('Bill Details',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))),
                   const SizedBox(height:12),
@@ -2936,6 +3024,8 @@ class _OrdersPageState extends State<OrdersPage> {
               stream: FirebaseFirestore.instance
                   .collection('orders')
                   .where('customerId', isEqualTo: widget.user!.uid)
+                  .orderBy('createdAt', descending: true)
+                  .limit(100)
                   .snapshots(),
               builder: (context, primarySnapshot) {
                 if (primarySnapshot.hasError) {
@@ -2949,6 +3039,8 @@ class _OrdersPageState extends State<OrdersPage> {
                   stream: FirebaseFirestore.instance
                       .collection('orders')
                       .where('customerUid', isEqualTo: widget.user!.uid)
+                      .orderBy('createdAt', descending: true)
+                      .limit(100)
                       .snapshots(),
                   builder: (context, legacySnapshot) {
                     final merged = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
@@ -3176,7 +3268,7 @@ class _TravelPageState extends State<TravelPage> {
     final u=FirebaseAuth.instance.currentUser;
     if(u==null)return;
     try{
-      final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').get();
+      final snap=await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('travelFavorites').limit(100).get();
       if(!mounted)return;
       setState((){
         _favoriteDestinations
@@ -3428,9 +3520,7 @@ class _TravelPageState extends State<TravelPage> {
     final scheme=Theme.of(context).colorScheme;
     final dark=Theme.of(context).brightness==Brightness.dark;
     final mapHeight=(size.height*.42).clamp(340.0,620.0);
-    final mapUrl=_mapboxPublicToken.trim().isNotEmpty
-        ? _mapboxTilesUrl(dark:dark)
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    final mapUrl=_mapTilesUrl;
     return Scaffold(
       backgroundColor:scheme.surface,
       body:SafeArea(
@@ -3467,7 +3557,7 @@ class _TravelPageState extends State<TravelPage> {
                         ),
                         if(_travelRoute.length>1)PolylineLayer(polylines:[Polyline(points:_travelRoute,strokeWidth:5,color:const Color(0xFF5B1ACF))]),
                         RichAttributionWidget(attributions:[
-                          TextSourceAttribution(_mapboxPublicToken.trim().isNotEmpty?'© Mapbox © OpenStreetMap':'© OpenStreetMap contributors'),
+                          TextSourceAttribution('© OpenStreetMap contributors'),
                         ]),
                         MarkerLayer(markers:[
                           if(position!=null)Marker(
@@ -3740,37 +3830,13 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
   }
 
   Future<void> _search(String q) async {
-    if(_mapboxPublicToken.trim().isEmpty){
-      if(mounted)setState(()=>_error='Mapbox search is not configured in this build.');
-      return;
-    }
     if(mounted)setState(()=>_loading=true);
     try{
-      final params=<String,String>{
-        'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
-      };
-      if(_position!=null)params['proximity']=_position!.longitude.toString()+','+_position!.latitude.toString();
-      final res=await http.get(Uri.https('api.mapbox.com','/search/geocode/v6/forward',params)).timeout(const Duration(seconds:8));
-      if(res.statusCode!=200)throw Exception('Search service returned '+res.statusCode.toString()+'.');
-      final decoded=jsonDecode(res.body);
-      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
-      final results=<Map<String,dynamic>>[];
-      for(final raw in features){
-        if(raw is! Map)continue;
-        final f=Map<String,dynamic>.from(raw);
-        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
-        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
-        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
-        if(coords.length<2)continue;
-        final name=(props['name']??f['text']??'Place').toString();
-        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=_position==null?double.infinity:
-          Geolocator.distanceBetween(_position!.latitude,_position!.longitude,lat,lon)/1000;
-        results.add({'name':name,'address':address,'lat':lat,'lon':lon,'_distanceKm':distanceKm});
-      }
+      final results=await _searchPlaces(
+        q,
+        latitude:_position?.latitude,
+        longitude:_position?.longitude,
+      );
       final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
       int matchRank(Map<String,dynamic> item){
         final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
@@ -4096,35 +4162,11 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     }
     setState(()=>searching=true);
     try{
-      if(_mapboxPublicToken.trim().isEmpty)throw Exception('Mapbox search is not configured in this build.');
-      final params=<String,String>{
-        'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
-      };
-      if(pickup!=null)params['proximity']=pickup!.longitude.toString()+','+pickup!.latitude.toString();
-      final res=await http.get(
-        Uri.https('api.mapbox.com','/search/geocode/v6/forward',params),
-        headers:const {'User-Agent':'ALLways/1.5 (ALLways)'},
-      ).timeout(const Duration(seconds:10));
-      if(res.statusCode!=200)throw Exception('Search unavailable');
-      final decoded=jsonDecode(res.body);
-      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
-      places=[];
-      for(final raw in features){
-        if(raw is! Map)continue;
-        final f=Map<String,dynamic>.from(raw);
-        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
-        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
-        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
-        if(coords.length<2)continue;
-        final name=(props['name']??f['text']??'Place').toString();
-        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=pickup==null?double.infinity:
-          Geolocator.distanceBetween(pickup!.latitude,pickup!.longitude,lat,lon)/1000;
-        places.add({'name':name,'display_name':address,'lat':lat,'lon':lon,'_distanceKm':distanceKm});
-      }
+      places=await _searchPlaces(
+        q,
+        latitude:pickup?.latitude,
+        longitude:pickup?.longitude,
+      );
       final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
       int matchRank(Map<String,dynamic> item){
         final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
@@ -4315,40 +4357,47 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     if(!confirmed)return;
 
     final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
-    // Generate the customer-visible ride confirmation PIN at booking time.
-    // This keeps the PIN available even before Cloud Functions are deployed.
-    final rideConfirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
-    final ref=await FirebaseFirestore.instance.collection('autoRideRequests').add({
-      'customerUid':u.uid,
-      'customerName':u.displayName??customer['name']??'ALLways customer',
-      'customerPhone':phone,
-      'rideType':rideType,
-      'status':'searching',
-      'pickupLatitude':pickup!.latitude,
-      'pickupLongitude':pickup!.longitude,
-      'pickupAddress':pickupAddress,
-      'pickupPincode':pickupPincode,
-      'destination':destination.text.trim(),
-      'destinationAddress':destination.text.trim(),
-      'destinationLatitude':drop!.latitude,
-      'destinationLongitude':drop!.longitude,
-      'destinationPincode':pin,
-      'distanceKm':km,
-      'etaMinutes':eta,
-      'estimatedFare':fare,
-      'pricingModel':_ridePricing.isNotEmpty?'admin_tiered_5km':'legacy_fallback',
-      'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
-      'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
-      'rejectedBy':<String>[],
-      'confirmationPin':rideConfirmationPin,
-      'ridePinVerified':false,
-      'customerActive':true,
-      'createdAt':FieldValue.serverTimestamp(),
-      'updatedAt':FieldValue.serverTimestamp(),
-    });
+    final clientRequestId='RIDE'+DateTime.now().millisecondsSinceEpoch.toString();
+    String requestId;
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('createCustomerRide')
+          .call(<String, dynamic>{
+        'clientRequestId': clientRequestId,
+        'rideType': rideType,
+        'pickupLatitude': pickup!.latitude,
+        'pickupLongitude': pickup!.longitude,
+        'pickupAddress': pickupAddress,
+        'pickupPincode': pickupPincode,
+        'destination': destination.text.trim(),
+        'destinationAddress': destination.text.trim(),
+        'destinationLatitude': drop!.latitude,
+        'destinationLongitude': drop!.longitude,
+        'destinationPincode': pin,
+        'customerName': u.displayName ?? customer['name'] ?? 'ALLways customer',
+        'customerPhone': phone,
+      });
+      final data = response.data;
+      if (data is! Map || data['ok'] != true || (data['requestId'] ?? '').toString().isEmpty) {
+        throw StateError('The server did not confirm this ride request.');
+      }
+      requestId = data['requestId'].toString();
+      final serverFare = num.tryParse((data['estimatedFare'] ?? '').toString());
+      if (mounted && serverFare != null && (serverFare - fare).abs() >= 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ride fare confirmed by server: ₹${serverFare.toStringAsFixed(0)}')),
+        );
+      }
+    } catch (error) {
+      debugPrint('ALLways ride booking failed: $error');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ride could not be booked. Check pickup serviceability and try again.')),
+      );
+      return;
+    }
 
-    if(mounted)Navigator.push(context,MaterialPageRoute(
-      builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
+    if (mounted) Navigator.push(context, MaterialPageRoute(
+      builder: (_) => OnDemandRideTrackingPage(requestId: requestId, rideType: rideType)));
   }
 
   @override Widget build(BuildContext context){
@@ -4368,7 +4417,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                 options:MapOptions(initialCenter:center,initialZoom:14.5),
                 children:[
                   TileLayer(
-                    urlTemplate:_mapboxTilesUrl(),
+                    urlTemplate:_mapTilesUrl,
                     tileSize:256,
                     maxZoom:19,
                     userAgentPackageName:'com.allways.app'),
@@ -4707,7 +4756,7 @@ class TravelBookingsSection extends StatelessWidget {
       title:Text(type=='ride'?'My ride bookings':'My vehicle bookings',style:const TextStyle(fontWeight:FontWeight.w900)),
       children:[
         StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-          stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
+          stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(100).snapshots(),
           builder:(context,snapshot){
             if(snapshot.hasError)return const Padding(padding:EdgeInsets.all(16),child:Text('Bookings unavailable.'));
             if(!snapshot.hasData)return const Padding(padding:EdgeInsets.all(16),child:CircularProgressIndicator());
@@ -4797,7 +4846,7 @@ class _TripBookingSectionState extends State<_TripBookingSection> {
     final collection=widget.type=='ride'?'rideBookings':'vehicleBookings';
     final isRide=widget.type=='ride';
     return StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
-      stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).snapshots(),
+      stream:FirebaseFirestore.instance.collection(collection).where('customerUid',isEqualTo:user.uid).orderBy('createdAt',descending:true).limit(100).snapshots(),
       builder:(context,snapshot){
         final docs=[...(snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[])];
         docs.sort((a,b){
@@ -5226,7 +5275,7 @@ class PrivacyPolicyPage extends StatelessWidget{
     const SizedBox(height:14),const Text('Sharing',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
     const Text('Information is shared only as needed to provide the service. Active rides may share relevant pickup, destination, contact and live-location information between the customer and assigned Driver Partner. Authorized ALLways administrators may access operational information for support, safety and fulfillment.'),
     const SizedBox(height:14),const Text('Service providers',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
-    const Text('ALLways uses Firebase for authentication, database and notifications; Mapbox and routing/geocoding services for maps and location search; Cloudinary for supported image storage; and Google Sign-In when you choose Google authentication.'),
+    const Text('ALLways uses Firebase for authentication, database and notifications; OpenStreetMap-based map data and configured routing/geocoding services for maps and location search; Cloudinary for supported image storage; and Google Sign-In when you choose Google authentication.'),
     const SizedBox(height:14),const Text('Support and notifications',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
     const Text('Firebase Cloud Messaging may send order, delivery, ride, support and service notifications. Support tickets and replies are stored so ALLways can investigate and resolve issues.'),
     const SizedBox(height:14),const Text('Your choices and deletion',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
@@ -5761,7 +5810,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
     return Scaffold(appBar:AppBar(title:const Text('Book / Rent a Vehicle')),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(
       // Read the feed without a compound status query so older carrier listings
       // (Available/Published/Active) continue to appear after migrations.
-      stream:FirebaseFirestore.instance.collection('vehicles').snapshots(),
+      stream:FirebaseFirestore.instance.collection('vehicles').orderBy('createdAt',descending:true).limit(100).snapshots(),
       builder:(context,snapshot){
         final allDocs=snapshot.data?.docs??const <QueryDocumentSnapshot<Map<String,dynamic>>>[];
         final docs=allDocs.where((doc){
@@ -5952,7 +6001,7 @@ class _WishlistPageState extends State<WishlistPage> {
       return;
     }
     try {
-      final snap = await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('wishlist').orderBy('addedAt', descending: true).get();
+      final snap = await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('wishlist').orderBy('addedAt', descending: true).limit(200).get();
       final list = snap.docs.map((d) => Product.fromJson(d.data())).toList();
       if (mounted) setState(() { items = list; loading = false; error = null; });
     } catch (_) {

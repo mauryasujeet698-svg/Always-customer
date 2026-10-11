@@ -7,7 +7,7 @@ messagingSenderId:"869987297351",
 appId:"1:869987297351:web:fde91fb46194a141976962",
 measurementId:"G-1N2DFFC7BT"};
 const ADMIN_EMAIL="mauryasujeet698@gmail.com";
-let db=null,allOrders=[],unsubscribe=null,initial=true;
+let db=null,allOrders=[],unsubscribe=null,privacyUnsubscribe=null,initial=true;
 const INVENTORY_ENDPOINT="https://script.google.com/macros/s/AKfycbyuAdL6eEIlGiYhoTPFtE70VhyiMLnKgzO1ytctdSCWMtTdw4zIVQvEVwkbYJyJF2Wd/exec";
 
 function esc(v){
@@ -29,6 +29,7 @@ function init(){
     document.getElementById("adminAuth").classList.add("hidden");
     document.getElementById("dashboard").classList.remove("hidden");
     listen();
+    listenPrivacyRequests();
   });
 }
 
@@ -115,6 +116,55 @@ function listen(){
     document.getElementById("orders").innerHTML="<div class=\"empty\">Cannot read orders. Check Firestore Rules. "+esc(e.code||e.message)+"</div>";
   });
 }
+
+function listenPrivacyRequests(){
+  if(privacyUnsubscribe)privacyUnsubscribe();
+  var target=document.getElementById("privacyRequests");
+  if(target)target.innerHTML="<div class=\\"empty\\">Loading privacy requests…</div>";
+  privacyUnsubscribe=db.collection("privacyRequests")
+    .orderBy("createdAt","desc")
+    .limit(50)
+    .onSnapshot(function(snapshot){
+      var count=document.getElementById("privacyRequestCount");
+      if(count)count.textContent=String(snapshot.size);
+      if(!snapshot.size){
+        if(target)target.innerHTML="<div class=\\"empty\\">No privacy requests waiting for review.</div>";
+        return;
+      }
+      if(!target)return;
+      target.innerHTML=snapshot.docs.map(function(doc){
+        var r=doc.data()||{};
+        var created=r.createdAt&&r.createdAt.toDate?r.createdAt.toDate().toLocaleString("en-IN"):"Recently submitted";
+        var status=String(r.status||"submitted").toLowerCase();
+        var options=["submitted","under_review","resolved","rejected"].map(function(value){
+          return "<option value=\\""+value+"\\" "+(value===status?"selected":"")+">"+value.replaceAll("_"," ")+"</option>";
+        }).join("");
+        return "<article class=\\"adminOrder\\">"+
+          "<div class=\\"adminOrderHead\\"><div><b>"+esc(String(r.requestType||"grievance").replaceAll("_"," ").toUpperCase())+"</b> <span class=\\"status\\">"+esc(status.replaceAll("_"," "))+"</span></div><small>"+esc(created)+"</small></div>"+
+          "<div class=\\"adminGrid\\"><div><small>Requester UID</small><span>"+esc(r.uid||"")+"</span><small>Role</small><span>"+esc(r.role||"")+"</span></div>"+
+          "<div><small>Request details</small><span>"+esc(r.details||"")+"</span></div></div>"+
+          "<div class=\\"adminActions\\"><label>Review status <select onchange=\\"updatePrivacyRequest('"+esc(doc.id)+"',this.value)\\">"+options+"</select></label></div>"+
+          "</article>";
+      }).join("");
+    },function(error){
+      if(target)target.innerHTML="<div class=\\"empty\\">Cannot read privacy requests. Check Firestore Rules. "+esc(error.code||error.message)+"</div>";
+    });
+}
+async function updatePrivacyRequest(id,status){
+  var allowed=["submitted","under_review","resolved","rejected"];
+  if(!allowed.includes(status)){alert("Invalid privacy request status.");return;}
+  try{
+    await db.collection("privacyRequests").doc(id).update({
+      status:status,
+      reviewedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      reviewedBy:firebase.auth().currentUser?firebase.auth().currentUser.uid:"",
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }catch(e){
+    alert("Could not update privacy request: "+(e.code||e.message));
+  }
+}
+
 function render(){
   var n=allOrders.filter(function(o){return o.status==="New Order";}).length;
   var c=allOrders.filter(function(o){return o.status==="Confirmed";}).length;

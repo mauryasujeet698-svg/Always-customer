@@ -1,12 +1,21 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
+const { nextPinAttemptCount } = require("./pin_security");
 
 initializeApp();
 
 const db = getFirestore();
+
+// Partner shift, assignment, and stale-location controls.
+Object.assign(exports, require('./partner_security'));
+Object.assign(exports, require('./customer_orders'));
+Object.assign(exports, require('./customer_rides'));
+Object.assign(exports, require('./retention'));
+Object.assign(exports, require('./geocoding'));
 
 const { getMessaging } = require("firebase-admin/messaging");
 
@@ -157,14 +166,48 @@ async function autoAssignDeliveryPartner(orderRef, order, orderId) {
     order.customerLongitude ?? order.pickupLongitude ?? order.customerLng ?? order.pickupLng
   );
 
-  const snap = await db.collection("deliveryPartners")
-    .where("approvalStatus", "==", "approved")
-    .where("status", "==", "online")
-    .get();
+  let candidates = [];
+  const serviceUrl = String(process.env.LOCATION_SERVICE_URL || "").replace(/\\/+$/, "");
+  const serviceToken = String(process.env.LOCATION_SERVICE_TOKEN || "");
+  if (serviceUrl && serviceToken && Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+    const response = await fetch(serviceUrl + "/v1/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Location-Service-Token": serviceToken },
+      body: JSON.stringify({
+        role: "delivery_partner",
+        latitude: pickupLat,
+        longitude: pickupLng,
+        radiusKm: 10,
+        limit: 30,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error("H3 delivery matching returned HTTP " + response.status);
+    const payload = await response.json();
+    const ids = [...new Set((Array.isArray(payload.candidates) ? payload.candidates : [])
+      .map((candidate) => String(candidate.uid || "").trim())
+      .filter(Boolean))].slice(0, 30);
+    if (ids.length) {
+      const docs = await db.getAll(...ids.map((uid) => db.collection("deliveryPartners").doc(uid)));
+      candidates = docs.filter((doc) => doc.exists);
+    }
+  } else {
+    // Compatibility mode only until the private H3/Redis service is configured.
+    const snap = await db.collection("deliveryPartners")
+      .where("approvalStatus", "==", "approved")
+      .where("shiftStatus", "==", "on_duty")
+      .where("status", "==", "online")
+      .limit(500)
+      .get();
+    candidates = snap.docs;
+  }
 
-  const candidates = snap.docs.filter((doc) => {
+  candidates = candidates.filter((doc) => {
     const p = doc.data() || {};
-    return p.availableForDeliveries !== false &&
+    return String(p.approvalStatus || "").toLowerCase() === "approved" &&
+      String(p.shiftStatus || "").toLowerCase() === "on_duty" &&
+      p.locationTrackingActive !== false &&
+      p.availableForDeliveries !== false &&
       p.isOnline !== false &&
       !String(p.currentOrderId || "").trim() &&
       !String(p.pendingOrderId || "").trim();
@@ -267,13 +310,29 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
 
     const orderRef = event.data.ref;
     
-    if (!/^\d{4}$/.test(String(order.confirmationPin || ""))) {
-      await orderRef.set({
-        confirmationPin: newConfirmationPin(),
+    // Keep confirmation PINs in a customer-only record, never on the order
+    // document that assigned delivery partners must be able to read.
+    const customerUid = String(order.customerUid || order.customerId || "").trim();
+    const privatePinRef = db.collection("customerPrivatePins").doc("delivery_" + event.params.orderId);
+    const privatePinSnap = await privatePinRef.get();
+    if (!privatePinSnap.exists && customerUid) {
+      const legacyPin = String(order.confirmationPin || "").trim();
+      await privatePinRef.set({
+        customerUid,
+        recordId: event.params.orderId,
+        type: "delivery",
+        confirmationPin: /^\d{4}$/.test(legacyPin) ? legacyPin : newConfirmationPin(),
+        attempts: 0,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(order, "confirmationPin")) {
+      await orderRef.update({
+        confirmationPin: FieldValue.delete(),
         deliveryPinVerified: false,
         deliveryPinVerifiedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
     }
 try {
       const partnerUid = await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
@@ -301,6 +360,44 @@ try {
 );
 
 // Order updates: partner assignment/acceptance and customer status state remain server-side.
+async function settleInventoryReservation(orderId, terminalStatus) {
+  const normalized = String(terminalStatus || "").trim().toLowerCase();
+  const disposition = normalized === "delivered" || normalized === "completed"
+    ? "consumed"
+    : (normalized === "cancelled" || normalized === "canceled" ? "released" : "");
+  if (!disposition) return;
+
+  const reservationRef = db.collection("inventoryReservations").doc(orderId);
+  await db.runTransaction(async (tx) => {
+    const reservationSnap = await tx.get(reservationRef);
+    if (!reservationSnap.exists) return;
+    const reservation = reservationSnap.data() || {};
+    if (reservation.status !== "reserved") return;
+
+    const items = Array.isArray(reservation.items) ? reservation.items : [];
+    const refs = items.map((item) => db.collection("inventory").doc(String(item.productId || "")));
+    const inventorySnaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    const now = FieldValue.serverTimestamp();
+    for (let i = 0; i < items.length; i++) {
+      const snap = inventorySnaps[i];
+      if (!snap.exists) continue;
+      const current = snap.data() || {};
+      const qty = Math.max(0, Number(items[i].qty || 0));
+      const reservedQty = Math.max(0, Number(current.reservedQty || 0));
+      const patch = { reservedQty: Math.max(0, reservedQty - qty), updatedAt: now };
+      if (disposition === "consumed") {
+        patch.stock = Math.max(0, Number(current.stock || 0) - qty);
+      }
+      tx.update(refs[i], patch);
+    }
+    tx.update(reservationRef, {
+      status: disposition,
+      settledAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
 exports.onAllwaysOrderUpdated = onDocumentUpdated(
   "orders/{orderId}",
   async (event) => {
@@ -312,15 +409,10 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     const oldPartner = String(before.carrierUid || before.assignedPartnerId || "");
     const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
 
-    if (!/^\d{4}$/.test(String(after.confirmationPin || "")) &&
-        ["out for delivery", "delivered"].includes(newStatus.toLowerCase())) {
-      await event.data.after.ref.set({
-        confirmationPin: newConfirmationPin(),
-        deliveryPinVerified: false,
-        deliveryPinVerifiedAt: null,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      return;
+    if (oldStatus !== newStatus &&
+        ["delivered", "completed", "cancelled", "canceled"].includes(newStatus.trim().toLowerCase())) {
+      await settleInventoryReservation(orderId, newStatus);
+      await db.collection("customerPrivatePins").doc("delivery_" + orderId).delete().catch(() => {});
     }
 
     if (newPartner && newPartner !== oldPartner) {
@@ -404,61 +496,141 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   async (event) => {
     const ride = event.data?.data();
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
-    if (!/^\d{4}$/.test(String(ride.confirmationPin || ""))) {
-      await event.data.ref.set({
-        confirmationPin: newConfirmationPin(),
-        ridePinVerified: false,
-        ridePinVerifiedAt: null,
+    const requestRef = event.data.ref;
+    const requestId = event.params.requestId;
+    const rideType = String(ride.rideType || "bike").toLowerCase();
+    const pickupLat = Number(ride.pickupLatitude ?? ride.pickupLat);
+    const pickupLng = Number(ride.pickupLongitude ?? ride.pickupLng);
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
+
+    // Migration compatibility: move a legacy PIN out of the readable ride
+    // document. New clients create the customer-private PIN in the booking batch.
+    const customerUid = String(ride.customerUid || ride.customerId || "").trim();
+    const privatePinRef = db.collection("customerPrivatePins").doc("ride_" + requestId);
+    const privatePinSnap = await privatePinRef.get();
+    if (!privatePinSnap.exists && customerUid) {
+      const legacyPin = String(ride.confirmationPin || "").trim();
+      await privatePinRef.set({
+        customerUid,
+        recordId: requestId,
+        type: "ride",
+        confirmationPin: /^\d{4}$/.test(legacyPin) ? legacyPin : newConfirmationPin(),
+        attempts: 0,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(ride, "confirmationPin")) {
+      await requestRef.update({
+        confirmationPin: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
     }
 
-    const rideType = String(ride.rideType || "bike").toLowerCase();
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
     const expiresAtMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
     if (!ride.expiresAt) {
-      await event.data.ref.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await requestRef.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     if (Date.now() >= expiresAtMs) {
-      await event.data.ref.set({ status: "expired", expiredAt: FieldValue.serverTimestamp(), customerActive: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await requestRef.set({ status: "expired", expiredAt: FieldValue.serverTimestamp(), customerActive: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       return;
     }
-    const pickupLat = Number(ride.pickupLatitude);
-    const pickupLng = Number(ride.pickupLongitude);
-    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
 
-    const snap = await db.collection("ridePartners")
-      .where("status", "==", "online")
-      .get();
     const matchingRadiusKm = await rideMatchingRadiusKm();
-    const offerExpiresAt = Date.now() + 30000;
+    let partners = [];
+    const serviceUrl = String(process.env.LOCATION_SERVICE_URL || "").replace(/\/+$/, "");
+    const serviceToken = String(process.env.LOCATION_SERVICE_TOKEN || "");
+    if (serviceUrl && serviceToken) {
+      // When configured, the internal H3/Redis index is authoritative for the
+      // candidate set. Fail closed on service errors rather than scanning all drivers.
+      const response = await fetch(serviceUrl + "/v1/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Location-Service-Token": serviceToken },
+        body: JSON.stringify({
+          role: "carrier",
+          latitude: pickupLat,
+          longitude: pickupLng,
+          radiusKm: matchingRadiusKm,
+          vehicleType: rideType,
+          limit: 50,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) throw new Error("H3 matching returned HTTP " + response.status);
+      const payload = await response.json();
+      const ids = [...new Set((Array.isArray(payload.candidates) ? payload.candidates : [])
+        .map((candidate) => String(candidate.uid || "").trim())
+        .filter(Boolean))].slice(0, 50);
+      if (ids.length) {
+        const docs = await db.getAll(...ids.map((uid) => db.collection("ridePartners").doc(uid)));
+        partners = docs.filter((doc) => doc.exists);
+      }
+    } else {
+      // Conservative compatibility mode for development before Redis is deployed.
+      const snap = await db.collection("ridePartners")
+        .where("shiftStatus", "==", "on_duty")
+        .where("status", "==", "online")
+        .limit(500)
+        .get();
+      partners = snap.docs;
+    }
 
-    for (const partner of snap.docs) {
+    const offerExpiresAt = new Date(Math.min(expiresAtMs, Date.now() + 120000));
+    let offered = 0;
+    for (const partner of partners) {
       const p = partner.data() || {};
-      const type = String(p.vehicleType || "bike").toLowerCase();
-      const normalizedType = type === "two_wheeler" || type === "motorcycle" || type === "scooter"
-        ? "bike"
-        : (type === "cab" || type === "sedan" || type === "hatchback" ? "car" : type);
-      if (normalizedType !== rideType) continue;
-      if (String(p.approvalStatus || "approved").toLowerCase() !== "approved") continue;
+      if (String(p.approvalStatus || "").toLowerCase() !== "approved") continue;
+      if (String(p.shiftStatus || "").toLowerCase() !== "on_duty" || p.locationTrackingActive === false) continue;
       if (String(p.activeRideId || "").trim()) continue;
       if (p.availableForRides === false || p.isOnline === false) continue;
 
-      const pLat = Number(p.carrierLat ?? p.latitude);
-      const pLng = Number(p.carrierLng ?? p.longitude);
-      if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+      const rawType = String(p.vehicleType || "bike").toLowerCase();
+      const normalizedType = ["two_wheeler", "motorcycle", "scooter"].includes(rawType)
+        ? "bike"
+        : (["cab", "sedan", "hatchback"].includes(rawType) ? "car" : rawType);
+      if (normalizedType !== rideType) continue;
 
-      const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
-      if (distance > matchingRadiusKm) continue;
+      if (!serviceUrl) {
+        const pLat = Number(p.carrierLat ?? p.latitude);
+        const pLng = Number(p.carrierLng ?? p.longitude);
+        if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+        if (distanceKm(pickupLat, pickupLng, pLat, pLng) > matchingRadiusKm) continue;
+      }
+
+      const offerRef = db.collection("rideOffers").doc(partner.id).collection("requests").doc(requestId);
+      await offerRef.set({
+        rideId: requestId,
+        status: "searching",
+        rejected: false,
+        rideType,
+        pickupLatitude: pickupLat,
+        pickupLongitude: pickupLng,
+        pickupAddress: String(ride.pickupAddress || ""),
+        pickupPincode: String(ride.pickupPincode || ""),
+        destinationAddress: String(ride.destinationAddress || ride.destination || ""),
+        destinationLatitude: Number(ride.destinationLatitude) || null,
+        destinationLongitude: Number(ride.destinationLongitude) || null,
+        estimatedFare: Number(ride.estimatedFare || ride.fare || 0),
+        distanceKm: Number(ride.distanceKm || 0),
+        etaMinutes: Number(ride.etaMinutes || 0),
+        offeredAt: FieldValue.serverTimestamp(),
+        offerExpiresAt,
+      }, { merge: true });
 
       await sendToUser(
         partner.id,
         "New ride request",
-        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to accept it.",
-        { type: "ride_request", requestId: event.params.requestId, rideType },
+        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to review it.",
+        { type: "ride_request", requestId, rideType },
         "carrier"
       );
-}
+      offered++;
+    }
+
+    await requestRef.set({
+      matchingAttemptedAt: FieldValue.serverTimestamp(),
+      matchingCandidateCount: offered,
+    }, { merge: true });
   }
 );
 
@@ -497,14 +669,33 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     const newStatus = String(after.status || "").toLowerCase();
     if (oldStatus === newStatus) return;
 
-    if (!/^\d{4}$/.test(String(after.confirmationPin || "")) &&
-        ["accepted", "arrived", "started"].includes(newStatus)) {
-      await event.data.after.ref.set({
-        confirmationPin: newConfirmationPin(),
-        ridePinVerified: false,
-        ridePinVerifiedAt: null,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+    const requestId = event.params.requestId;
+    const terminalStatuses = new Set(["cancelled", "completed", "expired", "rejected"]);
+    if (newStatus === "accepted" || terminalStatuses.has(newStatus)) {
+      const offers = await db.collectionGroup("requests")
+        .where("rideId", "==", requestId)
+        .limit(100)
+        .get();
+      const batch = db.batch();
+      let writes = 0;
+      const winningUid = String(after.driverUid || after.carrierUid || "").trim();
+      for (const offerDoc of offers.docs) {
+        const offer = offerDoc.data() || {};
+        const ownerUid = offerDoc.ref.parent.parent?.id || "";
+        const isWinner = newStatus === "accepted" && ownerUid === winningUid;
+        const nextStatus = isWinner ? "accepted" : "expired";
+        if (String(offer.status || "").toLowerCase() !== nextStatus) {
+          batch.set(offerDoc.ref, {
+            status: nextStatus,
+            resolvedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+          writes++;
+        }
+      }
+      if (writes) await batch.commit();
+      if (terminalStatuses.has(newStatus)) {
+        await db.collection("customerPrivatePins").doc("ride_" + requestId).delete().catch(() => {});
+      }
     }
 
     const customerUid = String(after.customerUid || after.customerId || "").trim();
@@ -528,37 +719,53 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
 
 // Secure confirmation PIN verification. Only the assigned carrier/delivery partner can
 // advance the protected state, and the PIN itself is never returned by this function.
-exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request) => {
+exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 100 }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
 
   const type = String(request.data?.type || "").toLowerCase();
   const id = String(request.data?.id || "").trim();
   const pin = String(request.data?.pin || "").trim();
-
   if (!["ride", "delivery"].includes(type) || !id || !/^\d{4}$/.test(pin)) {
     throw new HttpsError("invalid-argument", "A valid 4-digit confirmation PIN is required.");
   }
 
   const collection = type === "ride" ? "autoRideRequests" : "orders";
   const ref = db.collection(collection).doc(id);
-
-  return db.runTransaction(async (tx) => {
+  const pinRef = db.collection("customerPrivatePins").doc(type + "_" + id);
+  const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
+    const pinSnap = await tx.get(pinRef);
     if (!snap.exists) throw new HttpsError("not-found", "The request could not be found.");
-
+    if (!pinSnap.exists) throw new HttpsError("failed-precondition", "The customer confirmation PIN is unavailable. Contact support.");
     const data = snap.data() || {};
+    const pinData = pinSnap.data() || {};
     const assignedUid = type === "ride"
       ? String(data.driverUid || data.carrierUid || "").trim()
       : String(data.carrierUid || data.deliveryPartnerUid || data.assignedPartnerId || "").trim();
+    if (assignedUid !== uid) throw new HttpsError("permission-denied", "You are not assigned to this request.");
 
-    if (assignedUid !== uid) {
-      throw new HttpsError("permission-denied", "You are not assigned to this request.");
-    }
+    const nowMs = Date.now();
+    const lockedUntil = pinData.lockedUntil?.toMillis
+      ? pinData.lockedUntil.toMillis()
+      : (pinData.lockedUntil instanceof Date ? pinData.lockedUntil.getTime() : 0);
+    if (lockedUntil > nowMs) throw new HttpsError("resource-exhausted", "Too many incorrect PIN attempts. Wait before trying again.");
 
-    const expected = String(data.confirmationPin || "").trim();
+    const expected = String(pinData.confirmationPin || "").trim();
     if (!expected || expected !== pin) {
-      throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+      const attempts = nextPinAttemptCount(pinData.attempts);
+      const update = {
+        attempts,
+        lastAttemptAt: FieldValue.serverTimestamp(),
+      };
+      if (attempts >= 5) {
+        update.lockedUntil = new Date(nowMs + 15 * 60 * 1000);
+        update.attempts = 0;
+      } else {
+        update.lockedUntil = FieldValue.delete();
+      }
+      tx.update(pinRef, update);
+      return { wrongPin: true };
     }
 
     if (type === "ride") {
@@ -574,23 +781,56 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
         updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
-      const status = String(data.status || "").toLowerCase();
-      if (status !== "out for delivery") {
+      const status = String(data.status || "").trim().toLowerCase();
+      // A partner may explicitly mark arrival before opening PIN verification.
+      // Both states are eligible, but a completed delivery remains idempotent.
+      if (!["out for delivery", "arrived"].includes(status)) {
         if (status === "delivered") return { verified: true, alreadyDelivered: true };
         throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
       }
+
+      // Payment status is server-owned. For COD, require an explicit partner
+      // confirmation before the delivery can be finalized. Online payments
+      // remain blocked at checkout until a verified provider is integrated.
+      const paymentMethod = String(data.paymentMethod || "COD")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s_-]+/g, "");
+      const isCashOnDelivery = ["COD", "CASHONDELIVERY", "CASH"].includes(paymentMethod);
+      if (isCashOnDelivery && request.data?.cashCollected !== true) {
+        throw new HttpsError("failed-precondition", "Confirm cash collection before completing this COD delivery.");
+      }
+      if (!isCashOnDelivery && String(data.paymentStatus || "").trim().toLowerCase() !== "paid") {
+        throw new HttpsError("failed-precondition", "The order payment has not been confirmed by the payment provider.");
+      }
+
+      const completedAt = FieldValue.serverTimestamp();
       tx.update(ref, {
         status: "Delivered",
         deliveryPinVerified: true,
-        deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
+        deliveryPinVerifiedAt: completedAt,
+        updatedAt: completedAt,
+        ...(isCashOnDelivery ? {
+          cashCollected: true,
+          cashCollectedAt: completedAt,
+          cashCollectedBy: uid,
+          paymentStatus: "cash_collected",
+        } : {}),
+        carrierLat: FieldValue.delete(),
+        carrierLng: FieldValue.delete(),
+        carrierLocationUpdatedAt: FieldValue.delete(),
       });
     }
-
+    // The PIN is single-use. Deleting it also limits retention of this secret.
+    tx.delete(pinRef);
     return { verified: true };
   });
-});
 
+  if (result?.wrongPin) {
+    throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+  }
+  return result;
+});
 
 // Complete a ride only after the assigned driver has verified the passenger PIN.
 exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
@@ -604,7 +844,10 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
   const partnerRef = db.collection("ridePartners").doc(uid);
 
   return db.runTransaction(async (tx) => {
-    const rideSnap = await tx.get(rideRef);
+    const [rideSnap, partnerSnap] = await Promise.all([
+      tx.get(rideRef),
+      tx.get(partnerRef),
+    ]);
     if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
 
     const ride = rideSnap.data() || {};
@@ -618,18 +861,36 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
     if (status !== "started" || ride.ridePinVerified !== true) {
       throw new HttpsError("failed-precondition", "Verify the passenger PIN and start the ride before completing it.");
     }
+    if (!partnerSnap.exists) {
+      throw new HttpsError("failed-precondition", "The driver profile is unavailable. Contact ALLways support.");
+    }
 
+    const partner = partnerSnap.data() || {};
+    const activeRideId = String(partner.activeRideId || "").trim();
+    if (activeRideId && activeRideId !== rideId) {
+      throw new HttpsError("failed-precondition", "The driver profile points to a different active ride.");
+    }
+    if (!activeRideId && String(partner.status || "").toLowerCase() !== "on_trip") {
+      throw new HttpsError("failed-precondition", "This ride is not recorded as the driver's active trip.");
+    }
+
+    const completedAt = FieldValue.serverTimestamp();
     tx.update(rideRef, {
       status: "completed",
-      completedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      completedAt,
+      updatedAt: completedAt,
     });
-    tx.set(partnerRef, {
-      status: "available",
+    // The dispatcher selects only online, on-duty partners. Keep that status
+    // consistent after completion; 'available' would make the driver invisible
+    // to the current online/on-duty query.
+    tx.update(partnerRef, {
+      status: "online",
+      dutyStatus: "online",
+      isOnline: true,
       availableForRides: true,
       activeRideId: null,
-      statusUpdatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+      statusUpdatedAt: completedAt,
+    });
 
     return { completed: true };
   });
@@ -842,7 +1103,7 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+
 const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
 function catalogValue(row, headers, name, fallback = "") {
   if (row && !Array.isArray(row) && typeof row === "object") {
