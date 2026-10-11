@@ -5,22 +5,24 @@ service cloud.firestore {
     function isAdmin() { return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com"; }
 
     match /orders/{orderId} {
-      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
-      allow read: if signedIn() && (
+      allow create: if signedIn()
+        && (request.resource.data.customerId == request.auth.uid || request.resource.data.customerUid == request.auth.uid)
+        && request.resource.data.status == 'New Order'
+        && request.resource.data.get('paymentMethod', 'COD') in ['COD', 'UPI', 'CARD']
+        && request.resource.data.get('total', 0) is number
+        && request.resource.data.get('total', 0) >= 0;
+      allow read: if isAdmin() || (signedIn() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.customerUid == request.auth.uid ||
         resource.data.carrierUid == request.auth.uid ||
-        (exists(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid))
-          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.approvalStatus == 'approved'
-          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.status == 'online'
-          && resource.data.carrierUid == null) ||
-        isAdmin()
-      );
+        resource.data.deliveryPartnerUid == request.auth.uid
+      ));
 
       allow update: if isAdmin()
-        || (signedIn() && resource.data.customerId == request.auth.uid
+        || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.customerUid == request.auth.uid)
           && resource.data.status in ['New Order', 'Confirmed']
-          && request.resource.data.customerId == resource.data.customerId
+          && request.resource.data.get('customerId', resource.data.get('customerId', request.auth.uid)) == resource.data.get('customerId', request.auth.uid)
+          && request.resource.data.get('customerUid', resource.data.get('customerUid', request.auth.uid)) == resource.data.get('customerUid', request.auth.uid)
           && request.resource.data.status == 'Cancelled'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusNote', 'cancellationReason', 'updatedAt']))
         || (signedIn() && resource.data.carrierUid == request.auth.uid
@@ -36,23 +38,16 @@ service cloud.firestore {
           )
           && request.resource.data.status in ['pending_acceptance','Assigned','Confirmed','Picked up','Out for delivery','Delivered','unassigned']
           && (request.resource.data.status != 'Delivered' || resource.data.deliveryPinVerified == true || (request.resource.data.deliveryPinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin)))
-        || (signedIn() && resource.data.customerId == request.auth.uid
+        || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.customerUid == request.auth.uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
           ]))
-        || (signedIn()
-          && exists(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid))
-          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.approvalStatus == 'approved'
-          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.status == 'online'
-          && resource.data.carrierUid == null
-          && request.resource.data.carrierUid == request.auth.uid
-          && request.resource.data.deliveryPartnerUid == request.auth.uid
-          && request.resource.data.status == 'Assigned'
-          && request.resource.data.carrierAccepted == true
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'carrierUid','deliveryPartnerUid','carrierName','carrierPhone','carrierVehicleType',
-            'carrierAccepted','assignedAt','status','updatedAt'
-          ]));
+        || (signedIn() && resource.data.carrierUid == request.auth.uid
+          && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.shiftStatus == 'on_duty'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['carrierLat','carrierLng','carrierLocationUpdatedAt']))
+        || (signedIn() && (resource.data.customerUid == request.auth.uid || resource.data.customerId == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledBy','cancellationReason','cancelledAt','updatedAt','customerActive'])
+          && request.resource.data.status == 'Cancelled');
 
       allow delete: if false;
     }
@@ -96,42 +91,29 @@ service cloud.firestore {
         && request.resource.data.status == 'searching'
         && request.resource.data.rejectedBy is list;
 
-      allow read: if signedIn() && (
+      allow read: if isAdmin() || (signedIn() && (
         resource.data.customerUid == request.auth.uid ||
+        resource.data.customerId == request.auth.uid ||
         resource.data.driverUid == request.auth.uid ||
-        isAdmin() ||
-        onlineRidePartner()
-      );
+        resource.data.carrierUid == request.auth.uid
+      ));
 
       allow update: if isAdmin()
-        || (signedIn() && resource.data.customerUid == request.auth.uid
+        || (signedIn() && (resource.data.customerUid == request.auth.uid || resource.data.customerId == request.auth.uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status','cancelledBy','cancellationReason','cancelledAt',
-            'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
+            'customerLat','customerLng','customerLocationUpdatedAt','updatedAt','customerActive'
           ])
-          && request.resource.data.status in ['searching','accepted','started','cancelled','completed']
-          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true || (request.resource.data.ridePinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin))
-        || (signedIn() && resource.data.driverUid == request.auth.uid
+          && (
+            (request.resource.data.status == resource.data.status &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customerLat','customerLng','customerLocationUpdatedAt','updatedAt'])) ||
+            (request.resource.data.status == 'cancelled' && resource.data.status in ['searching','accepted'])
+          ))
+        || (signedIn() && (resource.data.driverUid == request.auth.uid || resource.data.carrierUid == request.auth.uid)
+          && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.shiftStatus == 'on_duty'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status','driverUid','driverName','driverPhone','driverVehicleType','acceptedAt',
-            'driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','ridePinVerified','ridePinVerifiedAt','updatedAt',
-            'cancelledBy','cancellationReason','cancelledAt'
-          ])
-          && request.resource.data.status in ['accepted','started','completed','cancelled']
-          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true || (request.resource.data.ridePinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin)))
-        || (onlineRidePartner()
-          && resource.data.status == 'searching'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejectedBy','updatedAt'])
-          && request.resource.data.rejectedBy is list)
-        || (onlineRidePartner()
-          && resource.data.status == 'searching'
-          && request.resource.data.driverUid == request.auth.uid
-          && request.resource.data.status == 'accepted'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status','driverUid','driverName','driverPhone','driverVehicleType','acceptedAt','updatedAt'
-          ])
-          && (request.resource.data.status != 'started' || resource.data.ridePinVerified == true));
-
+            'driverLat','driverLng','driverLocationUpdatedAt'
+          ]));
       allow delete: if false;
     }
 
@@ -186,16 +168,61 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
 
+    match /partnerPublicPresence/{uid} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /customerPrivatePins/{pinId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.customerUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.type in ['delivery','ride']
+        && request.resource.data.recordId is string
+        && request.resource.data.confirmationPin is string
+        && request.resource.data.confirmationPin.matches('^[0-9]{4}$');
+      allow update, delete: if false;
+    }
+
+    match /privacyRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.requestType in ['grievance','access','correction','erasure','location']
+        && request.resource.data.details is string
+        && request.resource.data.details.size() >= 10
+        && request.resource.data.details.size() <= 2000;
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /rideOffers/{partnerUid}/requests/{rideId} {
+      allow read: if signedIn() && request.auth.uid == partnerUid;
+      allow update: if signedIn() && request.auth.uid == partnerUid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejected','rejectedAt'])
+        && request.resource.data.get('rejected', false) == true;
+      allow create, delete: if false;
+    }
+
     match /ridePartners/{uid} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.get('role', 'customer') != 'admin');
+        && request.resource.data.get('role', 'carrier') != 'admin'
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('shiftStatus', 'off_duty') != 'on_duty';
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
-          && request.resource.data.get('role', 'customer') != 'admin'
-          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
-      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name','displayName','phone','mobileNumber','vehicleType','vehicleNumber',
+            'vehicleColor','vehicleModel','photoUrl','updatedAt','profileUpdatedAt'
+          ])
+          && request.resource.data.get('role', resource.data.get('role', 'carrier')) == resource.data.get('role', 'carrier')
+          && request.resource.data.get('approvalStatus', resource.data.get('approvalStatus', 'pending')) == resource.data.get('approvalStatus', 'pending'))
+        || (signedIn() && request.auth.uid == uid && resource.data.shiftStatus == 'on_duty'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'carrierLat','carrierLng','carrierLocationUpdatedAt','lastLocationAt','lastSeenAt'
+          ]));
+      allow delete: if isAdmin();
     }
 
     match /travelReviews/{reviewId} {
@@ -273,15 +300,24 @@ service cloud.firestore {
     }
 
     match /deliveryPartners/{uid} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.get('role', 'customer') != 'admin');
+        && request.resource.data.get('role', 'delivery_partner') != 'admin'
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('shiftStatus', 'off_duty') != 'on_duty';
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
-          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
-          && request.resource.data.get('role', 'customer') != 'admin'
-          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
-      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name','displayName','phone','mobileNumber','vehicleType','vehicleNumber',
+            'vehicleColor','vehicleModel','photoUrl','updatedAt','profileUpdatedAt'
+          ])
+          && request.resource.data.get('role', resource.data.get('role', 'delivery_partner')) == resource.data.get('role', 'delivery_partner')
+          && request.resource.data.get('approvalStatus', resource.data.get('approvalStatus', 'pending')) == resource.data.get('approvalStatus', 'pending'))
+        || (signedIn() && request.auth.uid == uid && resource.data.shiftStatus == 'on_duty'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'deliveryLat','deliveryLng','lastLat','lastLng','deliveryLocationUpdatedAt','lastLocationAt','lastSeenAt'
+          ]));
+      allow delete: if isAdmin();
     }
 
     match /announcements/{announcementId} {
