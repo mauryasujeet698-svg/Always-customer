@@ -13,6 +13,7 @@ on:
     paths:
       - "firestore.rules"
       - "firestore.indexes.json"
+      - "functions/**"
       - "tests/firestore-rules/**"
       - ".github/workflows/firestore-rules-tests.yml"
   workflow_dispatch:
