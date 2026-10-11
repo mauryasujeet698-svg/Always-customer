@@ -68,15 +68,21 @@ const acceptRide=onCall({region:"asia-south1",maxInstances:100},async request=>{
  const uid=request.auth?.uid;if(!uid)throw new HttpsError("unauthenticated","Sign-in is required.");
  const id=String(request.data?.rideId||"").trim();if(!id)throw new HttpsError("invalid-argument","Ride ID is required.");
  const rr=db.collection("autoRideRequests").doc(id),pr=db.collection("ridePartners").doc(uid);
+ const offerRef=db.collection("rideOffers").doc(uid).collection("requests").doc(id);
  return db.runTransaction(async tx=>{
-  const [rs,ps]=await Promise.all([tx.get(rr),tx.get(pr)]);
+  const [rs,ps,offerSnap]=await Promise.all([tx.get(rr),tx.get(pr),tx.get(offerRef)]);
   if(!rs.exists)throw new HttpsError("not-found","Ride request not found.");
   if(!ps.exists)throw new HttpsError("failed-precondition","Driver profile not found.");
-  const r=rs.data()||{},p=ps.data()||{};
+  const r=rs.data()||{},p=ps.data()||{},offer=offerSnap.data()||{};
+  if(!offerSnap.exists)throw new HttpsError("permission-denied","This ride was not offered to your account.");
   if(String(p.approvalStatus||"").toLowerCase()!=="approved"||String(p.shiftStatus||"").toLowerCase()!=="on_duty"||p.locationTrackingActive===false)throw new HttpsError("failed-precondition","An approved driver with an active shift is required.");
   if(String(p.activeRideId||"").trim()||String(p.status||"").toLowerCase()==="on_trip")throw new HttpsError("failed-precondition","Complete your current ride before accepting another.");
   const assigned=String(r.driverUid||r.carrierUid||"").trim();
-  if(assigned===uid&&String(r.status||"").toLowerCase()==="accepted")return {ok:true,rideId:id,alreadyAccepted:true};
+  const offerStatus=String(offer.status||"").toLowerCase();
+  if(assigned===uid&&String(r.status||"").toLowerCase()==="accepted"&&offerStatus==="accepted")return {ok:true,rideId:id,alreadyAccepted:true};
+  if(offerStatus!=="searching")throw new HttpsError("permission-denied","This ride offer is no longer available to your account.");
+  const offerExpiry=offer.offerExpiresAt?.toMillis?offer.offerExpiresAt.toMillis():(offer.offerExpiresAt instanceof Date?offer.offerExpiresAt.getTime():0);
+  if(offerExpiry&&offerExpiry<=Date.now())throw new HttpsError("deadline-exceeded","This ride offer has expired.");
   if(String(r.status||"").toLowerCase()!=="searching"||assigned)throw new HttpsError("aborted","This ride has already been accepted or is no longer available.");
   const expires=r.expiresAt?.toMillis?r.expiresAt.toMillis():0;if(expires&&expires<=Date.now())throw new HttpsError("deadline-exceeded","This ride request has expired.");
   const target=String(r.rideType||"bike").toLowerCase(),raw=String(p.vehicleType||"bike").toLowerCase(),vehicle=["two_wheeler","motorcycle","scooter"].includes(raw)?"bike":(["cab","sedan","hatchback"].includes(raw)?"car":raw);
@@ -84,7 +90,7 @@ const acceptRide=onCall({region:"asia-south1",maxInstances:100},async request=>{
   const now=FieldValue.serverTimestamp();
   tx.update(rr,{status:"accepted",driverUid:uid,driverName:p.name||p.displayName||request.auth.token.name||"ALLways Driver Partner",driverPhone:p.phone||p.mobileNumber||request.auth.token.phone_number||"",driverVehicleType:vehicle,acceptedAt:now,updatedAt:now});
   tx.update(pr,{status:"on_trip",availableForRides:false,activeRideId:id,statusUpdatedAt:now,locationTrackingActive:true});
-  tx.set(db.collection("rideOffers").doc(uid).collection("requests").doc(id), {
+  tx.set(offerRef, {
     status:"accepted", acceptedAt:now, rejected:false
   }, {merge:true});
   return {ok:true,rideId:id};
@@ -102,12 +108,14 @@ const acceptDeliveryOrder=onCall({region:"asia-south1",maxInstances:100},async r
   const o=os.data()||{},p=ps.data()||{},status=String(o.status||"").trim().toLowerCase();
   if(String(p.approvalStatus||"").toLowerCase()!=="approved"||String(p.shiftStatus||"").toLowerCase()!=="on_duty"||p.locationTrackingActive===false)throw new HttpsError("failed-precondition","Admin approval and an active shift are required.");
   const assigned=String(o.carrierUid||o.deliveryPartnerUid||o.deliveryPartnerId||o.assignedPartnerId||"").trim();
+  if(!assigned||assigned!==uid)throw new HttpsError("permission-denied","This delivery has not been assigned to your account.");
+  const pendingOrderId=String(p.pendingOrderId||"").trim();
+  if(pendingOrderId&&pendingOrderId!==id&&String(p.currentOrderId||"").trim()!==id)throw new HttpsError("permission-denied","This delivery is not the active offer for your account.");
   if(assigned===uid&&status==="assigned") {
    tx.update(pr,{status:"on_delivery",dutyStatus:"on_delivery",availableForDeliveries:false,currentOrderId:id,pendingOrderId:FieldValue.delete(),statusUpdatedAt:FieldValue.serverTimestamp(),locationTrackingActive:true});
    return {ok:true,orderId:id,alreadyAccepted:true};
   }
-  if(assigned&&assigned!==uid)throw new HttpsError("aborted","This order is assigned to another partner.");
-  if(!["new order","searching","ready","pending","pending_acceptance","assigned",""].includes(status))throw new HttpsError("failed-precondition","This order is no longer available.");
+  if(!["pending_acceptance","assigned"].includes(status))throw new HttpsError("failed-precondition","This order is no longer available.");
   if(String(p.currentOrderId||"").trim())throw new HttpsError("failed-precondition","Complete your current delivery before accepting another.");
   const now=FieldValue.serverTimestamp();
   tx.update(or,{carrierUid:uid,deliveryPartnerUid:uid,assignedPartnerId:uid,carrierName:p.name||p.displayName||"ALLways Delivery Partner",carrierPhone:p.phone||p.mobileNumber||"",carrierVehicleType:p.vehicleType||"bike",status:"Assigned",carrierAccepted:true,assignedAt:now,updatedAt:now});
