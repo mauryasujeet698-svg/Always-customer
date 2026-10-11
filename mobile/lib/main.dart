@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -1671,52 +1672,48 @@ class _ShellState extends State<Shell> {
         : deliveryNum(settings,'instantBaseFee',35)+km*deliveryNum(settings,'instantPerKm',11);
     final grand=sub+delivery;
     final id='AW'+DateTime.now().millisecondsSinceEpoch.toString().substring(4);
-
-    final confirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
-    final order={
-      'id':id,'customerId':user!.uid,'customerUid':user!.uid,'email':user!.email??'',
-      'name':name.trim(),'phone':ph,'address':address.trim(),'note':note.trim(),
-      'customerLatitude':latitude,'customerLongitude':longitude,
-      'locationSource':latitude!=null&&longitude!=null?'gps':'address',
-      'items':cart.values.map((x)=>{'id':x.product.id,'name':x.product.name,'qty':x.qty,'price':x.product.price}).toList(),
-      'subtotal':sub,'delivery':delivery,'deliveryFee':delivery,'total':grand,
-      'deliveryType':scheduled?'scheduled':'instant',
-      'scheduledFor':scheduledFor?.millisecondsSinceEpoch,
-      'deliveryDistanceKm':distanceKm,
-      'deliveryChargeableKm':km,
-      'freeScheduledDelivery':scheduledFree,
-      'freeScheduledThreshold':threshold,
-      'deliveryPricingRule':scheduled
-          ? (scheduledFree?'scheduled_free_over_threshold':'scheduled_per_km')
-          : 'instant_base_plus_per_km',
-      'deliveryZoneId':pincode.isNotEmpty?'pincode_'+pincode:'pilot_zone','deliveryZoneName':pincode.isNotEmpty?'PIN '+pincode:'ALLways Pilot Zone','deliveryPincode':pincode,
-      'paymentMethod':'COD','status':'New Order','estimatedDelivery':'','eta':'',
-      'carrierUid':null,'deliveryPartnerUid':null,'carrierAccepted':false,
-      'deliveryPinVerified':false,'deliveryPinVerifiedAt':null,
-      'statusNote':'Order received','customerMessage':'Order received','cancellationReason':'','rating':null,
-      'fcmToken':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
-      'customer_fcm_token':(await SharedPreferences.getInstance()).getString('allways_fcm_token')??'',
-      'createdAt':DateTime.now().millisecondsSinceEpoch,'updatedAt':DateTime.now().millisecondsSinceEpoch,
-      'time':DateTime.now().toLocal().toString(),
-    };
-    try{
-      final orderRef=FirebaseFirestore.instance.collection('orders').doc(id);
-      final pinRef=FirebaseFirestore.instance.collection('customerPrivatePins').doc('delivery_'+id);
-      final batch=FirebaseFirestore.instance.batch();
-      batch.set(orderRef,order);
-      batch.set(pinRef,{
-        'customerUid':user!.uid,'recordId':id,'type':'delivery',
-        'confirmationPin':confirmationPin,'createdAt':FieldValue.serverTimestamp(),
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('createCustomerOrder')
+          .call(<String, dynamic>{
+        'clientRequestId': id,
+        'name': name.trim(),
+        'phone': ph,
+        'address': address.trim(),
+        'note': note.trim(),
+        'latitude': latitude,
+        'longitude': longitude,
+        'deliveryPincode': pincode,
+        'deliveryType': scheduled ? 'scheduled' : 'instant',
+        'scheduledFor': scheduledFor?.millisecondsSinceEpoch,
+        'paymentMethod': 'COD',
+        'items': cart.values.map((item) => <String, dynamic>{
+          'id': item.product.id,
+          'qty': item.qty,
+        }).toList(),
       });
-      await batch.commit();
-      await saveAddress(name.trim(),ph,address.trim(),latitude:latitude,longitude:longitude);
-      setState(()=>cart.clear());
-      if(mounted){
-        Navigator.of(context).pop();
-        setState(()=>tab=0);
-        await _showOrderSuccess(id);
+      final data = response.data;
+      if (data is! Map || data['ok'] != true || (data['orderId'] ?? '').toString().isEmpty) {
+        throw StateError('The server did not confirm this order.');
       }
-    }catch(e){msg('Order could not be saved. Please try again.');}
+      final orderId = data['orderId'].toString();
+      final serverTotal = num.tryParse((data['total'] ?? '').toString());
+      await saveAddress(name.trim(), ph, address.trim(), latitude: latitude, longitude: longitude);
+      setState(() => cart.clear());
+      if (mounted) {
+        Navigator.of(context).pop();
+        setState(() => tab = 0);
+        if (serverTotal != null && (serverTotal - grand).abs() >= 0.01) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Order placed. Final server-calculated total: ₹${serverTotal.toStringAsFixed(2)}')),
+          );
+        }
+        await _showOrderSuccess(orderId);
+      }
+    } catch (e) {
+      debugPrint('ALLways secure checkout failed: $e');
+      msg('Order could not be saved. Please check availability and try again.');
+    }
   }
 
   Future<void> _enableOrderNotifications() async {
