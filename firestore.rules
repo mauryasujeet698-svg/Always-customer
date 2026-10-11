@@ -20,35 +20,18 @@ service cloud.firestore {
 
       allow update: if isAdmin()
         || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.customerUid == request.auth.uid)
-          && resource.data.status in ['New Order', 'Confirmed']
-          && request.resource.data.get('customerId', resource.data.get('customerId', request.auth.uid)) == resource.data.get('customerId', request.auth.uid)
-          && request.resource.data.get('customerUid', resource.data.get('customerUid', request.auth.uid)) == resource.data.get('customerUid', request.auth.uid)
-          && request.resource.data.status == 'Cancelled'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusNote', 'cancellationReason', 'updatedAt']))
-        || (signedIn() && resource.data.carrierUid == request.auth.uid
-          && request.resource.data.customerId == resource.data.customerId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'carrierUid','assignedPartnerId','carrierName','carrierPhone','carrierAccepted','assignmentRejected',
-            'assignmentAttempts','status','statusNote','customerMessage','carrierLat',
-            'carrierLng','carrierLocationUpdatedAt','deliveryOtpVerified','deliveryPinVerified','deliveryPinVerifiedAt','updatedAt'
+            'status','statusNote','cancellationReason','updatedAt'
           ])
-          && (
-            request.resource.data.carrierUid == request.auth.uid ||
-            (request.resource.data.status == 'unassigned' && request.resource.data.carrierUid == null)
-          )
-          && request.resource.data.status in ['pending_acceptance','Assigned','Confirmed','Picked up','Out for delivery','Delivered','unassigned']
-          && (request.resource.data.status != 'Delivered' || resource.data.deliveryPinVerified == true || (request.resource.data.deliveryPinVerified == true && request.resource.data.confirmationPin == resource.data.confirmationPin)))
+          && resource.data.status in ['New Order','Confirmed']
+          && request.resource.data.status == 'Cancelled')
         || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.customerUid == request.auth.uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
           ]))
         || (signedIn() && resource.data.carrierUid == request.auth.uid
           && get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.shiftStatus == 'on_duty'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['carrierLat','carrierLng','carrierLocationUpdatedAt']))
-        || (signedIn() && (resource.data.customerUid == request.auth.uid || resource.data.customerId == request.auth.uid)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','cancelledBy','cancellationReason','cancelledAt','updatedAt','customerActive'])
-          && request.resource.data.status == 'Cancelled');
-
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['carrierLat','carrierLng','carrierLocationUpdatedAt']));
       allow delete: if false;
     }
 
