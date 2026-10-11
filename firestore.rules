@@ -266,6 +266,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Public app-update manifests contain only version, URL, digest and notes.
+    match /settings/driverPartnerAppUpdate {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/deliveryPartnerAppUpdate {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /serviceableZones/{pincode} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
