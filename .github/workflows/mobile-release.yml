@@ -148,7 +148,7 @@ jobs:
           APP_APK_URL: https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-latest.apk
           APK_SHA256: ${{ steps.update-digest.outputs.sha256 }}
           APP_UPDATE_NOTES: ALLways Customer security, reliability and performance improvements.
-          APP_UPDATE_MANDATORY: false
+          APP_UPDATE_MANDATORY: 'false'
         run: |
           mkdir -p /tmp/allways-update-publisher
           npm --prefix /tmp/allways-update-publisher init -y >/dev/null
