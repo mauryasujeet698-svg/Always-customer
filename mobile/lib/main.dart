@@ -19,8 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-// Mapbox public token is injected at build time from GitHub Actions Secrets.
-// It is intentionally a public pk.* token; never use a Mapbox sk.* secret in the app.
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter/services.dart';
@@ -34,8 +32,10 @@ import 'screens/notifications_settings_screen.dart';
 import 'screens/order_details_screen.dart';
 import 'allways_design.dart';
 
-const _mapboxPublicToken = String.fromEnvironment('MAPBOX_PUBLIC_TOKEN');
-const _mapboxStyleTiles = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}?access_token=';
+const _mapTilesUrl = String.fromEnvironment(
+  'MAP_TILE_URL',
+  defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+);
 int _editDistance(String a,String b){
   if(a==b)return 0;
   final prev=List<int>.generate(b.length+1,(i)=>i);
@@ -51,10 +51,56 @@ int _editDistance(String a,String b){
 }
 
 
-String _mapboxTilesUrl({bool dark=false}) {
-  if (_mapboxPublicToken.trim().isEmpty) return _mapboxStyleTiles + _mapboxPublicToken;
-  final style = dark ? 'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}?access_token=' : _mapboxStyleTiles;
-  return style + _mapboxPublicToken;
+
+Future<List<Map<String, dynamic>>> _searchPlaces(
+  String query, {
+  double? latitude,
+  double? longitude,
+}) async {
+  final q = query.trim();
+  if (q.length < 2 || q.length > 120) return <Map<String, dynamic>>[];
+  final request = <String, dynamic>{'query': q};
+  if (latitude != null && longitude != null &&
+      latitude.isFinite && longitude.isFinite &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180) {
+    request['latitude'] = latitude;
+    request['longitude'] = longitude;
+  }
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+      .httpsCallable(
+    'searchPlaces',
+    options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+  );
+  final response = await callable.call(request);
+  final payload = response.data;
+  final rawPlaces = payload is Map ? payload['places'] : null;
+  if (rawPlaces is! List) return <Map<String, dynamic>>[];
+  final places = <Map<String, dynamic>>[];
+  for (final item in rawPlaces) {
+    if (item is! Map) continue;
+    final place = Map<String, dynamic>.from(item);
+    final latValue = place['lat'];
+    final lonValue = place['lon'];
+    if (latValue is! num || lonValue is! num) continue;
+    final lat = latValue.toDouble();
+    final lon = lonValue.toDouble();
+    if (!lat.isFinite || !lon.isFinite || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+    final name = (place['name'] ?? 'Place').toString().trim();
+    final address = (place['address'] ?? name).toString().trim();
+    final distanceKm = latitude == null || longitude == null
+        ? double.infinity
+        : Geolocator.distanceBetween(latitude, longitude, lat, lon) / 1000;
+    places.add({
+      'name': name.isEmpty ? 'Place' : name,
+      'address': address.isEmpty ? name : address,
+      'display_name': address.isEmpty ? name : address,
+      'lat': lat,
+      'lon': lon,
+      '_distanceKm': distanceKm,
+    });
+  }
+  return places;
 }
 const cloudinaryCloudName='busdtvia';
 const cloudinaryUploadPreset='allways_preset';
@@ -961,13 +1007,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
             ),
             children:[
               TileLayer(
-                urlTemplate:_mapboxTilesUrl(),
+                urlTemplate:_mapTilesUrl,
                 tileSize:256,
                 maxZoom:19,
                 userAgentPackageName:'com.allways.app',
               ),
               RichAttributionWidget(attributions:[
-                TextSourceAttribution('© Mapbox © OpenStreetMap'),
+                TextSourceAttribution('© OpenStreetMap contributors'),
               ]),
               if(_routePoints.isNotEmpty)PolylineLayer(
                 polylines:[Polyline(points:_routePoints,color:const Color(0xFF673AB7),strokeWidth:5)],
@@ -3470,9 +3516,7 @@ class _TravelPageState extends State<TravelPage> {
     final scheme=Theme.of(context).colorScheme;
     final dark=Theme.of(context).brightness==Brightness.dark;
     final mapHeight=(size.height*.42).clamp(340.0,620.0);
-    final mapUrl=_mapboxPublicToken.trim().isNotEmpty
-        ? _mapboxTilesUrl(dark:dark)
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    final mapUrl=_mapTilesUrl;
     return Scaffold(
       backgroundColor:scheme.surface,
       body:SafeArea(
@@ -3509,7 +3553,7 @@ class _TravelPageState extends State<TravelPage> {
                         ),
                         if(_travelRoute.length>1)PolylineLayer(polylines:[Polyline(points:_travelRoute,strokeWidth:5,color:const Color(0xFF5B1ACF))]),
                         RichAttributionWidget(attributions:[
-                          TextSourceAttribution(_mapboxPublicToken.trim().isNotEmpty?'© Mapbox © OpenStreetMap':'© OpenStreetMap contributors'),
+                          TextSourceAttribution('© OpenStreetMap contributors'),
                         ]),
                         MarkerLayer(markers:[
                           if(position!=null)Marker(
@@ -3782,37 +3826,13 @@ class _DestinationSearchPageState extends State<_DestinationSearchPage> {
   }
 
   Future<void> _search(String q) async {
-    if(_mapboxPublicToken.trim().isEmpty){
-      if(mounted)setState(()=>_error='Mapbox search is not configured in this build.');
-      return;
-    }
     if(mounted)setState(()=>_loading=true);
     try{
-      final params=<String,String>{
-        'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
-      };
-      if(_position!=null)params['proximity']=_position!.longitude.toString()+','+_position!.latitude.toString();
-      final res=await http.get(Uri.https('api.mapbox.com','/search/geocode/v6/forward',params)).timeout(const Duration(seconds:8));
-      if(res.statusCode!=200)throw Exception('Search service returned '+res.statusCode.toString()+'.');
-      final decoded=jsonDecode(res.body);
-      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
-      final results=<Map<String,dynamic>>[];
-      for(final raw in features){
-        if(raw is! Map)continue;
-        final f=Map<String,dynamic>.from(raw);
-        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
-        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
-        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
-        if(coords.length<2)continue;
-        final name=(props['name']??f['text']??'Place').toString();
-        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=_position==null?double.infinity:
-          Geolocator.distanceBetween(_position!.latitude,_position!.longitude,lat,lon)/1000;
-        results.add({'name':name,'address':address,'lat':lat,'lon':lon,'_distanceKm':distanceKm});
-      }
+      final results=await _searchPlaces(
+        q,
+        latitude:_position?.latitude,
+        longitude:_position?.longitude,
+      );
       final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
       int matchRank(Map<String,dynamic> item){
         final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
@@ -4138,35 +4158,11 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     }
     setState(()=>searching=true);
     try{
-      if(_mapboxPublicToken.trim().isEmpty)throw Exception('Mapbox search is not configured in this build.');
-      final params=<String,String>{
-        'q':q,'access_token':_mapboxPublicToken.trim(),'country':'IN',
-        'language':'en,hi','limit':'10','autocomplete':'true','types':'address,street,locality,neighborhood,place,postcode,district,region','worldview':'in',
-      };
-      if(pickup!=null)params['proximity']=pickup!.longitude.toString()+','+pickup!.latitude.toString();
-      final res=await http.get(
-        Uri.https('api.mapbox.com','/search/geocode/v6/forward',params),
-        headers:const {'User-Agent':'ALLways/1.5 (ALLways)'},
-      ).timeout(const Duration(seconds:10));
-      if(res.statusCode!=200)throw Exception('Search unavailable');
-      final decoded=jsonDecode(res.body);
-      final features=decoded is Map&&decoded['features'] is List?decoded['features'] as List:[];
-      places=[];
-      for(final raw in features){
-        if(raw is! Map)continue;
-        final f=Map<String,dynamic>.from(raw);
-        final props=f['properties'] is Map?Map<String,dynamic>.from(f['properties']):<String,dynamic>{};
-        final geom=f['geometry'] is Map?Map<String,dynamic>.from(f['geometry']):<String,dynamic>{};
-        final coords=geom['coordinates'] is List?geom['coordinates'] as List:[];
-        if(coords.length<2)continue;
-        final name=(props['name']??f['text']??'Place').toString();
-        final address=(props['full_address']??f['place_formatted']??f['place_name']??name).toString();
-        final lat=(coords[1] as num).toDouble();
-        final lon=(coords[0] as num).toDouble();
-        final distanceKm=pickup==null?double.infinity:
-          Geolocator.distanceBetween(pickup!.latitude,pickup!.longitude,lat,lon)/1000;
-        places.add({'name':name,'display_name':address,'lat':lat,'lon':lon,'_distanceKm':distanceKm});
-      }
+      places=await _searchPlaces(
+        q,
+        latitude:pickup?.latitude,
+        longitude:pickup?.longitude,
+      );
       final normalizedQuery=q.toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
       int matchRank(Map<String,dynamic> item){
         final name=(item['name']??'').toString().toLowerCase().trim().replaceAll(RegExp(r'\s+'),' ');
@@ -4417,7 +4413,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
                 options:MapOptions(initialCenter:center,initialZoom:14.5),
                 children:[
                   TileLayer(
-                    urlTemplate:_mapboxTilesUrl(),
+                    urlTemplate:_mapTilesUrl,
                     tileSize:256,
                     maxZoom:19,
                     userAgentPackageName:'com.allways.app'),
@@ -5275,7 +5271,7 @@ class PrivacyPolicyPage extends StatelessWidget{
     const SizedBox(height:14),const Text('Sharing',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
     const Text('Information is shared only as needed to provide the service. Active rides may share relevant pickup, destination, contact and live-location information between the customer and assigned Driver Partner. Authorized ALLways administrators may access operational information for support, safety and fulfillment.'),
     const SizedBox(height:14),const Text('Service providers',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
-    const Text('ALLways uses Firebase for authentication, database and notifications; Mapbox and routing/geocoding services for maps and location search; Cloudinary for supported image storage; and Google Sign-In when you choose Google authentication.'),
+    const Text('ALLways uses Firebase for authentication, database and notifications; OpenStreetMap-based map data and configured routing/geocoding services for maps and location search; Cloudinary for supported image storage; and Google Sign-In when you choose Google authentication.'),
     const SizedBox(height:14),const Text('Support and notifications',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
     const Text('Firebase Cloud Messaging may send order, delivery, ride, support and service notifications. Support tickets and replies are stored so ALLways can investigate and resolve issues.'),
     const SizedBox(height:14),const Text('Your choices and deletion',style:TextStyle(fontSize:19,fontWeight:FontWeight.w800)),
