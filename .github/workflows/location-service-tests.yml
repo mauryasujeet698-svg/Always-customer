@@ -1,0 +1,31 @@
+name: Location Service Tests
+on:
+  push:
+    branches:
+      - hardening/shift-privacy-retention-2026-10
+    paths:
+      - "location-service/**"
+      - ".github/workflows/location-service-tests.yml"
+  pull_request:
+    paths:
+      - "location-service/**"
+      - ".github/workflows/location-service-tests.yml"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: location-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: location-service/package.json
+      - run: npm install --ignore-scripts
+      - run: npm test
+      - run: node --check index.js
