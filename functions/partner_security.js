@@ -19,7 +19,14 @@ async function requireNoActiveWork(tx,role,p){
   else if(String(p.status||"").toLowerCase()==="on_trip")throw new HttpsError("failed-precondition","An active ride is still recorded. Contact support before ending your shift.");
  }else{
   const id=String(p.currentOrderId||"").trim();
-  if(id){const s=await tx.get(db.collection("orders").doc(id));if(s.exists&&!terminal(s.data()?.status))throw new HttpsError("failed-precondition","Complete or resolve your active delivery before ending your shift.");}
+  if(id){
+   const s=await tx.get(db.collection("orders").doc(id));
+   if(s.exists&&!terminal(s.data()?.status))throw new HttpsError("failed-precondition","Complete or resolve your active delivery before ending your shift.");
+  }else if(["on_delivery","in_delivery","delivering"].includes(String(p.status||"").trim().toLowerCase())||
+           ["on_delivery","in_delivery","delivering"].includes(String(p.dutyStatus||"").trim().toLowerCase())){
+   // Do not let a malformed/missing currentOrderId silently abandon work.
+   throw new HttpsError("failed-precondition","An active delivery is recorded but its order ID is missing. Contact support before ending your shift.");
+  }
  }
 }
 
