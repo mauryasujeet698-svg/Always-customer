@@ -282,3 +282,116 @@ test("service areas are readable but writable only by an administrator", async (
     active: true,
   }));
 });
+
+test("customers cannot create order documents or edit server-owned prices/payment status", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "orders/server-priced-order"), {
+      customerUid: "order-owner",
+      status: "New Order",
+      subtotal: 100,
+      deliveryFee: 20,
+      total: 120,
+      paymentMethod: "COD",
+      paymentStatus: "pending",
+    });
+  });
+
+  const customerDb = env.authenticatedContext("order-owner").firestore();
+  await assertFails(setDoc(doc(customerDb, "orders/forged-order"), {
+    customerUid: "order-owner",
+    status: "New Order",
+    subtotal: 1,
+    deliveryFee: 0,
+    total: 1,
+    paymentMethod: "COD",
+    paymentStatus: "cash_collected",
+  }));
+
+  await assertFails(updateDoc(doc(customerDb, "orders/server-priced-order"), {
+    total: 1,
+    subtotal: 1,
+  }));
+  await assertFails(updateDoc(doc(customerDb, "orders/server-priced-order"), {
+    paymentStatus: "paid",
+  }));
+
+  await assertSucceeds(updateDoc(doc(customerDb, "orders/server-priced-order"), {
+    status: "Cancelled",
+    cancellationReason: "Customer changed their mind",
+    updatedAt: new Date(),
+  }));
+});
+
+test("partners cannot change approval or online state directly after registration", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "ridePartners/driver-status"), {
+      role: "carrier",
+      approvalStatus: "pending",
+      status: "offline",
+      shiftStatus: "off_duty",
+      isOnline: false,
+      availableForRides: false,
+      activeRideId: null,
+    });
+    await setDoc(doc(ctx.firestore(), "deliveryPartners/delivery-status"), {
+      role: "delivery_partner",
+      approvalStatus: "pending",
+      status: "offline",
+      shiftStatus: "off_duty",
+      isOnline: false,
+      availableForDeliveries: false,
+      currentOrderId: null,
+    });
+  });
+
+  const driverDb = env.authenticatedContext("driver-status").firestore();
+  await assertFails(updateDoc(doc(driverDb, "ridePartners/driver-status"), {
+    status: "online",
+    isOnline: true,
+    availableForRides: true,
+  }));
+  await assertFails(updateDoc(doc(driverDb, "ridePartners/driver-status"), {
+    approvalStatus: "approved",
+  }));
+
+  const deliveryDb = env.authenticatedContext("delivery-status").firestore();
+  await assertFails(updateDoc(doc(deliveryDb, "deliveryPartners/delivery-status"), {
+    status: "online",
+    isOnline: true,
+    availableForDeliveries: true,
+  }));
+});
+
+test("privacy requests require ownership, valid type and submitted status", async () => {
+  const ownerDb = env.authenticatedContext("privacy-owner").firestore();
+  await assertSucceeds(setDoc(doc(ownerDb, "privacyRequests/request-valid"), {
+    uid: "privacy-owner",
+    requestType: "erasure",
+    details: "Please delete my account and personal data.",
+    status: "submitted",
+    createdAt: new Date(),
+    source: "android_app",
+  }));
+
+  await assertFails(setDoc(doc(ownerDb, "privacyRequests/request-forged-owner"), {
+    uid: "someone-else",
+    requestType: "erasure",
+    details: "Please delete my account and personal data.",
+    status: "submitted",
+  }));
+  await assertFails(setDoc(doc(ownerDb, "privacyRequests/request-pre-resolved"), {
+    uid: "privacy-owner",
+    requestType: "erasure",
+    details: "Please delete my account and personal data.",
+    status: "resolved",
+  }));
+  await assertFails(setDoc(doc(ownerDb, "privacyRequests/request-invalid-type"), {
+    uid: "privacy-owner",
+    requestType: "make-admin",
+    details: "Please grant extra privileges to me.",
+    status: "submitted",
+  }));
+
+  const otherDb = env.authenticatedContext("other-user").firestore();
+  await assertFails(getDoc(doc(otherDb, "privacyRequests/request-valid")));
+});
