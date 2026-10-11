@@ -795,7 +795,7 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 10
       const paymentMethod = String(data.paymentMethod || "COD")
         .trim()
         .toUpperCase()
-        .replace(/[\\s_-]+/g, "");
+        .replace(/[\s_-]+/g, "");
       const isCashOnDelivery = ["COD", "CASHONDELIVERY", "CASH"].includes(paymentMethod);
       if (isCashOnDelivery && request.data?.cashCollected !== true) {
         throw new HttpsError("failed-precondition", "Confirm cash collection before completing this COD delivery.");
