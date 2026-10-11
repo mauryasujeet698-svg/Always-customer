@@ -407,8 +407,17 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
   async (event) => {
     const ride = event.data?.data();
     if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
+    const requestRef = event.data.ref;
+    const requestId = event.params.requestId;
+    const rideType = String(ride.rideType || "bike").toLowerCase();
+    const pickupLat = Number(ride.pickupLatitude ?? ride.pickupLat);
+    const pickupLng = Number(ride.pickupLongitude ?? ride.pickupLng);
+    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
+
+    // The confirmation PIN will be migrated into customerPrivatePins below.
+    // Do not copy it to any per-driver offer.
     if (!/^\d{4}$/.test(String(ride.confirmationPin || ""))) {
-      await event.data.ref.set({
+      await requestRef.set({
         confirmationPin: newConfirmationPin(),
         ridePinVerified: false,
         ridePinVerifiedAt: null,
@@ -416,52 +425,111 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       }, { merge: true });
     }
 
-    const rideType = String(ride.rideType || "bike").toLowerCase();
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
     const expiresAtMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
     if (!ride.expiresAt) {
-      await event.data.ref.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await requestRef.set({ expiresAt: new Date(expiresAtMs), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     }
     if (Date.now() >= expiresAtMs) {
-      await event.data.ref.set({ status: "expired", expiredAt: FieldValue.serverTimestamp(), customerActive: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await requestRef.set({ status: "expired", expiredAt: FieldValue.serverTimestamp(), customerActive: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       return;
     }
-    const pickupLat = Number(ride.pickupLatitude);
-    const pickupLng = Number(ride.pickupLongitude);
-    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
 
-    const snap = await db.collection("ridePartners")
-      .where("status", "==", "online")
-      .get();
     const matchingRadiusKm = await rideMatchingRadiusKm();
-    const offerExpiresAt = Date.now() + 30000;
+    let partners = [];
+    const serviceUrl = String(process.env.LOCATION_SERVICE_URL || "").replace(/\/+$/, "");
+    const serviceToken = String(process.env.LOCATION_SERVICE_TOKEN || "");
+    if (serviceUrl && serviceToken) {
+      // When configured, the internal H3/Redis index is authoritative for the
+      // candidate set. Fail closed on service errors rather than scanning all drivers.
+      const response = await fetch(serviceUrl + "/v1/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Location-Service-Token": serviceToken },
+        body: JSON.stringify({
+          role: "carrier",
+          latitude: pickupLat,
+          longitude: pickupLng,
+          radiusKm: matchingRadiusKm,
+          vehicleType: rideType,
+          limit: 50,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) throw new Error("H3 matching returned HTTP " + response.status);
+      const payload = await response.json();
+      const ids = [...new Set((Array.isArray(payload.candidates) ? payload.candidates : [])
+        .map((candidate) => String(candidate.uid || "").trim())
+        .filter(Boolean))].slice(0, 50);
+      if (ids.length) {
+        const docs = await db.getAll(...ids.map((uid) => db.collection("ridePartners").doc(uid)));
+        partners = docs.filter((doc) => doc.exists);
+      }
+    } else {
+      // Conservative compatibility mode for development before Redis is deployed.
+      const snap = await db.collection("ridePartners")
+        .where("shiftStatus", "==", "on_duty")
+        .where("status", "==", "online")
+        .limit(500)
+        .get();
+      partners = snap.docs;
+    }
 
-    for (const partner of snap.docs) {
+    const offerExpiresAt = new Date(Math.min(expiresAtMs, Date.now() + 120000));
+    let offered = 0;
+    for (const partner of partners) {
       const p = partner.data() || {};
-      const type = String(p.vehicleType || "bike").toLowerCase();
-      const normalizedType = type === "two_wheeler" || type === "motorcycle" || type === "scooter"
-        ? "bike"
-        : (type === "cab" || type === "sedan" || type === "hatchback" ? "car" : type);
-      if (normalizedType !== rideType) continue;
-      if (String(p.approvalStatus || "approved").toLowerCase() !== "approved") continue;
+      if (String(p.approvalStatus || "").toLowerCase() !== "approved") continue;
+      if (String(p.shiftStatus || "").toLowerCase() !== "on_duty" || p.locationTrackingActive === false) continue;
       if (String(p.activeRideId || "").trim()) continue;
       if (p.availableForRides === false || p.isOnline === false) continue;
 
-      const pLat = Number(p.carrierLat ?? p.latitude);
-      const pLng = Number(p.carrierLng ?? p.longitude);
-      if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+      const rawType = String(p.vehicleType || "bike").toLowerCase();
+      const normalizedType = ["two_wheeler", "motorcycle", "scooter"].includes(rawType)
+        ? "bike"
+        : (["cab", "sedan", "hatchback"].includes(rawType) ? "car" : rawType);
+      if (normalizedType !== rideType) continue;
 
-      const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
-      if (distance > matchingRadiusKm) continue;
+      if (!serviceUrl) {
+        const pLat = Number(p.carrierLat ?? p.latitude);
+        const pLng = Number(p.carrierLng ?? p.longitude);
+        if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+        if (distanceKm(pickupLat, pickupLng, pLat, pLng) > matchingRadiusKm) continue;
+      }
+
+      const offerRef = db.collection("rideOffers").doc(partner.id).collection("requests").doc(requestId);
+      await offerRef.set({
+        rideId: requestId,
+        status: "searching",
+        rejected: false,
+        rideType,
+        pickupLatitude: pickupLat,
+        pickupLongitude: pickupLng,
+        pickupAddress: String(ride.pickupAddress || ""),
+        pickupPincode: String(ride.pickupPincode || ""),
+        destinationAddress: String(ride.destinationAddress || ride.destination || ""),
+        destinationLatitude: Number(ride.destinationLatitude) || null,
+        destinationLongitude: Number(ride.destinationLongitude) || null,
+        estimatedFare: Number(ride.estimatedFare || ride.fare || 0),
+        distanceKm: Number(ride.distanceKm || 0),
+        etaMinutes: Number(ride.etaMinutes || 0),
+        offeredAt: FieldValue.serverTimestamp(),
+        offerExpiresAt,
+      }, { merge: true });
 
       await sendToUser(
         partner.id,
         "New ride request",
-        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to accept it.",
-        { type: "ride_request", requestId: event.params.requestId, rideType },
+        "A nearby " + rideType.toUpperCase() + " ride is waiting. Open ALLways to review it.",
+        { type: "ride_request", requestId, rideType },
         "carrier"
       );
-}
+      offered++;
+    }
+
+    await requestRef.set({
+      matchingAttemptedAt: FieldValue.serverTimestamp(),
+      matchingCandidateCount: offered,
+    }, { merge: true });
   }
 );
 
