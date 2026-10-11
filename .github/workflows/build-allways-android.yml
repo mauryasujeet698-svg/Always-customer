@@ -757,6 +757,791 @@ jobs:
           cd ..
           node --check functions/index.js
 
+      - name: Install verified Android NDK with resumable retry
+        timeout-minutes: 35
+        shell: powershell -ExecutionPolicy Bypass -NoProfile -File {0}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ndkVersion = '27.0.12077973'
+          $expectedBytes = 781482169
+          $expectedSha1 = '0ea2756e6815356831bda3af358cce4cdb6a981e'
+          $url = 'https://dl.google.com/android/repository/android-ndk-r27-windows.zip'
+
+          $sdkCandidates = @(
+            $env:ANDROID_SDK_ROOT,
+            $env:ANDROID_HOME,
+            (Join-Path $env:LOCALAPPDATA 'Android\sdk')
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+          $sdkRoot = $sdkCandidates | Select-Object -First 1
+          if (-not $sdkRoot) { throw 'Android SDK root not found; cannot install the required NDK.' }
+
+          $targetNdk = Join-Path (Join-Path $sdkRoot 'ndk') $ndkVersion
+          $targetProperties = Join-Path $targetNdk 'source.properties'
+          if (Test-Path -LiteralPath $targetProperties) {
+            $existingProperties = Get-Content -LiteralPath $targetProperties -Raw
+            if ($existingProperties -match '(?m)^Pkg\.Revision\s*=\s*27\.0\.12077973\s*
+          cd mobile
+          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
+          APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
+          MAX_SIZE=$((25*1024*1024))
+          APK_MB=$(awk "BEGIN {printf \"%.1f\", $APK_SIZE/1024/1024}")
+          echo "Release APK size: $APK_MB MB (maximum permitted size: 25 MB)"
+          if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "ERROR: ALLways arm64 APK exceeds the 25 MB release limit."
+            exit 1
+          fi
+
+      - name: Prepare emulator smoke test script
+        run: |
+          cat > /tmp/allways_emulator_smoke_test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          echo "Waiting for ADB device..."
+          adb wait-for-device
+
+          echo "Waiting for Android boot completion (max 180s)..."
+          booted=0
+          for i in $(seq 1 60); do
+            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$booted" -ne 1 ]; then
+            echo "ERROR: Emulator did not finish booting within 180 seconds."
+            adb shell getprop sys.boot_completed || true
+            adb logcat -d -t 500 | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Emulator boot completed."
+
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+
+          echo "Preparing PackageManager/ADB..."
+          adb shell getprop ro.product.cpu.abilist || true
+          adb shell cmd package list packages >/dev/null
+          sleep 8
+
+          echo "Installing ALLways APK..."
+          install_ok=0
+          for attempt in 1 2 3; do
+            echo "APK install attempt $attempt/3"
+            if adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk; then
+              install_ok=1
+              break
+            fi
+            echo "Install attempt $attempt failed; reconnecting ADB..."
+            adb reconnect || true
+            sleep 5
+            adb wait-for-device
+            adb shell cmd package list packages >/dev/null || true
+            sleep 3
+          done
+
+          if [ "$install_ok" -ne 1 ]; then
+            echo "ERROR: ALLways APK installation failed after 3 attempts."
+            echo "PackageManager diagnostics:"
+            adb shell cmd package list packages 2>&1 || true
+            echo "Relevant Android logcat:"
+            adb logcat -d -t 1500 | grep -E 'PackageManager|installd|system_server|FATAL EXCEPTION|AndroidRuntime|Broken pipe|com\.allways\.app' | tail -n 400 || true
+            exit 1
+          fi
+
+          echo "Launching ALLways..."
+          adb shell am force-stop com.allways.app || true
+          # Use Activity Manager with the explicit Flutter MainActivity instead of
+          # Monkey. Monkey can itself become ANR-blocked on the software-emulated
+          # GitHub runner and falsely prevent the app launch check from completing.
+          launch_status=0
+          launch_output="$(timeout 45s adb shell am start -S -W -n com.allways.app/.MainActivity 2>&1)" || launch_status=$?
+          echo "$launch_output"
+          if [ "$launch_status" -ne 0 ]; then
+            echo "ERROR: Activity Manager could not launch ALLways (exit=$launch_status)."
+            adb logcat -d -t 800 | grep -E 'ActivityTaskManager|AndroidRuntime|FATAL EXCEPTION|com\.allways\.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Waiting for ALLways process..."
+          running=0
+          for i in $(seq 1 20); do
+            pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ -n "$pid" ]; then
+              running=1
+              echo "PASS: ALLways process running with pid=$pid"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$running" -ne 1 ]; then
+            echo "ERROR: ALLways process did not remain running."
+            echo "Installed package:"
+            adb shell dumpsys package com.allways.app | head -n 120 || true
+            echo "Recent ALLways/Android runtime log:"
+            adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          # Only inspect logs emitted by the ALLways process. The previous
+          # global AndroidRuntime grep falsely matched the Android Monkey
+          # launcher itself (com.android.commands.monkey), even when ALLways
+          # had launched successfully.
+          app_pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+          fatal_log=""
+          if [ -n "$app_pid" ]; then
+            fatal_log="$(adb logcat -d -t 1000 --pid="$app_pid" | grep -E 'FATAL EXCEPTION|AndroidRuntime.*FATAL|Process: com\\.allways\\.app' || true)"
+          fi
+          if [ -n "$fatal_log" ]; then
+            echo "ERROR: fatal Android runtime exception detected in ALLways process."
+            echo "$fatal_log"
+            exit 1
+          fi
+
+          echo "PASS: ALLways installed and launched successfully."
+          adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
+          EOF
+          chmod +x /tmp/allways_emulator_smoke_test.sh
+
+      - name: Runtime smoke test on Android emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 35
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
+          # If GitHub's emulator/ADB infrastructure fails, the job continues to
+          # mandatory static APK validation and signing verification below.
+          emulator-boot-timeout: 1500
+          pre-emulator-launch-script: |
+            echo "Resetting ADB before emulator launch..."
+            adb kill-server || true
+            adb start-server
+            adb devices
+          script: bash /tmp/allways_emulator_smoke_test.sh
+
+      - name: Verify Android launcher manifest
+        run: |
+          cd mobile
+          APKANALYZER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -x "$APKANALYZER"
+          "$APKANALYZER" manifest print build/app/outputs/flutter-apk/app-release.apk > /tmp/allways-manifest.txt
+          grep -q 'com.allways.app.MainActivity' /tmp/allways-manifest.txt
+          grep -q 'android.intent.action.MAIN' /tmp/allways-manifest.txt
+          grep -q 'android.intent.category.LAUNCHER' /tmp/allways-manifest.txt
+      - name: Validate APK without emulator
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 build/app/outputs/flutter-apk/app-release.apk
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          echo "ALLways APK passed CI package, alignment, manifest, and signature validation."
+      - name: Verify APK signing certificate
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk)"
+          echo "$CERT_OUTPUT"
+          echo "$CERT_OUTPUT" | grep -qi 'SHA-1 digest: ee37c219b6d8b962665ec7753b4514b62b35601a' || {
+            echo "ERROR: APK is not signed with the permanent ALLways release certificate."
+            exit 1
+          }
+
+      - name: Extract App Version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' mobile/pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          test -n "$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Detected version: $VERSION"
+
+      - name: Prepare APK Release Asset
+        run: |
+          mkdir -p release-assets
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-v${APP_VERSION}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-latest.apk"
+
+      - name: Upload APK (best effort)
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-release-apk-v${{ env.APP_VERSION }}
+          path: release-assets/allways-v${{ env.APP_VERSION }}.apk
+          if-no-files-found: error
+          retention-days: 1
+
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/allways-android-app'
+        with:
+          tag_name: allways-latest
+          name: "ALLways Android v${{ env.APP_VERSION }}"
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/allways-v${{ env.APP_VERSION }}.apk
+            release-assets/allways-latest.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+) {
+              Write-Host "Required NDK $ndkVersion is already installed."
+              exit 0
+            }
+          }
+
+          # Download and extraction use the drive with the most free space; install into the configured Android SDK.
+          $downloadDrive = Get-PSDrive -PSProvider FileSystem |
+            Where-Object { $_.Free -gt 3GB } |
+            Sort-Object -Property Free -Descending |
+            Select-Object -First 1
+          if (-not $downloadDrive) { throw 'NDK install needs a drive with at least 3 GiB free for a verified download and extraction.' }
+
+          $downloadRoot = Join-Path $downloadDrive.Root 'allways-ndk-bootstrap'
+          New-Item -ItemType Directory -Force -Path $downloadRoot | Out-Null
+          $archive = Join-Path $downloadRoot 'android-ndk-r27-windows.zip'
+          $downloadOk = $false
+
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            if (-not (Test-Path -LiteralPath $archive)) {
+              New-Item -ItemType File -Path $archive | Out-Null
+            }
+            $currentBytes = (Get-Item -LiteralPath $archive).Length
+            if ($currentBytes -eq $expectedBytes) {
+              $currentSha1 = (Get-FileHash -LiteralPath $archive -Algorithm SHA1).Hash.ToLowerInvariant()
+              if ($currentSha1 -eq $expectedSha1) {
+                $downloadOk = $true
+                break
+              }
+              Remove-Item -LiteralPath $archive -Force
+              New-Item -ItemType File -Path $archive | Out-Null
+              $currentBytes = 0
+            } elseif ($currentBytes -gt $expectedBytes) {
+              Remove-Item -LiteralPath $archive -Force
+              New-Item -ItemType File -Path $archive | Out-Null
+              $currentBytes = 0
+            }
+
+            Write-Host "Downloading Android NDK $ndkVersion (attempt $attempt/5); current partial size: $currentBytes bytes."
+            $curlArgs = @(
+              '--location', '--fail',
+              '--retry', '3', '--retry-all-errors', '--retry-delay', '5',
+              '--connect-timeout', '30', '--max-time', '1800'
+            )
+            if ($currentBytes -gt 0) { $curlArgs += @('--continue-at', '-') }
+            $curlArgs += @('--output', $archive, $url)
+            & curl.exe @curlArgs
+            $curlExit = $LASTEXITCODE
+
+            if (Test-Path -LiteralPath $archive) {
+              $currentBytes = (Get-Item -LiteralPath $archive).Length
+              if ($currentBytes -eq $expectedBytes) {
+                $currentSha1 = (Get-FileHash -LiteralPath $archive -Algorithm SHA1).Hash.ToLowerInvariant()
+                if ($currentSha1 -eq $expectedSha1) {
+                  $downloadOk = $true
+                  break
+                }
+                Write-Warning 'Downloaded NDK archive checksum mismatch; restarting the download.'
+                Remove-Item -LiteralPath $archive -Force
+                New-Item -ItemType File -Path $archive | Out-Null
+              } elseif ($currentBytes -gt $expectedBytes) {
+                Write-Warning 'Downloaded NDK archive exceeded its expected size; restarting the download.'
+                Remove-Item -LiteralPath $archive -Force
+                New-Item -ItemType File -Path $archive | Out-Null
+              } else {
+                Write-Warning "NDK transfer ended with curl exit code $curlExit and $currentBytes of $expectedBytes bytes. Retrying with resume enabled."
+              }
+            }
+            Start-Sleep -Seconds ([Math]::Min(5 * $attempt, 20))
+          }
+
+          if (-not $downloadOk) { throw 'Unable to download and verify the official Android NDK archive after five resumable attempts.' }
+
+          $staging = Join-Path $downloadRoot 'extract-r27'
+          if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          Write-Host 'NDK archive SHA-1 and byte count verified; extracting.'
+          Expand-Archive -LiteralPath $archive -DestinationPath $staging -Force
+
+          $ndkSourceProperties = Get-ChildItem -LiteralPath $staging -Recurse -Filter 'source.properties' -File |
+            Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match '(?m)^Pkg\.Revision\s*=\s*27\.0\.12077973\s*
+          cd mobile
+          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
+          APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
+          MAX_SIZE=$((45*1024*1024))
+          APK_MB=$(awk "BEGIN {printf \"%.1f\", $APK_SIZE/1024/1024}")
+          echo "Release APK size: $APK_MB MB (target 40–45 MB, hard CI limit 45 MB)"
+          if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "ERROR: ALLways arm64 APK exceeds the 45 MB release limit."
+            exit 1
+          fi
+
+      - name: Prepare emulator smoke test script
+        run: |
+          cat > /tmp/allways_emulator_smoke_test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          echo "Waiting for ADB device..."
+          adb wait-for-device
+
+          echo "Waiting for Android boot completion (max 180s)..."
+          booted=0
+          for i in $(seq 1 60); do
+            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$booted" -ne 1 ]; then
+            echo "ERROR: Emulator did not finish booting within 180 seconds."
+            adb shell getprop sys.boot_completed || true
+            adb logcat -d -t 500 | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Emulator boot completed."
+
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+
+          echo "Preparing PackageManager/ADB..."
+          adb shell getprop ro.product.cpu.abilist || true
+          adb shell cmd package list packages >/dev/null
+          sleep 8
+
+          echo "Installing ALLways APK..."
+          install_ok=0
+          for attempt in 1 2 3; do
+            echo "APK install attempt $attempt/3"
+            if adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk; then
+              install_ok=1
+              break
+            fi
+            echo "Install attempt $attempt failed; reconnecting ADB..."
+            adb reconnect || true
+            sleep 5
+            adb wait-for-device
+            adb shell cmd package list packages >/dev/null || true
+            sleep 3
+          done
+
+          if [ "$install_ok" -ne 1 ]; then
+            echo "ERROR: ALLways APK installation failed after 3 attempts."
+            echo "PackageManager diagnostics:"
+            adb shell cmd package list packages 2>&1 || true
+            echo "Relevant Android logcat:"
+            adb logcat -d -t 1500 | grep -E 'PackageManager|installd|system_server|FATAL EXCEPTION|AndroidRuntime|Broken pipe|com\.allways\.app' | tail -n 400 || true
+            exit 1
+          fi
+
+          echo "Launching ALLways..."
+          adb shell am force-stop com.allways.app || true
+          # Use Activity Manager with the explicit Flutter MainActivity instead of
+          # Monkey. Monkey can itself become ANR-blocked on the software-emulated
+          # GitHub runner and falsely prevent the app launch check from completing.
+          launch_status=0
+          launch_output="$(timeout 45s adb shell am start -S -W -n com.allways.app/.MainActivity 2>&1)" || launch_status=$?
+          echo "$launch_output"
+          if [ "$launch_status" -ne 0 ]; then
+            echo "ERROR: Activity Manager could not launch ALLways (exit=$launch_status)."
+            adb logcat -d -t 800 | grep -E 'ActivityTaskManager|AndroidRuntime|FATAL EXCEPTION|com\.allways\.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Waiting for ALLways process..."
+          running=0
+          for i in $(seq 1 20); do
+            pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ -n "$pid" ]; then
+              running=1
+              echo "PASS: ALLways process running with pid=$pid"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$running" -ne 1 ]; then
+            echo "ERROR: ALLways process did not remain running."
+            echo "Installed package:"
+            adb shell dumpsys package com.allways.app | head -n 120 || true
+            echo "Recent ALLways/Android runtime log:"
+            adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          # Only inspect logs emitted by the ALLways process. The previous
+          # global AndroidRuntime grep falsely matched the Android Monkey
+          # launcher itself (com.android.commands.monkey), even when ALLways
+          # had launched successfully.
+          app_pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+          fatal_log=""
+          if [ -n "$app_pid" ]; then
+            fatal_log="$(adb logcat -d -t 1000 --pid="$app_pid" | grep -E 'FATAL EXCEPTION|AndroidRuntime.*FATAL|Process: com\\.allways\\.app' || true)"
+          fi
+          if [ -n "$fatal_log" ]; then
+            echo "ERROR: fatal Android runtime exception detected in ALLways process."
+            echo "$fatal_log"
+            exit 1
+          fi
+
+          echo "PASS: ALLways installed and launched successfully."
+          adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
+          EOF
+          chmod +x /tmp/allways_emulator_smoke_test.sh
+
+      - name: Runtime smoke test on Android emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 35
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
+          # If GitHub's emulator/ADB infrastructure fails, the job continues to
+          # mandatory static APK validation and signing verification below.
+          emulator-boot-timeout: 1500
+          pre-emulator-launch-script: |
+            echo "Resetting ADB before emulator launch..."
+            adb kill-server || true
+            adb start-server
+            adb devices
+          script: bash /tmp/allways_emulator_smoke_test.sh
+
+      - name: Verify Android launcher manifest
+        run: |
+          cd mobile
+          APKANALYZER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -x "$APKANALYZER"
+          "$APKANALYZER" manifest print build/app/outputs/flutter-apk/app-release.apk > /tmp/allways-manifest.txt
+          grep -q 'com.allways.app.MainActivity' /tmp/allways-manifest.txt
+          grep -q 'android.intent.action.MAIN' /tmp/allways-manifest.txt
+          grep -q 'android.intent.category.LAUNCHER' /tmp/allways-manifest.txt
+      - name: Validate APK without emulator
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 build/app/outputs/flutter-apk/app-release.apk
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          echo "ALLways APK passed CI package, alignment, manifest, and signature validation."
+      - name: Verify APK signing certificate
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk)"
+          echo "$CERT_OUTPUT"
+          echo "$CERT_OUTPUT" | grep -qi 'SHA-1 digest: ee37c219b6d8b962665ec7753b4514b62b35601a' || {
+            echo "ERROR: APK is not signed with the permanent ALLways release certificate."
+            exit 1
+          }
+
+      - name: Extract App Version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' mobile/pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          test -n "$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Detected version: $VERSION"
+
+      - name: Prepare APK Release Asset
+        run: |
+          mkdir -p release-assets
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-v${APP_VERSION}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-latest.apk"
+
+      - name: Upload APK (best effort)
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-release-apk-v${{ env.APP_VERSION }}
+          path: release-assets/allways-v${{ env.APP_VERSION }}.apk
+          if-no-files-found: error
+          retention-days: 1
+
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/allways-android-app'
+        with:
+          tag_name: allways-latest
+          name: "ALLways Android v${{ env.APP_VERSION }}"
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/allways-v${{ env.APP_VERSION }}.apk
+            release-assets/allways-latest.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ } |
+            Select-Object -First 1
+          if (-not $ndkSourceProperties) { throw 'Verified NDK archive did not contain the expected Pkg.Revision.' }
+          $ndkSource = Split-Path -Parent $ndkSourceProperties.FullName
+
+          if (Test-Path -LiteralPath $targetNdk) { Remove-Item -LiteralPath $targetNdk -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $targetNdk | Out-Null
+          Get-ChildItem -LiteralPath $ndkSource -Force | Copy-Item -Destination $targetNdk -Recurse -Force
+
+          $installedProperties = Get-Content -LiteralPath $targetProperties -Raw
+          if ($installedProperties -notmatch '(?m)^Pkg\.Revision\s*=\s*27\.0\.12077973\s*
+          cd mobile
+          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
+          APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
+          MAX_SIZE=$((45*1024*1024))
+          APK_MB=$(awk "BEGIN {printf \"%.1f\", $APK_SIZE/1024/1024}")
+          echo "Release APK size: $APK_MB MB (target 40–45 MB, hard CI limit 45 MB)"
+          if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "ERROR: ALLways arm64 APK exceeds the 45 MB release limit."
+            exit 1
+          fi
+
+      - name: Prepare emulator smoke test script
+        run: |
+          cat > /tmp/allways_emulator_smoke_test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          echo "Waiting for ADB device..."
+          adb wait-for-device
+
+          echo "Waiting for Android boot completion (max 180s)..."
+          booted=0
+          for i in $(seq 1 60); do
+            state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ "$state" = "1" ]; then
+              booted=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$booted" -ne 1 ]; then
+            echo "ERROR: Emulator did not finish booting within 180 seconds."
+            adb shell getprop sys.boot_completed || true
+            adb logcat -d -t 500 | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Emulator boot completed."
+
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+
+          echo "Preparing PackageManager/ADB..."
+          adb shell getprop ro.product.cpu.abilist || true
+          adb shell cmd package list packages >/dev/null
+          sleep 8
+
+          echo "Installing ALLways APK..."
+          install_ok=0
+          for attempt in 1 2 3; do
+            echo "APK install attempt $attempt/3"
+            if adb install --no-streaming -r mobile/build/app/outputs/flutter-apk/app-release.apk; then
+              install_ok=1
+              break
+            fi
+            echo "Install attempt $attempt failed; reconnecting ADB..."
+            adb reconnect || true
+            sleep 5
+            adb wait-for-device
+            adb shell cmd package list packages >/dev/null || true
+            sleep 3
+          done
+
+          if [ "$install_ok" -ne 1 ]; then
+            echo "ERROR: ALLways APK installation failed after 3 attempts."
+            echo "PackageManager diagnostics:"
+            adb shell cmd package list packages 2>&1 || true
+            echo "Relevant Android logcat:"
+            adb logcat -d -t 1500 | grep -E 'PackageManager|installd|system_server|FATAL EXCEPTION|AndroidRuntime|Broken pipe|com\.allways\.app' | tail -n 400 || true
+            exit 1
+          fi
+
+          echo "Launching ALLways..."
+          adb shell am force-stop com.allways.app || true
+          # Use Activity Manager with the explicit Flutter MainActivity instead of
+          # Monkey. Monkey can itself become ANR-blocked on the software-emulated
+          # GitHub runner and falsely prevent the app launch check from completing.
+          launch_status=0
+          launch_output="$(timeout 45s adb shell am start -S -W -n com.allways.app/.MainActivity 2>&1)" || launch_status=$?
+          echo "$launch_output"
+          if [ "$launch_status" -ne 0 ]; then
+            echo "ERROR: Activity Manager could not launch ALLways (exit=$launch_status)."
+            adb logcat -d -t 800 | grep -E 'ActivityTaskManager|AndroidRuntime|FATAL EXCEPTION|com\.allways\.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          echo "Waiting for ALLways process..."
+          running=0
+          for i in $(seq 1 20); do
+            pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+            if [ -n "$pid" ]; then
+              running=1
+              echo "PASS: ALLways process running with pid=$pid"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$running" -ne 1 ]; then
+            echo "ERROR: ALLways process did not remain running."
+            echo "Installed package:"
+            adb shell dumpsys package com.allways.app | head -n 120 || true
+            echo "Recent ALLways/Android runtime log:"
+            adb logcat -d -t 1000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Flutter|com.allways.app' | tail -n 300 || true
+            exit 1
+          fi
+
+          # Only inspect logs emitted by the ALLways process. The previous
+          # global AndroidRuntime grep falsely matched the Android Monkey
+          # launcher itself (com.android.commands.monkey), even when ALLways
+          # had launched successfully.
+          app_pid="$(adb shell pidof com.allways.app 2>/dev/null | tr -d '\\r' | tr -d '[:space:]' || true)"
+          fatal_log=""
+          if [ -n "$app_pid" ]; then
+            fatal_log="$(adb logcat -d -t 1000 --pid="$app_pid" | grep -E 'FATAL EXCEPTION|AndroidRuntime.*FATAL|Process: com\\.allways\\.app' || true)"
+          fi
+          if [ -n "$fatal_log" ]; then
+            echo "ERROR: fatal Android runtime exception detected in ALLways process."
+            echo "$fatal_log"
+            exit 1
+          fi
+
+          echo "PASS: ALLways installed and launched successfully."
+          adb shell dumpsys package com.allways.app | grep -E 'versionName|versionCode' | head -n 5 || true
+          EOF
+          chmod +x /tmp/allways_emulator_smoke_test.sh
+
+      - name: Runtime smoke test on Android emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        timeout-minutes: 35
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          # Keep KVM/hardware acceleration enabled on GitHub-hosted Linux runners.
+          # If GitHub's emulator/ADB infrastructure fails, the job continues to
+          # mandatory static APK validation and signing verification below.
+          emulator-boot-timeout: 1500
+          pre-emulator-launch-script: |
+            echo "Resetting ADB before emulator launch..."
+            adb kill-server || true
+            adb start-server
+            adb devices
+          script: bash /tmp/allways_emulator_smoke_test.sh
+
+      - name: Verify Android launcher manifest
+        run: |
+          cd mobile
+          APKANALYZER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -x "$APKANALYZER"
+          "$APKANALYZER" manifest print build/app/outputs/flutter-apk/app-release.apk > /tmp/allways-manifest.txt
+          grep -q 'com.allways.app.MainActivity' /tmp/allways-manifest.txt
+          grep -q 'android.intent.action.MAIN' /tmp/allways-manifest.txt
+          grep -q 'android.intent.category.LAUNCHER' /tmp/allways-manifest.txt
+      - name: Validate APK without emulator
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          "$ZIPALIGN" -c -P 16 -v 4 build/app/outputs/flutter-apk/app-release.apk
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          echo "ALLways APK passed CI package, alignment, manifest, and signature validation."
+      - name: Verify APK signing certificate
+        run: |
+          cd mobile
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose build/app/outputs/flutter-apk/app-release.apk
+          CERT_OUTPUT="$("$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk)"
+          echo "$CERT_OUTPUT"
+          echo "$CERT_OUTPUT" | grep -qi 'SHA-1 digest: ee37c219b6d8b962665ec7753b4514b62b35601a' || {
+            echo "ERROR: APK is not signed with the permanent ALLways release certificate."
+            exit 1
+          }
+
+      - name: Extract App Version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' mobile/pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          test -n "$VERSION"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Detected version: $VERSION"
+
+      - name: Prepare APK Release Asset
+        run: |
+          mkdir -p release-assets
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-v${APP_VERSION}.apk"
+          cp mobile/build/app/outputs/flutter-apk/app-release.apk "release-assets/allways-latest.apk"
+
+      - name: Upload APK (best effort)
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-release-apk-v${{ env.APP_VERSION }}
+          path: release-assets/allways-v${{ env.APP_VERSION }}.apk
+          if-no-files-found: error
+          retention-days: 1
+
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/allways-android-app'
+        with:
+          tag_name: allways-latest
+          name: "ALLways Android v${{ env.APP_VERSION }}"
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/allways-v${{ env.APP_VERSION }}.apk
+            release-assets/allways-latest.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+) {
+            throw 'NDK installation verification failed after extraction.'
+          }
+          Write-Host "PASS: Android NDK $ndkVersion is installed and verified at $targetNdk."
+          Remove-Item -LiteralPath $staging -Recurse -Force
+          Remove-Item -LiteralPath $archive -Force
+
       - name: Build release APK
         env:
           MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
