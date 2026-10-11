@@ -304,13 +304,29 @@ exports.onAllwaysOrderCreated = onDocumentCreated(
 
     const orderRef = event.data.ref;
     
-    if (!/^\d{4}$/.test(String(order.confirmationPin || ""))) {
-      await orderRef.set({
-        confirmationPin: newConfirmationPin(),
+    // Keep confirmation PINs in a customer-only record, never on the order
+    // document that assigned delivery partners must be able to read.
+    const customerUid = String(order.customerUid || order.customerId || "").trim();
+    const privatePinRef = db.collection("customerPrivatePins").doc("delivery_" + event.params.orderId);
+    const privatePinSnap = await privatePinRef.get();
+    if (!privatePinSnap.exists && customerUid) {
+      const legacyPin = String(order.confirmationPin || "").trim();
+      await privatePinRef.set({
+        customerUid,
+        recordId: event.params.orderId,
+        type: "delivery",
+        confirmationPin: /^\d{4}$/.test(legacyPin) ? legacyPin : newConfirmationPin(),
+        attempts: 0,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(order, "confirmationPin")) {
+      await orderRef.update({
+        confirmationPin: FieldValue.delete(),
         deliveryPinVerified: false,
         deliveryPinVerifiedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
     }
 try {
       const partnerUid = await autoAssignDeliveryPartner(orderRef, order, event.params.orderId);
@@ -448,15 +464,27 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
     const pickupLng = Number(ride.pickupLongitude ?? ride.pickupLng);
     if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
 
-    // The confirmation PIN will be migrated into customerPrivatePins below.
-    // Do not copy it to any per-driver offer.
-    if (!/^\d{4}$/.test(String(ride.confirmationPin || ""))) {
-      await requestRef.set({
-        confirmationPin: newConfirmationPin(),
-        ridePinVerified: false,
-        ridePinVerifiedAt: null,
+    // Migration compatibility: move a legacy PIN out of the readable ride
+    // document. New clients create the customer-private PIN in the booking batch.
+    const customerUid = String(ride.customerUid || ride.customerId || "").trim();
+    const privatePinRef = db.collection("customerPrivatePins").doc("ride_" + requestId);
+    const privatePinSnap = await privatePinRef.get();
+    if (!privatePinSnap.exists && customerUid) {
+      const legacyPin = String(ride.confirmationPin || "").trim();
+      await privatePinRef.set({
+        customerUid,
+        recordId: requestId,
+        type: "ride",
+        confirmationPin: /^\d{4}$/.test(legacyPin) ? legacyPin : newConfirmationPin(),
+        attempts: 0,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(ride, "confirmationPin")) {
+      await requestRef.update({
+        confirmationPin: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
     }
 
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
