@@ -1,14 +1,6 @@
 name: Firestore Rules Tests
 
 on:
-  push:
-    branches: [hardening/shift-privacy-retention-2026-10]
-    paths:
-      - "firestore.rules"
-      - "firestore.indexes.json"
-      - "functions/**"
-      - "tests/firestore-rules/**"
-      - ".github/workflows/firestore-rules-tests.yml"
   pull_request:
     paths:
       - "firestore.rules"
