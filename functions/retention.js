@@ -46,6 +46,8 @@ const cleanupExpiredOperationalData = onSchedule(
       "partnerPublicPresence",
       "customerPrivatePins",
       "checkoutIdempotency",
+      "rideIdempotency",
+      "serverRateLimits",
     ];
     let removed = 0;
     for (const collection of targets) {
