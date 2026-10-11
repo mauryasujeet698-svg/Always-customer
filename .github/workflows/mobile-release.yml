@@ -1,0 +1,151 @@
+name: ALLways Customer App Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_update:
+        description: Build a QA APK when false; publish a signed in-app update when true
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: allways-customer-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  customer-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout selected code branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Static analysis
+        run: flutter analyze
+
+      - name: Unit and widget tests
+        run: flutter test
+
+      - name: Configure stable release signing
+        if: ${{ inputs.publish_update }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD FIREBASE_SERVICE_ACCOUNT_JSON; do
+            if [ -z "${!name}" ]; then echo "::error::Missing required GitHub Actions secret: $name"; exit 1; fi
+          done
+          mkdir -p android/app
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          chmod 600 android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=app/upload-keystore.jks
+          EOF
+
+      - name: Bound Gradle memory
+        shell: bash
+        run: |
+          if grep -q '^org.gradle.jvmargs=' android/gradle.properties; then
+            sed -i 's|^org.gradle.jvmargs=.*|org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError|' android/gradle.properties
+          else
+            echo 'org.gradle.jvmargs=-Xmx3G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError' >> android/gradle.properties
+          fi
+          grep -q '^org.gradle.workers.max=' android/gradle.properties || echo 'org.gradle.workers.max=2' >> android/gradle.properties
+          grep -q '^org.gradle.parallel=' android/gradle.properties || echo 'org.gradle.parallel=false' >> android/gradle.properties
+
+      - name: Build optimized ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64 --shrink
+
+      - name: Enforce 25 MiB APK maximum and record checksum
+        shell: bash
+        run: |
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$apk"
+          size=$(stat -c%s "$apk")
+          max_size=$((25 * 1024 * 1024))
+          mb=$(awk -v bytes="$size" 'BEGIN {printf "%.2f", bytes/1024/1024}')
+          echo "Customer APK size: ${mb} MiB (${size} bytes)"
+          if [ "$size" -gt "$max_size" ]; then
+            echo "::error::APK exceeds the hard 25 MiB maximum. Do not distribute this build."
+            exit 1
+          fi
+          sha256sum "$apk"
+
+      - name: Read application version
+        id: app-version
+        shell: bash
+        run: echo "version=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Stage Customer update APK and calculate digest
+        if: ${{ inputs.publish_update }}
+        id: update-digest
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          cp build/app/outputs/flutter-apk/app-release.apk release-assets/allways-latest.apk
+          echo "sha256=$(sha256sum release-assets/allways-latest.apk | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish in-app update release
+        if: ${{ inputs.publish_update }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: allways-latest
+          name: ALLways Customer v${{ steps.app-version.outputs.version }}
+          body: |
+            ALLways Customer app update.
+            The app verifies the SHA-256 digest and opens Android's update confirmation.
+          files: mobile/release-assets/allways-latest.apk
+          make_latest: true
+          fail_on_unmatched_files: true
+
+      - name: Publish real-time update manifest to Firestore
+        if: ${{ inputs.publish_update }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          APP_VERSION: ${{ steps.app-version.outputs.version }}
+          APP_UPDATE_DOC: appUpdate
+          APP_APK_URL: https://github.com/mauryasujeet698-svg/Always-website/releases/download/allways-latest/allways-latest.apk
+          APK_SHA256: ${{ steps.update-digest.outputs.sha256 }}
+          APP_UPDATE_NOTES: ALLways Customer security, reliability and performance improvements.
+        run: |
+          mkdir -p /tmp/allways-update-publisher
+          npm --prefix /tmp/allways-update-publisher init -y >/dev/null
+          npm --prefix /tmp/allways-update-publisher install --no-audit --no-fund firebase-admin@13
+          NODE_PATH=/tmp/allways-update-publisher/node_modules node ../tool/publish_update_manifest.cjs
+
+      - name: Upload QA or release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-customer-release-candidate-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
