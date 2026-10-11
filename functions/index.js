@@ -4,6 +4,7 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
+const { nextPinAttemptCount } = require("./pin_security");
 
 initializeApp();
 
@@ -752,7 +753,7 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 10
 
     const expected = String(pinData.confirmationPin || "").trim();
     if (!expected || expected !== pin) {
-      const attempts = lockedUntil > 0 ? 1 : Math.max(0, Number(pinData.attempts || 0)) + 1;
+      const attempts = nextPinAttemptCount(pinData.attempts);
       const update = {
         attempts,
         lastAttemptAt: FieldValue.serverTimestamp(),
