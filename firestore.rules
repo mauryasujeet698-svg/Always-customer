@@ -7,7 +7,13 @@ service cloud.firestore {
     // Registration may create a profile, but operational state is server-owned.
     // A new partner must not be able to self-enable or forge a shift at signup.
     function validNewPartner(expectedRole) {
-      return request.resource.data.get('role', expectedRole) == expectedRole
+      return request.resource.data.get('uid', request.auth.uid) == request.auth.uid
+        && request.resource.data.get('role', expectedRole) == expectedRole
+        && request.resource.data.get('isAdmin', false) != true
+        && request.resource.data.get('verified', false) != true
+        && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('approved', false) != true
+        && request.resource.data.get('verificationStatus', 'pending') != 'approved'
         && request.resource.data.get('approvalStatus', 'pending') != 'approved'
         && request.resource.data.get('shiftStatus', 'off_duty') == 'off_duty'
         && request.resource.data.get('status', 'offline') in ['offline', 'pending', 'Pending']
