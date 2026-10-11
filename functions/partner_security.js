@@ -68,6 +68,9 @@ const acceptRide=onCall({region:"asia-south1",maxInstances:100},async request=>{
   const now=FieldValue.serverTimestamp();
   tx.update(rr,{status:"accepted",driverUid:uid,driverName:p.name||p.displayName||request.auth.token.name||"ALLways Driver Partner",driverPhone:p.phone||p.mobileNumber||request.auth.token.phone_number||"",driverVehicleType:vehicle,acceptedAt:now,updatedAt:now});
   tx.update(pr,{status:"on_trip",availableForRides:false,activeRideId:id,statusUpdatedAt:now,locationTrackingActive:true});
+  tx.set(db.collection("rideOffers").doc(uid).collection("requests").doc(id), {
+    status:"accepted", acceptedAt:now, rejected:false
+  }, {merge:true});
   return {ok:true,rideId:id};
  });
 });
@@ -83,7 +86,10 @@ const acceptDeliveryOrder=onCall({region:"asia-south1",maxInstances:100},async r
   const o=os.data()||{},p=ps.data()||{},status=String(o.status||"").trim().toLowerCase();
   if(String(p.approvalStatus||"").toLowerCase()!=="approved"||String(p.shiftStatus||"").toLowerCase()!=="on_duty"||p.locationTrackingActive===false)throw new HttpsError("failed-precondition","Admin approval and an active shift are required.");
   const assigned=String(o.carrierUid||o.deliveryPartnerUid||o.deliveryPartnerId||o.assignedPartnerId||"").trim();
-  if(assigned===uid&&status==="assigned")return {ok:true,orderId:id,alreadyAccepted:true};
+  if(assigned===uid&&status==="assigned") {
+   tx.update(pr,{status:"on_delivery",dutyStatus:"on_delivery",availableForDeliveries:false,currentOrderId:id,pendingOrderId:FieldValue.delete(),statusUpdatedAt:FieldValue.serverTimestamp(),locationTrackingActive:true});
+   return {ok:true,orderId:id,alreadyAccepted:true};
+  }
   if(assigned&&assigned!==uid)throw new HttpsError("aborted","This order is assigned to another partner.");
   if(!["new order","searching","ready","pending","pending_acceptance","assigned",""].includes(status))throw new HttpsError("failed-precondition","This order is no longer available.");
   if(String(p.currentOrderId||"").trim())throw new HttpsError("failed-precondition","Complete your current delivery before accepting another.");
