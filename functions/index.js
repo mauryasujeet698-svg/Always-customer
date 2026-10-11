@@ -661,37 +661,53 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
 
 // Secure confirmation PIN verification. Only the assigned carrier/delivery partner can
 // advance the protected state, and the PIN itself is never returned by this function.
-exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request) => {
+exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 100 }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
 
   const type = String(request.data?.type || "").toLowerCase();
   const id = String(request.data?.id || "").trim();
   const pin = String(request.data?.pin || "").trim();
-
   if (!["ride", "delivery"].includes(type) || !id || !/^\d{4}$/.test(pin)) {
     throw new HttpsError("invalid-argument", "A valid 4-digit confirmation PIN is required.");
   }
 
   const collection = type === "ride" ? "autoRideRequests" : "orders";
   const ref = db.collection(collection).doc(id);
-
-  return db.runTransaction(async (tx) => {
+  const pinRef = db.collection("customerPrivatePins").doc(type + "_" + id);
+  const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
+    const pinSnap = await tx.get(pinRef);
     if (!snap.exists) throw new HttpsError("not-found", "The request could not be found.");
-
+    if (!pinSnap.exists) throw new HttpsError("failed-precondition", "The customer confirmation PIN is unavailable. Contact support.");
     const data = snap.data() || {};
+    const pinData = pinSnap.data() || {};
     const assignedUid = type === "ride"
       ? String(data.driverUid || data.carrierUid || "").trim()
       : String(data.carrierUid || data.deliveryPartnerUid || data.assignedPartnerId || "").trim();
+    if (assignedUid !== uid) throw new HttpsError("permission-denied", "You are not assigned to this request.");
 
-    if (assignedUid !== uid) {
-      throw new HttpsError("permission-denied", "You are not assigned to this request.");
-    }
+    const nowMs = Date.now();
+    const lockedUntil = pinData.lockedUntil?.toMillis
+      ? pinData.lockedUntil.toMillis()
+      : (pinData.lockedUntil instanceof Date ? pinData.lockedUntil.getTime() : 0);
+    if (lockedUntil > nowMs) throw new HttpsError("resource-exhausted", "Too many incorrect PIN attempts. Wait before trying again.");
 
-    const expected = String(data.confirmationPin || "").trim();
+    const expected = String(pinData.confirmationPin || "").trim();
     if (!expected || expected !== pin) {
-      throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+      const attempts = lockedUntil > 0 ? 1 : Math.max(0, Number(pinData.attempts || 0)) + 1;
+      const update = {
+        attempts,
+        lastAttemptAt: FieldValue.serverTimestamp(),
+      };
+      if (attempts >= 5) {
+        update.lockedUntil = new Date(nowMs + 15 * 60 * 1000);
+        update.attempts = 0;
+      } else {
+        update.lockedUntil = FieldValue.delete();
+      }
+      tx.update(pinRef, update);
+      return { wrongPin: true };
     }
 
     if (type === "ride") {
@@ -705,6 +721,9 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
         ridePinVerified: true,
         ridePinVerifiedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
+        driverLat: FieldValue.delete(),
+        driverLng: FieldValue.delete(),
+        driverLocationUpdatedAt: FieldValue.delete(),
       });
     } else {
       const status = String(data.status || "").toLowerCase();
@@ -717,13 +736,21 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
         deliveryPinVerified: true,
         deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
+        carrierLat: FieldValue.delete(),
+        carrierLng: FieldValue.delete(),
+        carrierLocationUpdatedAt: FieldValue.delete(),
       });
     }
-
+    // The PIN is single-use. Deleting it also limits retention of this secret.
+    tx.delete(pinRef);
     return { verified: true };
   });
-});
 
+  if (result?.wrongPin) {
+    throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+  }
+  return result;
+});
 
 // Complete a ride only after the assigned driver has verified the passenger PIN.
 exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
