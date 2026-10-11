@@ -1,11 +1,5 @@
 name: Location Service Tests
 on:
-  push:
-    branches:
-      - hardening/shift-privacy-retention-2026-10
-    paths:
-      - "location-service/**"
-      - ".github/workflows/location-service-tests.yml"
   pull_request:
     paths:
       - "location-service/**"
