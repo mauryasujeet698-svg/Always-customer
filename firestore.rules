@@ -131,6 +131,15 @@ service cloud.firestore {
         && request.resource.data.vehicleId is string
         && exists(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId))
         && get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.ownerUid == request.resource.data.ownerUid
+        && (!get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.keys().hasAny(['ownerName'])
+          || get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.ownerName == request.resource.data.ownerName)
+        && (!get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.keys().hasAny(['ownerPhone'])
+          || get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.ownerPhone == request.resource.data.ownerPhone)
+        && (!get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.keys().hasAny(['category'])
+          || get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.category == request.resource.data.category)
+        && request.resource.data.listedPrice is number
+        && request.resource.data.listedPrice == get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.get('price', 0)
+        && request.resource.data.mode in ['book', 'negotiation']
         && request.resource.data.keys().hasOnly([
           'vehicleId', 'ownerUid', 'ownerName', 'ownerPhone',
           'customerUid', 'customerName', 'customerEmail',
