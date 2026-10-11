@@ -105,7 +105,10 @@ const searchPlaces = onCall({
     hasLocation ? longitude : null,
   ));
 
-  // Cache hits avoid an external lookup and do not consume the per-user search budget.
+  // Count every callable request, including cache hits, to bound Firestore
+  // read/write load as well as external geocoder spend.
+  await enforcePerUserLimit(uid, nowMs);
+
   const cached = await cacheRef.get();
   if (cached.exists) {
     const data = cached.data() || {};
@@ -115,8 +118,6 @@ const searchPlaces = onCall({
       return { places: data.places.slice(0, 10), cached: true };
     }
   }
-
-  await enforcePerUserLimit(uid, nowMs);
 
   // Never silently send production traffic to an uncontracted public geocoder.
   // The deployment workflow requires an explicitly configured provider endpoint.
