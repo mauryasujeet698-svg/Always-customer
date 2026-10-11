@@ -5,12 +5,8 @@ service cloud.firestore {
     function isAdmin() { return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com"; }
 
     match /orders/{orderId} {
-      allow create: if signedIn()
-        && (request.resource.data.customerId == request.auth.uid || request.resource.data.customerUid == request.auth.uid)
-        && request.resource.data.status == 'New Order'
-        && request.resource.data.get('paymentMethod', 'COD') in ['COD', 'UPI', 'CARD']
-        && request.resource.data.get('total', 0) is number
-        && request.resource.data.get('total', 0) >= 0;
+      // Orders are created by the trusted createCustomerOrder callable only.
+      allow create: if false;
       allow read: if isAdmin() || (signedIn() && (
         resource.data.customerId == request.auth.uid ||
         resource.data.customerUid == request.auth.uid ||
