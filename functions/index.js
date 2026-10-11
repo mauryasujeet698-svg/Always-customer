@@ -1,6 +1,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
 
@@ -981,7 +982,7 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.
-const { onSchedule } = require("firebase-functions/v2/scheduler");
+
 const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
 function catalogValue(row, headers, name, fallback = "") {
   if (row && !Array.isArray(row) && typeof row === "object") {
