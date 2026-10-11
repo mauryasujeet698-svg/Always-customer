@@ -33,7 +33,17 @@ service cloud.firestore {
 
 
     match /rideBookings/{bookingId} {
-      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      // A customer may only submit an unassigned request. Dispatch, assignment,
+      // fare authority and protected ride state must be established server-side.
+      allow create: if signedIn()
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.get('status', 'searching') in ['searching', 'Searching', 'requested', 'pending', 'Pending']
+        && request.resource.data.get('partnerUid', '') == ''
+        && request.resource.data.get('driverUid', '') == ''
+        && request.resource.data.get('carrierUid', '') == ''
+        && request.resource.data.get('ridePinVerified', false) != true
+        && request.resource.data.get('isAdmin', false) != true
+        && request.resource.data.get('approved', false) != true;
       allow read: if signedIn() && (
         resource.data.customerUid == request.auth.uid ||
         resource.data.partnerUid == request.auth.uid ||
@@ -96,7 +106,19 @@ service cloud.firestore {
     }
 
     match /vehicleBookings/{bookingId} {
-      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      // Bind a vehicle booking to the actual owner of the listed vehicle. A
+      // customer cannot forge another owner's identity or create a pre-accepted booking.
+      allow create: if signedIn()
+        && request.resource.data.customerUid == request.auth.uid
+        && request.resource.data.get('status', '') == 'Booked'
+        && request.resource.data.vehicleId is string
+        && exists(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId))
+        && get(/databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)).data.ownerUid == request.resource.data.ownerUid
+        && request.resource.data.keys().hasOnly([
+          'vehicleId', 'ownerUid', 'ownerName', 'ownerPhone',
+          'customerUid', 'customerName', 'customerEmail',
+          'category', 'listedPrice', 'mode', 'status', 'createdAt'
+        ]);
       allow read: if signedIn() && (
         resource.data.customerUid == request.auth.uid ||
         resource.data.ownerUid == request.auth.uid ||
