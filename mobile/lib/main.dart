@@ -4338,49 +4338,47 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     if(!confirmed)return;
 
     final pin=(destinationPincode??'').replaceAll(RegExp(r'\D'),'');
-    // Generate the customer-visible ride confirmation PIN at booking time.
-    // This keeps the PIN available even before Cloud Functions are deployed.
-    final rideConfirmationPin=math.Random.secure().nextInt(10000).toString().padLeft(4,'0');
-    final ref=FirebaseFirestore.instance.collection('autoRideRequests').doc();
-    final pinRef=FirebaseFirestore.instance.collection('customerPrivatePins').doc('ride_'+ref.id);
-    final batch=FirebaseFirestore.instance.batch();
-    batch.set(ref,{
-      'customerUid':u.uid,
-      'customerName':u.displayName??customer['name']??'ALLways customer',
-      'customerPhone':phone,
-      'rideType':rideType,
-      'status':'searching',
-      'pickupLatitude':pickup!.latitude,
-      'pickupLongitude':pickup!.longitude,
-      'pickupAddress':pickupAddress,
-      'pickupPincode':pickupPincode,
-      'destination':destination.text.trim(),
-      'destinationAddress':destination.text.trim(),
-      'destinationLatitude':drop!.latitude,
-      'destinationLongitude':drop!.longitude,
-      'destinationPincode':pin,
-      'distanceKm':km,
-      'etaMinutes':eta,
-      'estimatedFare':fare,
-      'pricingModel':_ridePricing.isNotEmpty?'admin_tiered_5km':'legacy_fallback',
-      'pricingWithin5Km':_pricingForType(rideType)['within5Km'],
-      'pricingAbove5KmRate':_pricingForType(rideType)['above5KmRate'],
-      'rejectedBy':<String>[],
-      'ridePinVerified':false,
-      'customerActive':true,
-      'createdAt':FieldValue.serverTimestamp(),
-      'updatedAt':FieldValue.serverTimestamp(),
-    });
-    batch.set(pinRef,{
-      'customerUid':u.uid,'recordId':ref.id,'type':'ride',
-      'confirmationPin':rideConfirmationPin,'attempts':0,
-      'createdAt':FieldValue.serverTimestamp(),
-      'expiresAt':DateTime.now().add(const Duration(days:30)),
-    });
-    await batch.commit();
+    final clientRequestId='RIDE'+DateTime.now().millisecondsSinceEpoch.toString();
+    String requestId;
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('createCustomerRide')
+          .call(<String, dynamic>{
+        'clientRequestId': clientRequestId,
+        'rideType': rideType,
+        'pickupLatitude': pickup!.latitude,
+        'pickupLongitude': pickup!.longitude,
+        'pickupAddress': pickupAddress,
+        'pickupPincode': pickupPincode,
+        'destination': destination.text.trim(),
+        'destinationAddress': destination.text.trim(),
+        'destinationLatitude': drop!.latitude,
+        'destinationLongitude': drop!.longitude,
+        'destinationPincode': pin,
+        'customerName': u.displayName ?? customer['name'] ?? 'ALLways customer',
+        'customerPhone': phone,
+      });
+      final data = response.data;
+      if (data is! Map || data['ok'] != true || (data['requestId'] ?? '').toString().isEmpty) {
+        throw StateError('The server did not confirm this ride request.');
+      }
+      requestId = data['requestId'].toString();
+      final serverFare = num.tryParse((data['estimatedFare'] ?? '').toString());
+      if (mounted && serverFare != null && (serverFare - fare).abs() >= 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ride fare confirmed by server: ₹${serverFare.toStringAsFixed(0)}')),
+        );
+      }
+    } catch (error) {
+      debugPrint('ALLways ride booking failed: $error');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ride could not be booked. Check pickup serviceability and try again.')),
+      );
+      return;
+    }
 
-    if(mounted)Navigator.push(context,MaterialPageRoute(
-      builder:(_)=>OnDemandRideTrackingPage(requestId:ref.id,rideType:rideType)));
+    if (mounted) Navigator.push(context, MaterialPageRoute(
+      builder: (_) => OnDemandRideTrackingPage(requestId: requestId, rideType: rideType)));
   }
 
   @override Widget build(BuildContext context){
