@@ -4373,7 +4373,9 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
     });
     batch.set(pinRef,{
       'customerUid':u.uid,'recordId':ref.id,'type':'ride',
-      'confirmationPin':rideConfirmationPin,'createdAt':FieldValue.serverTimestamp(),
+      'confirmationPin':rideConfirmationPin,'attempts':0,
+      'createdAt':FieldValue.serverTimestamp(),
+      'expiresAt':DateTime.now().add(const Duration(days:30)),
     });
     await batch.commit();
 
