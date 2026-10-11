@@ -107,6 +107,18 @@ test("onboarding applicant cannot set or later change approval state", async () 
   const db = env.authenticatedContext("applicant-1").firestore();
   const application = doc(db, "onboarding_requests/application-1");
 
+  await assertFails(setDoc(doc(db, "onboarding_requests/application-approved-field"), {
+    uid: "applicant-1",
+    role: "delivery_partner",
+    approved: true,
+    status: "pending",
+  }));
+  await assertFails(setDoc(doc(db, "onboarding_requests/application-verified-field"), {
+    uid: "applicant-1",
+    role: "delivery_partner",
+    verificationStatus: "approved",
+    status: "pending",
+  }));
   await assertFails(setDoc(application, {
     uid: "applicant-1",
     role: "delivery_partner",
@@ -150,4 +162,72 @@ test("customers can use their own travel favorites but not another user's", asyn
     createdAt: new Date(),
   }));
   await assertFails(getDoc(doc(bob, "customers/alice/travelFavorites/prayagraj")));
+});
+
+
+test("customer cannot create an already assigned or completed legacy ride", async () => {
+  const db = env.authenticatedContext("customer-ride-1").firestore();
+
+  await assertSucceeds(setDoc(doc(db, "rideBookings/ride-request-1"), {
+    customerUid: "customer-ride-1",
+    status: "searching",
+    rideType: "bike",
+    pickupAddress: "Pickup",
+    destinationAddress: "Destination",
+  }));
+
+  await assertFails(setDoc(doc(db, "rideBookings/ride-assigned-at-create"), {
+    customerUid: "customer-ride-1",
+    status: "accepted",
+    partnerUid: "partner-1",
+    rideType: "bike",
+  }));
+
+  await assertFails(setDoc(doc(db, "rideBookings/ride-completed-at-create"), {
+    customerUid: "customer-ride-1",
+    status: "completed",
+    rideType: "bike",
+  }));
+});
+
+test("vehicle bookings must refer to the real vehicle owner and start unconfirmed", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "vehicles/vehicle-1"), {
+      ownerUid: "real-owner",
+      status: "available",
+      available: true,
+    });
+  });
+
+  const customerDb = env.authenticatedContext("booking-customer").firestore();
+  await assertSucceeds(setDoc(doc(customerDb, "vehicleBookings/valid-booking"), {
+    vehicleId: "vehicle-1",
+    ownerUid: "real-owner",
+    ownerName: "Real owner",
+    ownerPhone: "9999999999",
+    customerUid: "booking-customer",
+    customerName: "Customer",
+    customerEmail: "customer@example.test",
+    category: "car",
+    listedPrice: 1200,
+    mode: "book",
+    status: "Booked",
+    createdAt: new Date(),
+  }));
+
+  await assertFails(setDoc(doc(customerDb, "vehicleBookings/forged-owner"), {
+    vehicleId: "vehicle-1",
+    ownerUid: "attacker-owner",
+    customerUid: "booking-customer",
+    status: "Booked",
+    createdAt: new Date(),
+  }));
+
+  await assertFails(setDoc(doc(customerDb, "vehicleBookings/preaccepted"), {
+    vehicleId: "vehicle-1",
+    ownerUid: "real-owner",
+    customerUid: "booking-customer",
+    status: "Accepted",
+    createdAt: new Date(),
+  }));
 });
