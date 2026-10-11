@@ -11,6 +11,7 @@ const db = getFirestore();
 
 // Partner shift, assignment, and stale-location controls.
 Object.assign(exports, require('./partner_security'));
+Object.assign(exports, require('./customer_orders'));
 
 const { getMessaging } = require("firebase-admin/messaging");
 
