@@ -779,8 +779,10 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1", maxInstances: 10
         updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
-      const status = String(data.status || "").toLowerCase();
-      if (status !== "out for delivery") {
+      const status = String(data.status || "").trim().toLowerCase();
+      // A partner may explicitly mark arrival before opening PIN verification.
+      // Both states are eligible, but a completed delivery remains idempotent.
+      if (!["out for delivery", "arrived"].includes(status)) {
         if (status === "delivered") return { verified: true, alreadyDelivered: true };
         throw new HttpsError("failed-precondition", "The delivery is not ready to complete.");
       }
