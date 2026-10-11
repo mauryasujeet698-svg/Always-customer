@@ -237,7 +237,7 @@ app.post("/v1/locations", requireFirebaseUser, async (req, res) => {
     multi.hset(locKey, {
       uid, role, lat: String(point.latitude), lng: String(point.longitude), cell,
       shiftSessionId, lastSeenMs: String(now),
-      vehicleType: "", activeJob: "unknown",
+
     });
     multi.expire(locKey, LOCATION_TTL_SECONDS);
     multi.sadd(cellKey(role, cell), uid);
@@ -308,22 +308,38 @@ app.post("/v1/match", requireInternal, async (req, res) => {
 
     const candidates = [];
     const all = Array.from(uids);
-    for (let i = 0; i < all.length; i += 150) {
-      const batch = all.slice(i, i + 150);
+    for (let i = 0; i < all.length; i += 100) {
+      const batch = all.slice(i, i + 100);
       const pipeline = redis.pipeline();
       for (const uid of batch) pipeline.hgetall(locationKey(role, uid));
       const replies = await pipeline.exec();
+      const profiles = await db.getAll(...batch.map((uid) => db.collection(profileCollection(role)).doc(uid)));
       for (let j = 0; j < batch.length; j++) {
         const reply = replies?.[j];
         if (!reply || reply[0]) continue;
-        const p = reply[1] || {};
-        if (!p.uid || p.role !== role || p.approved !== "1" || p.available !== "1" || p.activeJob === "1") continue;
-        if (!p.shiftSessionId || Date.now() - Number(p.lastSeenMs || 0) > 90000) continue;
-        if (requestedVehicle && String(p.vehicleType || "").toLowerCase() !== requestedVehicle) continue;
-        const lat = Number(p.lat), lng = Number(p.lng);
+        const cached = reply[1] || {};
+        const profileSnap = profiles[j];
+        if (!profileSnap?.exists) continue;
+        const profile = profileSnap.data() || {};
+        const uid = batch[j];
+        const shift = await redis.hgetall(shiftKey(role, uid));
+        const session = String(profile.shiftSessionId || "");
+        const effectiveVehicle = String(profile.vehicleType || cached.vehicleType || "").toLowerCase();
+        const approved = String(profile.approvalStatus || "").toLowerCase() === "approved";
+        const onDuty = String(profile.shiftStatus || "").toLowerCase() === "on_duty";
+        const available = role === "carrier" ? profile.availableForRides !== false : profile.availableForDeliveries !== false;
+        const activeJob = role === "carrier"
+          ? String(profile.activeRideId || "").trim()
+          : String(profile.currentOrderId || "").trim();
+        if (!cached.uid || cached.role !== role || !approved || !onDuty || !available || activeJob) continue;
+        if (!session || session !== String(cached.shiftSessionId || "") ||
+            session !== String(shift.shiftSessionId || "")) continue;
+        if (profile.locationTrackingActive === false || Date.now() - Number(cached.lastSeenMs || 0) > 90000) continue;
+        if (requestedVehicle && effectiveVehicle !== requestedVehicle) continue;
+        const lat = Number(cached.lat), lng = Number(cached.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
         const km = distanceKm(point.latitude, point.longitude, lat, lng);
-        if (km <= radiusKm) candidates.push({ uid: p.uid, distanceKm: km, vehicleType: p.vehicleType || "" });
+        if (km <= radiusKm) candidates.push({ uid, distanceKm: km, vehicleType: effectiveVehicle });
       }
     }
     candidates.sort((a, b) => a.distanceKm - b.distanceKm);
