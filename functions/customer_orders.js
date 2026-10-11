@@ -51,6 +51,13 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in before placing an order.");
 
+  const clientRequestId = String(request.data?.clientRequestId || "").trim();
+  if (!/^[A-Za-z0-9_-]{6,100}$/.test(clientRequestId)) {
+    throw new HttpsError("invalid-argument", "A valid checkout request ID is required.");
+  }
+  const idempotencyId = crypto.createHash("sha256").update(uid + ":" + clientRequestId).digest("hex");
+  const idempotencyRef = db.collection("checkoutIdempotency").doc(idempotencyId);
+
   const paymentMethod = String(request.data?.paymentMethod || "COD").trim().toUpperCase();
   // UPI/card options are displayed as unavailable in the UI. The server refuses
   // client attempts to submit a non-COD method until a verified provider is integrated.
@@ -107,6 +114,25 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
   const customer = request.auth.token || {};
 
   const result = await db.runTransaction(async (tx) => {
+    // Repeated submissions with the same checkout key return the original order.
+    // Read this before every other document so idempotency conflicts cause a retry.
+    const idempotencySnap = await tx.get(idempotencyRef);
+    if (idempotencySnap.exists) {
+      const previousId = String(idempotencySnap.data()?.orderId || "");
+      if (!previousId) throw new HttpsError("internal", "Checkout idempotency record is invalid.");
+      const previousOrder = await tx.get(db.collection("orders").doc(previousId));
+      if (!previousOrder.exists) throw new HttpsError("failed-precondition", "The previous order record is unavailable. Contact support.");
+      const previous = previousOrder.data() || {};
+      return {
+        orderId: previousId,
+        subtotal: Number(previous.subtotal || 0),
+        deliveryFee: Number(previous.deliveryFee || previous.delivery || 0),
+        total: Number(previous.total || 0),
+        deliveryDistanceKm: Number(previous.deliveryDistanceKm || 0),
+        alreadyPlaced: true,
+      };
+    }
+
     // All reads happen before the first write; Firestore may retry this transaction.
     const baseReads = [tx.get(settingsRef)];
     if (zoneRef) baseReads.push(tx.get(zoneRef));
@@ -136,9 +162,6 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
       const now = new Date();
       if (requestedTime < new Date(now.getTime() + 30 * 60 * 1000)) {
         throw new HttpsError("invalid-argument", "Scheduled orders must be at least 30 minutes in the future.");
-      }
-      if (!isSameIndiaDay(now, requestedTime) && requestedTime < new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
-        throw new HttpsError("invalid-argument", "Choose a valid scheduled delivery slot.");
       }
       const startMinute = Math.max(0, Math.min(1439, Math.trunc(Number(settings.scheduledStartHour ?? 9)) * 60 + Math.trunc(Number(settings.scheduledStartMinute ?? 0))));
       const endMinute = Math.max(0, Math.min(1439, Math.trunc(Number(settings.scheduledEndHour ?? 13)) * 60 + Math.trunc(Number(settings.scheduledEndMinute ?? 30))));
@@ -287,8 +310,14 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
       createdAt,
       updatedAt: createdAt,
     });
+    tx.set(idempotencyRef, {
+      customerUid: uid,
+      clientRequestId,
+      orderId,
+      createdAt,
+    });
 
-    return { orderId, subtotal, deliveryFee: money(deliveryFee), total, deliveryDistanceKm: distance };
+    return { orderId, subtotal, deliveryFee: money(deliveryFee), total, deliveryDistanceKm: distance, alreadyPlaced: false };
   });
 
   return { ok: true, ...result };
