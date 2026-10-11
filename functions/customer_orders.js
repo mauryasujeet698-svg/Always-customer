@@ -315,6 +315,7 @@ const createCustomerOrder = onCall({ region: "asia-south1", maxInstances: 100 },
       clientRequestId,
       orderId,
       createdAt,
+      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
     });
 
     return { orderId, subtotal, deliveryFee: money(deliveryFee), total, deliveryDistanceKm: distance, alreadyPlaced: false };
