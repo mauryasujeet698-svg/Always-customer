@@ -37,7 +37,13 @@ The Deploy ALLways Firebase Functions workflow:
 
 Do not commit `functions/.env`, a service-account JSON file, or any private API keys.
 
-## 3. Firebase/GCP requirements
+## 3. Firestore TTL, bounded reads, and pagination
+
+The geocoding callable writes expiration timestamps to `geocodingCache.expiresAt` (24 hours) and `geocodingRateLimits.expiresAt`. Configure Firestore TTL policies for the `geocodingCache` and `geocodingRateLimits` collection groups in the Firebase/Google Cloud console, or set them through `gcloud firestore fields ttls update expiresAt --collection-group=geocodingCache --enable-ttl --database='(default)'` and the equivalent command for `geocodingRateLimits`. TTL deletion is asynchronous; it is not a real-time expiry guarantee.
+
+Customer history, ride, order and vehicle-feed queries on the current hardening branch are bounded to avoid whole-collection listeners. This protects memory and read cost, but a bounded first page is not full pagination. Before broad rollout, add cursor-based “load more”/infinite scrolling or equivalent backend paging for catalog, vehicle listings and older user history without changing the current visual design. Confirm the new compound indexes in `firestore.indexes.json` are deployed with `firebase deploy --only firestore:indexes`.
+
+## 4. Firebase/GCP requirements
 
 Cloud Functions deployment is currently an explicit manual action. Before it can be run, the owner must confirm the Firebase project `allways-web` is on a plan that supports the required Cloud Functions and associated infrastructure, enable required APIs, configure billing safeguards, and review the proposed changes. Deploying this branch's rules or functions to production is not automatic.
 
