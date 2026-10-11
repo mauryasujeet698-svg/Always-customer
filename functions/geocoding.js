@@ -118,9 +118,12 @@ const searchPlaces = onCall({
 
   await enforcePerUserLimit(uid, nowMs);
 
-  // The public Photon endpoint is only a development/pilot default. Set
-  // GEOCODING_API_BASE_URL to an owned or contracted geocoder for production.
-  const endpoint = String(process.env.GEOCODING_API_BASE_URL || "https://photon.komoot.io/api/").trim();
+  // Never silently send production traffic to an uncontracted public geocoder.
+  // The deployment workflow requires an explicitly configured provider endpoint.
+  const endpoint = String(process.env.GEOCODING_API_BASE_URL || "").trim();
+  if (!endpoint) {
+    throw new HttpsError("failed-precondition", "Place search is not configured yet. Please contact ALLways support.");
+  }
   let url;
   try {
     url = new URL(endpoint);
