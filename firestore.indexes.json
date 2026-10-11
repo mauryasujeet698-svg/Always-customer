@@ -1,0 +1,65 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "ridePartners",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "shiftStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastSeenAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "deliveryPartners",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "shiftStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastSeenAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "ridePartners",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "shiftStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "deliveryPartners",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "approvalStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "shiftStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
