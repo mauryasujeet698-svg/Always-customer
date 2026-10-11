@@ -365,17 +365,6 @@ exports.onAllwaysOrderUpdated = onDocumentUpdated(
     const oldPartner = String(before.carrierUid || before.assignedPartnerId || "");
     const newPartner = String(after.carrierUid || after.assignedPartnerId || "");
 
-    if (!/^\d{4}$/.test(String(after.confirmationPin || "")) &&
-        ["out for delivery", "delivered"].includes(newStatus.toLowerCase())) {
-      await event.data.after.ref.set({
-        confirmationPin: newConfirmationPin(),
-        deliveryPinVerified: false,
-        deliveryPinVerifiedAt: null,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      return;
-    }
-
     if (newPartner && newPartner !== oldPartner) {
       await sendToUser(
         newPartner,
@@ -629,16 +618,6 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
     const oldStatus = String(before.status || "").toLowerCase();
     const newStatus = String(after.status || "").toLowerCase();
     if (oldStatus === newStatus) return;
-
-    if (!/^\d{4}$/.test(String(after.confirmationPin || "")) &&
-        ["accepted", "arrived", "started"].includes(newStatus)) {
-      await event.data.after.ref.set({
-        confirmationPin: newConfirmationPin(),
-        ridePinVerified: false,
-        ridePinVerifiedAt: null,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
 
     const customerUid = String(after.customerUid || after.customerId || "").trim();
     if (!customerUid) return;
