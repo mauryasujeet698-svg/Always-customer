@@ -51,19 +51,30 @@ jobs:
       - name: Configure stable release signing
         if: ${{ inputs.publish_update }}
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ALLWAYS_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ALLWAYS_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ALLWAYS_KEY_PASSWORD }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD FIREBASE_SERVICE_ACCOUNT_JSON; do
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD FIREBASE_SERVICE_ACCOUNT_JSON; do
             if [ -z "${!name}" ]; then echo "::error::Missing required GitHub Actions secret: $name"; exit 1; fi
           done
           mkdir -p android/app
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
           chmod 600 android/app/upload-keystore.jks
+          alias="${ANDROID_KEY_ALIAS:-}"
+          if [ -z "$alias" ]; then
+            aliases="$(keytool -list -v -keystore android/app/upload-keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk '/^Alias name: / {name=substr($0, index($0, \": ") + 2)} /^Entry type: PrivateKeyEntry$/ {if (name != \"\") print name; name=\"\"}')"
+            alias_count="$(printf '%s\\n' "$aliases" | sed '/^$/d' | wc -l | tr -d ' ')"
+            if [ "$alias_count" -ne 1 ]; then
+              echo "::error::Expected exactly one private-key alias in the keystore. Set ANDROID_KEY_ALIAS as an Actions secret if multiple keys exist or alias detection fails."
+              exit 1
+            fi
+            alias="$aliases"
+          fi
+          ANDROID_KEY_ALIAS="$alias"
           cat > android/key.properties <<EOF
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyPassword=$ANDROID_KEY_PASSWORD
