@@ -713,19 +713,6 @@ jobs:
         run: |
           node --check functions/index.js
           echo "Cloud Functions source is valid. Production deployment is intentionally deferred until Firebase Blaze is enabled."
-      - name: Validate Mapbox build secret
-        env:
-          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
-        run: |
-          if [ -z "${MAPBOX_PUBLIC_TOKEN}" ]; then
-            echo "ERROR: MAPBOX_PUBLIC_TOKEN GitHub Actions secret is missing."
-            exit 1
-          fi
-          case "${MAPBOX_PUBLIC_TOKEN}" in
-            pk.*) echo "PASS: Mapbox public token is configured." ;;
-            *) echo "ERROR: MAPBOX_PUBLIC_TOKEN must be a Mapbox public pk.* token." ; exit 1 ;;
-          esac
-
       - name: Get packages
         timeout-minutes: 15
         run: |
@@ -878,16 +865,17 @@ jobs:
 
       - name: Build release APK
         env:
-          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
+          MAP_TILE_URL: ${{ vars.MAP_TILE_URL }}
         run: |
           cd mobile
-          MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN:-}" flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="${MAPBOX_PUBLIC_TOKEN}"
+          TILE_URL="${MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"
+          flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAP_TILE_URL="$TILE_URL"
           APK_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-release.apk)
-          MAX_SIZE=$((25*1024*1024))
-          APK_MB=$(awk "BEGIN {printf \"%.1f\", $APK_SIZE/1024/1024}")
-          echo "Release APK size: $APK_MB MB (maximum permitted size: 25 MB)"
-          if [ "$APK_SIZE" -gt "$MAX_SIZE" ]; then
-            echo "ERROR: ALLways arm64 APK exceeds the 25 MB release limit."
+          MAX_SIZE=25000000
+          APK_MB=$(awk "BEGIN {printf \\"%.1f\\", $APK_SIZE/1000000}")
+          echo "Release APK size: $APK_MB MB (strict maximum: below 25,000,000 bytes)"
+          if [ "$APK_SIZE" -ge "$MAX_SIZE" ]; then
+            echo "ERROR: ALLways arm64 APK must be below 25,000,000 bytes."
             exit 1
           fi
 
