@@ -838,7 +838,10 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
   const partnerRef = db.collection("ridePartners").doc(uid);
 
   return db.runTransaction(async (tx) => {
-    const rideSnap = await tx.get(rideRef);
+    const [rideSnap, partnerSnap] = await Promise.all([
+      tx.get(rideRef),
+      tx.get(partnerRef),
+    ]);
     if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
 
     const ride = rideSnap.data() || {};
@@ -852,18 +855,36 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
     if (status !== "started" || ride.ridePinVerified !== true) {
       throw new HttpsError("failed-precondition", "Verify the passenger PIN and start the ride before completing it.");
     }
+    if (!partnerSnap.exists) {
+      throw new HttpsError("failed-precondition", "The driver profile is unavailable. Contact ALLways support.");
+    }
 
+    const partner = partnerSnap.data() || {};
+    const activeRideId = String(partner.activeRideId || "").trim();
+    if (activeRideId && activeRideId !== rideId) {
+      throw new HttpsError("failed-precondition", "The driver profile points to a different active ride.");
+    }
+    if (!activeRideId && String(partner.status || "").toLowerCase() !== "on_trip") {
+      throw new HttpsError("failed-precondition", "This ride is not recorded as the driver's active trip.");
+    }
+
+    const completedAt = FieldValue.serverTimestamp();
     tx.update(rideRef, {
       status: "completed",
-      completedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      completedAt,
+      updatedAt: completedAt,
     });
-    tx.set(partnerRef, {
-      status: "available",
+    // The dispatcher selects only online, on-duty partners. Keep that status
+    // consistent after completion; 'available' would make the driver invisible
+    // to the current online/on-duty query.
+    tx.update(partnerRef, {
+      status: "online",
+      dutyStatus: "online",
+      isOnline: true,
       availableForRides: true,
       activeRideId: null,
-      statusUpdatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+      statusUpdatedAt: completedAt,
+    });
 
     return { completed: true };
   });
