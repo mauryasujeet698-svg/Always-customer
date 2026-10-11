@@ -335,40 +335,52 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Widget _confirmationCard(BuildContext context, Map<String,dynamic> d) {
-    final pin = (d['confirmationPin'] ?? '').toString().trim();
     final status = (d['status'] ?? '').toString().toLowerCase().replaceAll('_', ' ');
-    if (pin.length != 4 || status != 'out for delivery') return const SizedBox.shrink();
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: dark ? const Color(0xFF3A252E) : const Color(0xFFFFE7EF),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.pin_outlined, color: Color(0xFFB3134A)),
+    if (status != 'out for delivery') return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('customerPrivatePins')
+          .doc('delivery_${widget.orderId}')
+          .snapshots(),
+      builder: (context, snapshot) {
+        final pin = (snapshot.data?.data()?['confirmationPin'] ?? '').toString().trim();
+        if (pin.length != 4) return const SizedBox.shrink();
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        return Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: dark ? const Color(0xFF3A252E) : const Color(0xFFFFE7EF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.pin_outlined, color: Color(0xFFB3134A)),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Delivery confirmation number', style: TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Give this 4-digit number to your delivery partner at handover.',
+                        style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : const Color(0xFF777B85), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(pin, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: 4, color: Color(0xFFB3134A))),
+              ],
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Delivery confirmation number', style: TextStyle(fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 4),
-                  Text('Give this 4-digit number to your delivery partner at handover.', style: TextStyle(color: dark ? const Color(0xFFA7A9B0) : const Color(0xFF777B85), fontSize: 12)),
-                ],
-              ),
-            ),
-            Text(pin, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: 4, color: Color(0xFFB3134A))),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
