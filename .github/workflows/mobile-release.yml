@@ -114,7 +114,8 @@ jobs:
       - name: Read application version
         id: app-version
         shell: bash
-        run: echo "version=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Stage Customer update APK and calculate digest
         if: ${{ inputs.publish_update }}
