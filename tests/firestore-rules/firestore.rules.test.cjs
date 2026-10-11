@@ -194,6 +194,10 @@ test("vehicle bookings must refer to the real vehicle owner and start unconfirme
   await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "vehicles/vehicle-1"), {
       ownerUid: "real-owner",
+      ownerName: "Real owner",
+      ownerPhone: "9999999999",
+      category: "car",
+      price: 1200,
       status: "available",
       available: true,
     });
@@ -205,6 +209,36 @@ test("vehicle bookings must refer to the real vehicle owner and start unconfirme
     ownerUid: "real-owner",
     ownerName: "Real owner",
     ownerPhone: "9999999999",
+    customerUid: "booking-customer",
+    customerName: "Customer",
+    customerEmail: "customer@example.test",
+    category: "car",
+    listedPrice: 1200,
+    mode: "book",
+    status: "Booked",
+    createdAt: new Date(),
+  }));
+
+  await assertFails(setDoc(doc(customerDb, "vehicleBookings/forged-price"), {
+    vehicleId: "vehicle-1",
+    ownerUid: "real-owner",
+    ownerName: "Real owner",
+    ownerPhone: "9999999999",
+    customerUid: "booking-customer",
+    customerName: "Customer",
+    customerEmail: "customer@example.test",
+    category: "car",
+    listedPrice: 1,
+    mode: "book",
+    status: "Booked",
+    createdAt: new Date(),
+  }));
+
+  await assertFails(setDoc(doc(customerDb, "vehicleBookings/forged-owner-phone"), {
+    vehicleId: "vehicle-1",
+    ownerUid: "real-owner",
+    ownerName: "Real owner",
+    ownerPhone: "1111111111",
     customerUid: "booking-customer",
     customerName: "Customer",
     customerEmail: "customer@example.test",
