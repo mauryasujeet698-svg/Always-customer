@@ -39,6 +39,7 @@ const CONFIG = {
    ========================================================= */
 
 let cart = {};
+let isPlacingOrder = false;
 let selectedCat = "All";
 let currentUser = null;
 let firebaseReady = false;
@@ -436,6 +437,7 @@ async function placeOrder(subtotal, delivery, total){
     openAuth("Please sign in before placing your order.");
     return;
   }
+  if(isPlacingOrder)return;
 
   const nameInput = document.getElementById("customerName");
   const phoneInput = document.getElementById("phone");
@@ -443,7 +445,6 @@ async function placeOrder(subtotal, delivery, total){
   const noteInput = document.getElementById("note");
 
   if(!nameInput || !phoneInput || !addressInput || !noteInput) return;
-
   const name = nameInput.value.trim();
   const phone = phoneInput.value.trim();
   const address = addressInput.value.trim();
@@ -453,62 +454,68 @@ async function placeOrder(subtotal, delivery, total){
     alert("Please enter your name, phone number and delivery address.");
     return;
   }
-
   const cleanPhone = phone.replace(/\D/g, "");
   if(!/^\d{10}$/.test(cleanPhone)){
     alert("Please enter a valid 10-digit mobile number.");
     return;
   }
-
+  const pincodeMatch = address.match(/\b[1-9][0-9]{5}\b/);
+  if(!pincodeMatch){
+    alert("Please include the 6-digit PIN code in your delivery address.");
+    return;
+  }
   const items = Object.entries(cart).map(function([id, quantity]){
     const product = products.find(function(p){ return p.id == id; });
-    return { id: product.id, name: product.name, qty: quantity, price: product.price };
-  });
+    return product ? { id: String(product.id), qty: Number(quantity) } : null;
+  }).filter(Boolean);
+  if(!items.length){
+    alert("Your cart has no available products. Please refresh and try again.");
+    return;
+  }
 
-  const order = {
-    id: "AW" + Date.now().toString().slice(-7),
-    customerId: currentUser.uid,
-    email: currentUser.email,
-    name: name,
-    phone: cleanPhone,
-    address: address,
-    note: note,
-    items: items,
-    subtotal: subtotal,
-    delivery: delivery,
-    total: total,
-    paymentMethod: "COD",
-    status: "New Order",
-    estimatedDelivery: "",
-    statusNote: "Order received",
-    cancellationReason: "",
-    rating: null,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    time: new Date().toLocaleString("en-IN")
-  };
+  isPlacingOrder = true;
+  const button = document.getElementById("placeOrderBtn");
+  const oldLabel = button ? button.textContent : "";
+  if(button){button.disabled=true;button.textContent="Placing order…";}
 
+  var order = null;
   try {
     if(!db) throw new Error("Firestore is not connected.");
-    await db.collection("orders").doc(order.id).set(order);
+    const clientRequestId = "WEB" + Date.now().toString() + Math.floor(Math.random() * 1000000).toString();
+    const callable = firebase.app().functions("asia-south1").httpsCallable("createCustomerOrder");
+    const response = await callable({
+      clientRequestId: clientRequestId,
+      name: name,
+      phone: cleanPhone,
+      address: address,
+      note: note,
+      deliveryPincode: pincodeMatch[0],
+      deliveryType: "instant",
+      paymentMethod: "COD",
+      items: items
+    });
+    const result = response && response.data;
+    if(!result || result.ok !== true || !result.orderId){
+      throw new Error("The server did not confirm this order.");
+    }
+    const orderSnap = await db.collection("orders").doc(String(result.orderId)).get();
+    if(!orderSnap.exists) throw new Error("The order record is not available yet.");
+    order = orderSnap.data();
   } catch(error) {
-    console.error("ALLways Firestore order save failed:", error);
-    alert("Order could not be saved. Please try again. " + (error.code || ""));
+    console.error("ALLways secure checkout failed:", error);
+    alert("Order could not be saved. Please check your PIN code, product availability and connection, then try again.");
     return;
+  } finally {
+    isPlacingOrder = false;
+    if(button){button.disabled=false;button.textContent=oldLabel || "Place Order";}
   }
 
   orders.unshift(order);
   saveAddressFromCheckout();
-
   try {
     localStorage.setItem("allwaysOrders", JSON.stringify(orders));
   } catch(error) {
     console.log("Could not save order locally.", error);
-  }
-
-  /* SEND ORDER TO GOOGLE APPS SCRIPT */
-  if(CONFIG.orderEndpoint){
-    sendOrderToBackend(order);
   }
 
   cart = {};
@@ -518,7 +525,6 @@ async function placeOrder(subtotal, delivery, total){
   renderOrders();
   showThankYou(order);
 }
-
 
 /* =========================================================
    GOOGLE APPS SCRIPT BACKEND
