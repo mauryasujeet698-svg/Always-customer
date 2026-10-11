@@ -6,6 +6,13 @@ if (getApps().length === 0) {
   initializeApp({ projectId: "demo-allways" });
 }
 const { _test } = require("./geocoding");
+const geocodingExports = require("./geocoding");
+
+test("Firebase discovery sees only callable endpoints as enumerable exports", () => {
+  assert.deepEqual(Object.keys(geocodingExports), ["searchPlaces"]);
+  assert.ok(geocodingExports._test);
+});
+
 
 test("validCoordinatePair rejects missing, non-finite and out-of-range coordinates", () => {
   assert.equal(_test.validCoordinatePair(25.4358, 81.8463), true);
