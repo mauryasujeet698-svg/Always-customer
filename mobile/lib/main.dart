@@ -1953,13 +1953,17 @@ class _ActiveRideBannerState extends State<ActiveRideBanner>{
             child:ListTile(
               leading:CircleAvatar(backgroundColor:const Color(0x1A5B1ACF),child:Icon(accepted?Icons.navigation:Icons.search,color:const Color(0xFF5B1ACF))),
               title:Text(accepted?'Your ride is confirmed':'Ride request is active',style:const TextStyle(fontWeight:FontWeight.w900)),
-              subtitle:Text(
-                accepted
-                    ? ((x['confirmationPin'] ?? '').toString().length == 4
-                        ? 'Confirmation number: ${x['confirmationPin']} • Share it with your carrier'
-                        : 'Partner accepted • Tap to track live')
-                    : 'Searching for a nearby partner…',
-              ),
+              subtitle: accepted
+                  ? StreamBuilder<DocumentSnapshot<Map<String,dynamic>>>(
+                      stream: FirebaseFirestore.instance.collection('customerPrivatePins').doc('ride_${d.id}').snapshots(),
+                      builder: (context, pinSnapshot) {
+                        final pin = (pinSnapshot.data?.data()?['confirmationPin'] ?? '').toString();
+                        return Text(pin.length == 4
+                            ? 'Confirmation number: $pin • Share it with your carrier'
+                            : 'Partner accepted • Tap to track live');
+                      },
+                    )
+                  : const Text('Searching for a nearby partner…'),
               trailing:accepted?Wrap(
                 spacing:0,
                 children:[
