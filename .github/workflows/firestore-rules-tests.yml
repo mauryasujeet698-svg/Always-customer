@@ -33,6 +33,10 @@ jobs:
           for file in functions/*.js; do
             node --check "$file"
           done
+      - name: Install Cloud Functions dependencies
+        run: npm install --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Test geocoding normalization and input safety
+        run: npm test --prefix functions
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
       - name: Install rules-test dependencies
