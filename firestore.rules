@@ -4,6 +4,23 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com"; }
 
+    // Registration may create a profile, but operational state is server-owned.
+    // A new partner must not be able to self-enable or forge a shift at signup.
+    function validNewPartner(expectedRole) {
+      return request.resource.data.get('role', expectedRole) == expectedRole
+        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
+        && request.resource.data.get('shiftStatus', 'off_duty') == 'off_duty'
+        && request.resource.data.get('status', 'offline') in ['offline', 'pending', 'Pending']
+        && request.resource.data.get('isOnline', false) != true
+        && request.resource.data.get('locationTrackingActive', false) != true
+        && request.resource.data.get('availableForRides', false) != true
+        && request.resource.data.get('availableForDeliveries', false) != true
+        && request.resource.data.get('shiftSessionId', '') == ''
+        && request.resource.data.get('activeRideId', '') == ''
+        && request.resource.data.get('currentOrderId', '') == ''
+        && request.resource.data.get('pendingOrderId', '') == '';
+    }
+
     match /orders/{orderId} {
       // Orders are created by the trusted createCustomerOrder callable only.
       allow create: if false;
@@ -219,9 +236,7 @@ service cloud.firestore {
     match /ridePartners/{uid} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.get('role', 'carrier') != 'admin'
-        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
-        && request.resource.data.get('shiftStatus', 'off_duty') != 'on_duty';
+        && validNewPartner('carrier');
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -317,6 +332,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /serviceAreas/{areaId} {
+      // Service-area metadata is public configuration; only administrators may change it.
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /serviceableZones/{pincode} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
@@ -325,9 +346,7 @@ service cloud.firestore {
     match /deliveryPartners/{uid} {
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.get('role', 'delivery_partner') != 'admin'
-        && request.resource.data.get('approvalStatus', 'pending') != 'approved'
-        && request.resource.data.get('shiftStatus', 'off_duty') != 'on_duty';
+        && validNewPartner('delivery_partner');
       allow update: if isAdmin()
         || (signedIn() && request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
