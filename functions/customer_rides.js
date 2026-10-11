@@ -35,6 +35,7 @@ const createCustomerRide=onCall({region:"asia-south1",maxInstances:100},async re
  const destinationAddress=safeText(request.data?.destinationAddress,400,"Destination address",true);
  const customerName=safeText(request.data?.customerName,80,"Customer name");
  const customerPhone=String(request.data?.customerPhone||"").replace(/\D/g,"").slice(0,10);
+ if(customerPhone.length!==10)throw new HttpsError("invalid-argument","A valid 10-digit phone number is required.");
  const pickupPincode=String(request.data?.pickupPincode||"").replace(/\D/g,"").slice(0,6);
  const destinationPincode=String(request.data?.destinationPincode||"").replace(/\D/g,"").slice(0,6);
  const profileRef=db.collection("customers").doc(uid);
@@ -68,7 +69,7 @@ const createCustomerRide=onCall({region:"asia-south1",maxInstances:100},async re
   const fare=roundMoney(hasConfigured
     ? (pricedDistance<=5?within5:within5+((pricedDistance-5)*above5))
     : (pricedDistance<=0?legacyMinimum:Math.max(legacyMinimum,legacyBase+pricedDistance*legacyPer)));
-  if(settings.enabled===false)throw new HttpsError("failed-precondition","Ride booking is temporarily unavailable.");
+  if(settings.rideBookingEnabled===false)throw new HttpsError("failed-precondition","Ride booking is temporarily unavailable.");
   if(pickupPincode){
    const zoneSnap=await tx.get(db.collection("serviceableZones").doc(pickupPincode));
    if(!zoneSnap.exists||String(zoneSnap.data()?.status||"").toLowerCase()!=="serviceable"){
