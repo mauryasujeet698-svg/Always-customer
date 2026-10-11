@@ -66,9 +66,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.vehicleType in ['bike','auto','car','two_wheeler'];
       }
 
-      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid
-        && request.resource.data.status == 'searching'
-        && request.resource.data.rejectedBy is list;
+      // Ride requests and initial confirmation PINs are created by the trusted callable only.
+      allow create: if false;
 
       allow read: if isAdmin() || (signedIn() && (
         resource.data.customerUid == request.auth.uid ||
@@ -154,13 +153,7 @@ service cloud.firestore {
 
     match /customerPrivatePins/{pinId} {
       allow read: if isAdmin() || (signedIn() && resource.data.customerUid == request.auth.uid);
-      allow create: if signedIn()
-        && request.resource.data.customerUid == request.auth.uid
-        && request.resource.data.type in ['delivery','ride']
-        && request.resource.data.recordId is string
-        && request.resource.data.confirmationPin is string
-        && request.resource.data.confirmationPin.matches('^[0-9]{4}$');
-      allow update, delete: if false;
+      allow create, update, delete: if false;
     }
 
     match /privacyRequests/{requestId} {
