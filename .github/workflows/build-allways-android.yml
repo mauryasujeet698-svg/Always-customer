@@ -727,9 +727,16 @@ jobs:
           esac
 
       - name: Get packages
+        timeout-minutes: 15
         run: |
           cd mobile
-          flutter pub get
+          echo "=== Flutter and Dart versions ==="
+          flutter --version
+          dart --version
+          echo "=== Available disk space ==="
+          df -h || true
+          echo "=== Resolve dependencies with verbose diagnostics ==="
+          flutter pub get --verbose
 
       - name: Flutter analyze and tests
         run: |
