@@ -171,7 +171,7 @@ jobs:
           fi
           test -f android/settings.gradle || test -f android/settings.gradle.kts
           test -f android/app/google-services.json
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import re
           target="com.allways.app"
@@ -434,7 +434,7 @@ jobs:
               }
           }
           EOF
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import re
           manifest=Path("android/app/src/main/AndroidManifest.xml")
@@ -450,7 +450,7 @@ jobs:
       - name: Preserve Flutter launch manifest and validate it
         run: |
           cd mobile
-          python3 - <<'PY'
+          python - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
           p=Path("android/app/src/main/AndroidManifest.xml")
@@ -466,7 +466,7 @@ jobs:
       - name: Verify PackageInstaller updater and launcher
         run: |
           cd mobile
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
           main=Path("android/app/src/main/kotlin/com/allways/app/MainActivity.kt").read_text()
@@ -484,7 +484,7 @@ jobs:
       - name: Configure ALLways Android package and Firebase Google Services
         run: |
           cd mobile
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import re
 
@@ -571,7 +571,7 @@ jobs:
           keyAlias=allways
           storeFile=keystore/allways-release.jks
           EOF
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           p = Path("android/app")
           groovy = p / "build.gradle"
@@ -658,7 +658,7 @@ jobs:
       - name: Set ALLways app label and notification permission
         run: |
           cd mobile
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           p=Path('android/app/src/main/AndroidManifest.xml')
           s=p.read_text()
@@ -688,7 +688,7 @@ jobs:
             <path android:fillColor="#FFFFFF" android:pathData="M54,23 L28,82 L40,82 L46,68 L62,68 L68,82 L80,82 Z M54,42 L59,58 L49,58 Z"/>
           </vector>
           EOF
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           p=Path('android/app/src/main/AndroidManifest.xml')
           s=p.read_text().replace('android:icon="@mipmap/ic_launcher"','android:icon="@drawable/ic_allways"')
