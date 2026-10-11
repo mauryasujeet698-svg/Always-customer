@@ -288,7 +288,7 @@ test("partners cannot self-enable shifts during registration", async () => {
     availableForDeliveries: false,
   }));
 
-  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-uid"), {
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-self-enable"), {
     uid: "someone-else",
     role: "carrier",
     approvalStatus: "pending",
@@ -298,7 +298,7 @@ test("partners cannot self-enable shifts during registration", async () => {
     availableForRides: false,
   }));
 
-  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-admin"), {
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-self-enable"), {
     uid: "driver-self-enable",
     role: "carrier",
     approvalStatus: "pending",
@@ -309,7 +309,7 @@ test("partners cannot self-enable shifts during registration", async () => {
     availableForRides: false,
   }));
 
-  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-forged-verification"), {
+  await assertFails(setDoc(doc(driverDb, "ridePartners/driver-self-enable"), {
     uid: "driver-self-enable",
     role: "carrier",
     approvalStatus: "pending",
