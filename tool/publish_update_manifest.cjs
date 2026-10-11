@@ -24,7 +24,7 @@ async function main() {
       apkUrl,
       sha256,
       notes: process.env.APP_UPDATE_NOTES || "Reliability, security and performance improvements.",
-      mandatory: true,
+      mandatory: (process.env.APP_UPDATE_MANDATORY || '').toLowerCase() === 'true',
       channel: "stable",
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
