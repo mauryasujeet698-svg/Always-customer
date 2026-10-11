@@ -124,6 +124,7 @@ jobs:
             ALLways Customer app update.
             The app verifies the SHA-256 digest and opens Android's update confirmation.
           files: mobile/release-assets/allways-latest.apk
+          overwrite_files: true
           make_latest: true
           fail_on_unmatched_files: true
 
