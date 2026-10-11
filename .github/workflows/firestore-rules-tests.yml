@@ -6,6 +6,7 @@ on:
     paths:
       - "firestore.rules"
       - "firestore.indexes.json"
+      - "functions/**"
       - "tests/firestore-rules/**"
       - ".github/workflows/firestore-rules-tests.yml"
   pull_request:
@@ -32,6 +33,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Parse Cloud Functions JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in functions/*.js; do
+            node --check "$file"
+          done
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
       - name: Install rules-test dependencies
