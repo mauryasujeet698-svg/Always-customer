@@ -34,9 +34,25 @@ const setPartnerShift=onCall({region:"asia-south1",maxInstances:50},async reques
   if(String(p.approvalStatus||"").toLowerCase()!=="approved")throw new HttpsError("permission-denied","Admin approval is required before starting a shift.");
   if(["suspended","blocked","disabled"].includes(String(p.accountStatus||"").toLowerCase()))throw new HttpsError("permission-denied","This partner account is not allowed to work.");
   const onDuty=String(p.shiftStatus||"").toLowerCase()==="on_duty";
-  if(online&&onDuty&&String(p.shiftSessionId||"").trim())return {ok:true,shiftSessionId:String(p.shiftSessionId),alreadyOnDuty:true};
+  if(online&&onDuty&&String(p.shiftSessionId||"").trim()){
+   tx.update(ref,{locationTrackingActive:true,lastSeenAt:FieldValue.serverTimestamp(),trackingAttentionRequired:false});
+   return {ok:true,shiftSessionId:String(p.shiftSessionId),alreadyOnDuty:true};
+  }
   if(!online){
-   await requireNoActiveWork(tx,role,p);const now=FieldValue.serverTimestamp();
+   await requireNoActiveWork(tx,role,p);
+   const pendingOrderId=role==="delivery_partner"?String(p.pendingOrderId||"").trim():"";
+   if(pendingOrderId&&pendingOrderId!==String(p.currentOrderId||"").trim()){
+    const pendingRef=db.collection("orders").doc(pendingOrderId);
+    const pendingSnap=await tx.get(pendingRef);
+    if(pendingSnap.exists){
+     const pending=pendingSnap.data()||{};
+     const assignedUid=String(pending.carrierUid||pending.deliveryPartnerUid||pending.assignedPartnerId||"").trim();
+     if(assignedUid===uid&&String(pending.status||"").toLowerCase()==="pending_acceptance"){
+      tx.update(pendingRef,{carrierUid:null,deliveryPartnerUid:null,assignedPartnerId:null,carrierName:null,carrierPhone:null,carrierAccepted:false,status:"New Order",assignmentStatus:"waiting_for_partner",statusNote:"The delivery partner ended their shift before accepting the offer.",updatedAt:FieldValue.serverTimestamp()});
+     }
+    }
+   }
+   const now=FieldValue.serverTimestamp();
    tx.update(ref,{status:"offline",dutyStatus:"offline",shiftStatus:"off_duty",locationTrackingActive:false,availableForRides:false,availableForDeliveries:false,isOnline:false,shiftEndedAt:now,statusUpdatedAt:now,shiftSessionId:FieldValue.delete(),trackingAttentionRequired:false,...clearLocation(role)});
    return {ok:true,shiftSessionId:null,alreadyOffDuty:!onDuty};
   }
