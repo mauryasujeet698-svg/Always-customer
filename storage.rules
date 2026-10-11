@@ -3,7 +3,7 @@ service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && request.auth.token.email == "mauryasujeet@gmail.com";
+      return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
     }
 
     // Public assets only. KYC files must never be placed under this path.
