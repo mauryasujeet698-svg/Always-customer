@@ -27,6 +27,27 @@ jobs:
         working-directory: functions
         run: npm install
 
+      - name: Test Cloud Functions helpers
+        working-directory: functions
+        run: npm test
+
+      - name: Validate production geocoding provider
+        env:
+          GEOCODING_API_BASE_URL: ${{ vars.GEOCODING_API_BASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GEOCODING_API_BASE_URL:-}" ]]; then
+            echo "::error::Set the repository Actions variable GEOCODING_API_BASE_URL to an owned or contracted HTTPS geocoder endpoint before deploying Functions."
+            exit 1
+          fi
+          case "$GEOCODING_API_BASE_URL" in
+            https://*) ;;
+            *) echo "::error::GEOCODING_API_BASE_URL must use HTTPS."; exit 1 ;;
+          esac
+          printf 'GEOCODING_API_BASE_URL=%s\n' "$GEOCODING_API_BASE_URL" > functions/.env
+          chmod 600 functions/.env
+
       - name: Verify Firebase deployment credential is available
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
