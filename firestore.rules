@@ -143,6 +143,8 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.get('verified', false) != true
         && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('approved', false) != true
+        && request.resource.data.get('verificationStatus', 'pending') != 'approved'
         && request.resource.data.get('approvalStatus', 'pending') != 'approved'
         && request.resource.data.get('isAdmin', false) != true);
       allow update: if isAdmin() || (signedIn()
@@ -385,6 +387,8 @@ service cloud.firestore {
         && request.resource.data.get('status', 'pending') != 'approved'
         && request.resource.data.get('verified', false) != true
         && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('approved', false) != true
+        && request.resource.data.get('verificationStatus', 'pending') != 'approved'
         && request.resource.data.get('isAdmin', false) != true;
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       allow update: if isAdmin() || (signedIn()
@@ -408,6 +412,8 @@ service cloud.firestore {
         && request.resource.data.get('status', 'pending') != 'approved'
         && request.resource.data.get('verified', false) != true
         && request.resource.data.get('isVerified', false) != true
+        && request.resource.data.get('approved', false) != true
+        && request.resource.data.get('verificationStatus', 'pending') != 'approved'
         && request.resource.data.get('isAdmin', false) != true);
       allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
