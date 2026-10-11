@@ -93,8 +93,34 @@ jobs:
           grep -q '^org.gradle.workers.max=' android/gradle.properties || echo 'org.gradle.workers.max=2' >> android/gradle.properties
           grep -q '^org.gradle.parallel=' android/gradle.properties || echo 'org.gradle.parallel=false' >> android/gradle.properties
 
+      - name: Validate production map tile provider
+        if: ${{ inputs.publish_update }}
+        env:
+          MAP_TILE_URL: ${{ vars.MAP_TILE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAP_TILE_URL:-}" ]]; then
+            echo "::error::Set the repository Actions variable MAP_TILE_URL to a commercial/self-hosted tile endpoint before publishing a production update."
+            exit 1
+          fi
+          case "$MAP_TILE_URL" in
+            https://*) ;;
+            *) echo "::error::MAP_TILE_URL must use HTTPS."; exit 1 ;;
+          esac
+          case "$MAP_TILE_URL" in
+            *tile.openstreetmap.org*|*cartocdn.com*)
+              echo "::error::Public OpenStreetMap/CARTO endpoints are not approved for production-scale ALLways ride/delivery navigation. Configure a provider that explicitly permits this use."
+              exit 1
+              ;;
+          esac
+
       - name: Build optimized ARM64 APK
-        run: flutter build apk --release --target-platform android-arm64 --shrink
+        env:
+          MAP_TILE_URL: ${{ vars.MAP_TILE_URL }}
+        run: |
+          TILE_URL="${MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"
+          flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAP_TILE_URL="$TILE_URL"
 
       - name: Enforce 25 MiB APK maximum and record checksum
         shell: bash
@@ -102,11 +128,11 @@ jobs:
           apk="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$apk"
           size=$(stat -c%s "$apk")
-          max_size=$((25 * 1024 * 1024))
+          max_size=25000000
           mb=$(awk -v bytes="$size" 'BEGIN {printf "%.2f", bytes/1024/1024}')
-          echo "Customer APK size: ${mb} MiB (${size} bytes)"
-          if [ "$size" -gt "$max_size" ]; then
-            echo "::error::APK exceeds the hard 25 MiB maximum. Do not distribute this build."
+          echo "Customer APK size: ${mb} MiB (${size} bytes; strict ceiling 25,000,000 bytes)"
+          if [ "$size" -ge "$max_size" ]; then
+            echo "::error::APK must be below 25,000,000 bytes. Do not distribute this build."
             exit 1
           fi
           sha256sum "$apk"
