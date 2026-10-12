@@ -45,6 +45,7 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   bool _cameraFitted = false;
   bool _mapReady = false;
   StreamSubscription<Position>? _customerLocationSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _rideSubscription;
   bool _customerLocationStarted = false;
   double? _distanceToOtherKm;
   String _etaText = 'Updating…';
@@ -66,11 +67,12 @@ class _LiveRideTrackingScreenState extends State<LiveRideTrackingScreen> {
   @override
   void dispose() {
     _customerLocationSubscription?.cancel();
+    _rideSubscription?.cancel();
     super.dispose();
   }
 
   void _initRideStream() {
-    FirebaseFirestore.instance.collection('autoRideRequests').doc(widget.rideId).snapshots().listen((doc) {
+    _rideSubscription = FirebaseFirestore.instance.collection('autoRideRequests').doc(widget.rideId).snapshots().listen((doc) {
       if (!mounted || !doc.exists || doc.data() == null) return;
       final data = doc.data()!;
       LatLng? newPickup;
