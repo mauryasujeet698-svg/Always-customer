@@ -42,8 +42,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ALLWAYS_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$KEYSTORE_B64"
-          test -n "$STORE_PASSWORD"
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ]; then
+            echo "::error::Missing signing secrets. Add ALLWAYS_KEYSTORE_BASE64 and ALLWAYS_KEYSTORE_PASSWORD in repository Actions secrets."
+            exit 1
+          fi
           KEY_PASSWORD_VALUE="${KEY_PASSWORD:-$STORE_PASSWORD}"
           mkdir -p mobile/android/keystore
           printf '%s' "$KEYSTORE_B64" | base64 --decode > mobile/android/keystore/allways-release.jks
