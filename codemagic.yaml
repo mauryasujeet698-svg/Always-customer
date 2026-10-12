@@ -14,7 +14,6 @@ workflows:
       branch_patterns:
         - pattern: allways-android-app
           include: true
-          source: true
       cancel_previous_builds: true
     scripts:
       - name: Validate required release secrets
