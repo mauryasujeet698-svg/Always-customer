@@ -1,0 +1,51 @@
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+key.properties
+service-account*.json
+*-service-account*.json
+firebase-adminsdk-*.json
+credentials*.json
+
+# Firebase local/emulator state
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Node / Firebase Functions
+node_modules/
+functions/node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Flutter / Android generated output and local machine settings
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+**/build/
+android/local.properties
+mobile/android/local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Signing material and local IDE metadata
+**/keystore/
+*.apk
+*.aab
+*.ipa
+*.dSYM/
+*.provisionprofile
+*.mobileprovision
