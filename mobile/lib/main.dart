@@ -4881,10 +4881,29 @@ class _TripCard extends StatelessWidget {
       context:context,
       builder:(dialogContext)=>AlertDialog(
         title:Text(isRide?'Cancel ride?':'Cancel vehicle booking?'),
-        content:const Text('Please select a reason for cancellation.'),
+        content:SizedBox(
+          width:360,
+          child:SingleChildScrollView(
+            child:Column(
+              mainAxisSize:MainAxisSize.min,
+              children:[
+                const Padding(
+                  padding:EdgeInsets.only(bottom:8),
+                  child:Align(alignment:Alignment.centerLeft,child:Text('Please select a reason for cancellation.')),
+                ),
+                ...reasons.map((value)=>ListTile(
+                  contentPadding:EdgeInsets.zero,
+                  dense:true,
+                  title:Text(value),
+                  trailing:const Icon(Icons.chevron_right),
+                  onTap:()=>Navigator.pop(dialogContext,value),
+                )),
+              ],
+            ),
+          ),
+        ),
         actions:[
           TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('Keep booking')),
-          ...reasons.map((value)=>TextButton(onPressed:()=>Navigator.pop(dialogContext,value),child:Text(value))),
         ],
       ),
     );
