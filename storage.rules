@@ -13,10 +13,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*|application/pdf');
     }
 
+    function isAllowedImage() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Public storefront banners; only the designated admin can change them.
     match /banners/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin() && isAllowedImageOrPdf();
+      allow write: if isAdmin() && isAllowedImage();
     }
 
     // Identity and onboarding uploads can contain sensitive documents.
@@ -34,7 +40,7 @@ service firebase.storage {
       allow read: if true;
       allow write: if signedIn()
         && request.auth.uid == uid
-        && isAllowedImageOrPdf();
+        && isAllowedImage();
     }
   }
 }
