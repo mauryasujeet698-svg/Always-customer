@@ -630,7 +630,13 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 
       const pLat = Number(p.carrierLat ?? p.latitude);
       const pLng = Number(p.carrierLng ?? p.longitude);
-      if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) continue;
+      const updatedAt = p.carrierLocationUpdatedAt || p.lastLocationAt;
+      const updatedMs = updatedAt?.toMillis ? updatedAt.toMillis()
+        : (updatedAt instanceof Date ? updatedAt.getTime() : Number.NaN);
+      if (!Number.isFinite(pLat) || !Number.isFinite(pLng) ||
+          !Number.isFinite(updatedMs) ||
+          Date.now() - updatedMs > 120000 ||
+          updatedMs - Date.now() > 30000) continue;
 
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
       if (distance > matchingRadiusKm) continue;
@@ -841,6 +847,14 @@ exports.acceptRide = onCall({ region: "asia-south1" }, async (request) => {
     const pickupLng = Number(ride.pickupLongitude ?? ride.pickupLng);
     const driverLat = Number(partner.carrierLat ?? partner.latitude);
     const driverLng = Number(partner.carrierLng ?? partner.longitude);
+    const locationUpdatedAt = partner.carrierLocationUpdatedAt || partner.lastLocationAt;
+    const locationUpdatedMs = locationUpdatedAt?.toMillis ? locationUpdatedAt.toMillis()
+      : (locationUpdatedAt instanceof Date ? locationUpdatedAt.getTime() : Number.NaN);
+    if (!Number.isFinite(locationUpdatedMs) ||
+        Date.now() - locationUpdatedMs > 120000 ||
+        locationUpdatedMs - Date.now() > 30000) {
+      throw new HttpsError("failed-precondition", "Your live location is stale. Keep GPS on and wait for a fresh position before accepting.");
+    }
     if (![pickupLat, pickupLng, driverLat, driverLng].every(Number.isFinite) ||
         Math.abs(pickupLat) > 90 || Math.abs(driverLat) > 90 ||
         Math.abs(pickupLng) > 180 || Math.abs(driverLng) > 180) {
