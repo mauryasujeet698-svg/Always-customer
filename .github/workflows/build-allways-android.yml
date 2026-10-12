@@ -1,16 +1,169 @@
-name: ALLways Customer legacy APK workflow (Codemagic is primary)
+name: ALLways Customer Android Release
 on:
-  workflow_dispatch
+  push:
+    branches:
+      - allways-android-app
+  workflow_dispatch:
+
+concurrency:
+  group: allways-customer-android-release
+  cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  notice:
-    runs-on: ubuntu-latest
+  build:
+    name: Build, test and launch-check Customer APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Explain release path
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.2'
+          cache: true
+
+      - name: Configure release signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ALLWAYS_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ALLWAYS_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ALLWAYS_KEY_PASSWORD }}
         run: |
-          echo "The self-hosted Android build has been retired."
-          echo "Use the ALLways Customer Android Release workflow in Codemagic."
-          echo "Codemagic validates signing, runs Flutter analysis/tests, and enforces the 35,000,000-byte APK limit."
+          set -euo pipefail
+          test -n "$KEYSTORE_B64"
+          test -n "$STORE_PASSWORD"
+          KEY_PASSWORD_VALUE="${KEY_PASSWORD:-$STORE_PASSWORD}"
+          mkdir -p mobile/android/keystore
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > mobile/android/keystore/allways-release.jks
+          test -s mobile/android/keystore/allways-release.jks
+          chmod 600 mobile/android/keystore/allways-release.jks
+          cat > mobile/android/key.properties <<EOF
+          storeFile=keystore/allways-release.jks
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD_VALUE
+          keyAlias=allways
+          EOF
+          keytool -list -keystore mobile/android/keystore/allways-release.jks -storepass "$STORE_PASSWORD" -alias allways >/dev/null
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Analyze and test
+        working-directory: mobile
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build signed arm64 production APK
+        working-directory: mobile
+        env:
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MAPBOX_PUBLIC_TOKEN"
+          case "$MAPBOX_PUBLIC_TOKEN" in pk.*) ;; *) echo "::error::MAPBOX_PUBLIC_TOKEN must be a public pk.* token"; exit 1 ;; esac
+          flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="$MAPBOX_PUBLIC_TOKEN"
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          SIZE=$(stat -c%s "$APK")
+          echo "Customer arm64 APK size: $SIZE bytes (maximum 35,000,000)"
+          if [ "$SIZE" -gt 35000000 ]; then echo "::error::Customer APK exceeds 35 MB"; exit 1; fi
+          BUILD_TOOLS="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT2="$BUILD_TOOLS/aapt2"
+          test -x "$APKSIGNER"
+          test -x "$AAPT2"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --print-certs "$APK"
+          "$AAPT2" dump badging "$APK" | grep -F "package: name='com.allways.app'"
+          "$AAPT2" dump badging "$APK" | grep -F "application-label:'ALLways'"
+          "$AAPT2" dump permissions "$APK" | grep -F "android.permission.INTERNET"
+          echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')" | tee build/release-checksum.txt
+          VERSION=$(grep '^version:' ../mobile/pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          mkdir -p ../release-assets
+          cp "$APK" "../release-assets/allways-customer-v${VERSION}.apk"
+          cp build/release-checksum.txt ../release-assets/allways-customer-checksum.txt
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build release-mode x86_64 APK for launch smoke test
+        working-directory: mobile
+        env:
+          MAPBOX_PUBLIC_TOKEN: ${{ secrets.MAPBOX_PUBLIC_TOKEN }}
+        run: flutter build apk --release --target-platform android-x64 --shrink --obfuscate --split-debug-info=build/smoke-symbols --dart-define=MAPBOX_PUBLIC_TOKEN="$MAPBOX_PUBLIC_TOKEN"
+
+      - name: Android release-mode launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+            adb wait-for-device
+            ready=0
+            for attempt in $(seq 1 90); do
+              boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+              if [ "$boot" = "1" ] && adb shell cmd package list packages >/dev/null 2>&1 && adb shell dumpsys activity activities >/dev/null 2>&1; then
+                ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$ready" != "1" ]; then
+              echo "::error::Android emulator package/activity services never became ready."
+              adb logcat -d -t 1500 | tail -n 300 || true
+              exit 1
+            fi
+            adb logcat -c
+            APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
+            installed=0
+            for attempt in 1 2 3 4; do
+              if adb install -r "$APK"; then installed=1; break; fi
+              sleep 5
+            done
+            if [ "$installed" != "1" ]; then
+              echo "::error::Release-mode x86_64 smoke APK could not be installed."
+              adb logcat -d -t 1500 | tail -n 300 || true
+              exit 1
+            fi
+            timeout 90s adb shell am start -W -n com.allways.app/.MainActivity
+            sleep 15
+            if ! adb shell pidof com.allways.app >/dev/null; then
+              echo "::error::Customer process exited after startup."
+              adb logcat -d -t 1800 | grep -E 'FATAL EXCEPTION|AndroidRuntime|Process: com.allways.app|Unable to start activity' || true
+              exit 1
+            fi
+            if adb logcat -d -t 1800 | grep -E 'FATAL EXCEPTION.*com.allways.app|Process: com.allways.app.*died'; then
+              echo "::error::Customer startup logs show a fatal crash."
+              exit 1
+            fi
+
+      - name: Publish latest Customer APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: allways-latest
+          name: "ALLways Customer v${{ env.APP_VERSION }}"
+          draft: false
+          prerelease: false
+          overwrite_files: true
+          files: |
+            release-assets/allways-customer-v${{ env.APP_VERSION }}.apk
+            release-assets/allways-customer-checksum.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,10 +1,11 @@
-name: Deploy ALLways Firebase Rules
+name: Deploy ALLways Firebase Backend and Rules
 
 on:
   push:
     branches:
       - allways-android-app
     paths:
+      - "functions/**"
       - "firestore.rules"
       - "storage.rules"
       - "firebase.json"
@@ -15,9 +16,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: allways-firebase-production-deploy
+  cancel-in-progress: false
+
 jobs:
-  deploy-rules:
+  deploy-backend:
+    name: Deploy Functions first, then Firestore rules
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,20 +32,33 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
+      - name: Validate Cloud Functions source
+        run: |
+          set -euo pipefail
+          node --check functions/index.js
+          npm --prefix functions install --no-package-lock --ignore-scripts --no-audit --no-fund
+
       - name: Write Firebase service-account credentials
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        shell: bash
         run: |
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "::error::Missing GitHub repository secret FIREBASE_SERVICE_ACCOUNT_JSON"; exit 1; }
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
 
-      - name: Deploy Firestore rules (Storage remains deferred until Blaze)
+      - name: Deploy Cloud Functions before tightening rules
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-        run: |
-          firebase deploy --project allways-web --only firestore:rules --non-interactive
+        run: firebase deploy --project allways-web --only functions --non-interactive
+
+      - name: Deploy Firestore rules only after Functions succeed
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: firebase deploy --project allways-web --only firestore:rules --non-interactive
