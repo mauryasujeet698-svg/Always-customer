@@ -74,3 +74,42 @@ workflows:
       - mobile/build/app/outputs/flutter-apk/app-release.apk
       - mobile/build/release-checksum.txt
       - mobile/build/symbols/**
+
+
+  allways-backend-deploy:
+    name: ALLways Firebase Backend Deployment
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - allways_backend_deploy
+    scripts:
+      - name: Validate backend deploy configuration
+        script: |
+          set -euo pipefail
+          : "${FIREBASE_SERVICE_ACCOUNT_JSON:?Add FIREBASE_SERVICE_ACCOUNT_JSON to Codemagic environment group allways_backend_deploy}"
+          command -v node >/dev/null
+          command -v npm >/dev/null
+          node --check functions/index.js
+      - name: Install backend deploy tools
+        script: |
+          set -euo pipefail
+          npm install --global firebase-tools
+          npm --prefix functions install --no-package-lock --ignore-scripts --no-audit --no-fund
+      - name: Write temporary Firebase credentials
+        script: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CM_BUILD_DIR/firebase-service-account.json"
+          chmod 600 "$CM_BUILD_DIR/firebase-service-account.json"
+          node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$CM_BUILD_DIR/firebase-service-account.json"
+      - name: Deploy Cloud Functions before rules
+        script: |
+          set -euo pipefail
+          GOOGLE_APPLICATION_CREDENTIALS="$CM_BUILD_DIR/firebase-service-account.json" firebase deploy --project allways-web --only functions --non-interactive
+      - name: Deploy Firestore rules after Functions succeed
+        script: |
+          set -euo pipefail
+          GOOGLE_APPLICATION_CREDENTIALS="$CM_BUILD_DIR/firebase-service-account.json" firebase deploy --project allways-web --only firestore:rules --non-interactive
+      - name: Remove temporary Firebase credentials
+        script: |
+          rm -f "$CM_BUILD_DIR/firebase-service-account.json"
