@@ -43,8 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASSWORD" ]; then
-            echo "::error::Missing signing secrets. Add ALLWAYS_KEYSTORE_BASE64 and ALLWAYS_KEYSTORE_PASSWORD in repository Actions secrets."
-            exit 1
+            echo "::warning::Release signing secrets are not configured; building an unsigned validation APK only."
+            echo "UNSIGNED_VALIDATION_BUILD=true" >> "$GITHUB_ENV"
+            exit 0
           fi
           KEY_PASSWORD_VALUE="${KEY_PASSWORD:-$STORE_PASSWORD}"
           mkdir -p mobile/android/keystore
@@ -90,8 +91,12 @@ jobs:
           AAPT2="$BUILD_TOOLS/aapt2"
           test -x "$APKSIGNER"
           test -x "$AAPT2"
-          "$APKSIGNER" verify --verbose "$APK"
-          "$APKSIGNER" verify --print-certs "$APK"
+          if [ "${UNSIGNED_VALIDATION_BUILD:-false}" != "true" ]; then
+            "$APKSIGNER" verify --verbose "$APK"
+            "$APKSIGNER" verify --print-certs "$APK"
+          else
+            echo "::warning::APK signature verification skipped for unsigned validation build."
+          fi
           "$AAPT2" dump badging "$APK" | grep -F "package: name='com.allways.app'"
           "$AAPT2" dump badging "$APK" | grep -F "application-label:'ALLways'"
           "$AAPT2" dump permissions "$APK" | grep -F "android.permission.INTERNET"
@@ -131,7 +136,7 @@ jobs:
           retention-days: 14
 
       - name: Publish latest Customer APK release
-        if: success() && github.ref == 'refs/heads/allways-android-app'
+        if: success() && github.ref == 'refs/heads/allways-android-app' && env.UNSIGNED_VALIDATION_BUILD != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: allways-latest
