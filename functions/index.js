@@ -73,14 +73,20 @@ async function sendToUser(uid, title, body, data = {}, role = "") {
   });
 
   if (invalid.length) {
+    // Token document IDs may not equal the underlying FCM token value.
+    // Compare stored token fields, remove stale devices and never log token strings.
+    const invalidTokens = new Set(invalid);
+    const tokenRef = db.collection("fcmTokens").doc(uid);
+    const tokenDocs = await tokenRef.collection("tokens").get();
     const batch = db.batch();
-    for (const token of invalid) {
-      batch.delete(rootRef.collection("tokens").doc(token));
+    for (const tokenDoc of tokenDocs.docs) {
+      const storedToken = String(tokenDoc.data()?.token || tokenDoc.id || "").trim();
+      if (invalidTokens.has(storedToken)) batch.delete(tokenDoc.ref);
     }
-    const root = await rootRef.get();
+    const root = await tokenRef.get();
     const rootToken = String(root.data()?.token || "").trim();
-    if (rootToken && invalid.includes(rootToken)) {
-      batch.set(rootRef, {
+    if (invalidTokens.has(rootToken)) {
+      batch.set(tokenRef, {
         token: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
@@ -790,9 +796,12 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
 
   return db.runTransaction(async (tx) => {
     const rideSnap = await tx.get(rideRef);
+    const partnerSnap = await tx.get(partnerRef);
     if (!rideSnap.exists) throw new HttpsError("not-found", "The ride could not be found.");
+    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Driver profile not found.");
 
     const ride = rideSnap.data() || {};
+    const partner = partnerSnap.data() || {};
     const assignedUid = String(ride.driverUid || ride.carrierUid || "").trim();
     if (assignedUid !== uid) {
       throw new HttpsError("permission-denied", "You are not assigned to this ride.");
@@ -809,11 +818,15 @@ exports.completeRide = onCall({ region: "asia-south1" }, async (request) => {
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const shouldGoOnline = partner.isOnline !== false;
     tx.set(partnerRef, {
-      status: "available",
-      availableForRides: true,
+      // Preserve online/offline choice and the status token used by Firestore rules.
+      status: shouldGoOnline ? "online" : "offline",
+      isOnline: shouldGoOnline,
+      availableForRides: shouldGoOnline,
       activeRideId: null,
       statusUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
     return { completed: true };
