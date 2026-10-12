@@ -111,23 +111,30 @@ service cloud.firestore {
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt',
             'customerActive','expiredAt'
           ])
-          && (request.resource.data.status == resource.data.status
-            || request.resource.data.status in ['cancelled','expired'])
-          && request.resource.data.status in ['searching','requested','accepted','arrived','started','cancelled','expired']
-          && (request.resource.data.status != 'cancelled'
-            || request.resource.data.get('cancelledBy', '') == 'customer')
-          && (request.resource.data.status != 'expired'
-            || (resource.data.get('expiresAt', null) is timestamp && resource.data.expiresAt <= request.time)))
+          && request.resource.data.status in ['searching','requested','accepted','assigned','arriving','arrived','started','cancelled','expired']
+          && (
+            request.resource.data.status == resource.data.status
+            || (request.resource.data.status == 'cancelled'
+              && resource.data.status in ['searching','requested','accepted','assigned','arriving','arrived','started']
+              && request.resource.data.get('cancelledBy', '') == 'customer')
+            || (request.resource.data.status == 'expired'
+              && resource.data.status in ['searching','requested']
+              && resource.data.get('expiresAt', null) is timestamp
+              && resource.data.expiresAt <= request.time)
+          ))
         || (signedIn()
           && (resource.data.driverUid == request.auth.uid || resource.data.carrierUid == request.auth.uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'status','driverLat','driverLng','driverLocationUpdatedAt','rejectedBy','updatedAt',
             'cancelledBy','cancellationReason','cancelledAt'
           ])
-          && (request.resource.data.status == resource.data.status || request.resource.data.status == 'cancelled')
           && request.resource.data.status in ['accepted','arrived','started','cancelled']
-          && (request.resource.data.status != 'cancelled'
-            || request.resource.data.get('cancelledBy', '') == 'partner'))
+          && (
+            request.resource.data.status == resource.data.status
+            || (request.resource.data.status == 'cancelled'
+              && resource.data.status in ['accepted','arrived','started']
+              && request.resource.data.get('cancelledBy', '') == 'partner')
+          ))
         || (onlineRidePartner()
           && resource.data.status == 'searching'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejectedBy','updatedAt'])
