@@ -8,6 +8,7 @@ workflows:
       java: 17
       groups:
         - allways_android_release
+    # Pushes to this private release branch trigger the cloud build.
     triggering:
       events:
         - push
