@@ -2,7 +2,7 @@ name: ALLways Functions Source Validation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, security/redact-fcm-token-logs]
     paths:
       - "functions/**"
       - ".github/workflows/functions-check.yml"
