@@ -1158,6 +1158,10 @@ exports.getVehicleBookingContact = onCall({ region: "asia-south1" }, async (requ
   if (String(booking.customerUid || "") !== uid) {
     throw new HttpsError("permission-denied", "You can only view contact details for your own vehicle booking.");
   }
+  const bookingStatus = String(booking.status || "").trim().toLowerCase();
+  if (["cancelled", "rejected", "completed", "delivered", "expired"].includes(bookingStatus)) {
+    throw new HttpsError("failed-precondition", "Contact details are no longer available for a finished or cancelled booking.");
+  }
   const vehicleId = String(booking.vehicleId || "").trim();
   if (!vehicleId) throw new HttpsError("failed-precondition", "This booking has no vehicle reference.");
   const vehicleSnap = await db.collection("vehicles").doc(vehicleId).get();
