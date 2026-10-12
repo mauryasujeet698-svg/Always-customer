@@ -1200,19 +1200,26 @@ exports.migrateVehicleContactPrivacy = onCall(
     let migrated = 0;
     const eligible = snap.docs.filter((doc) => {
       const data = doc.data() || {};
-      return String(data.ownerUid || "").trim() && String(data.ownerPhone || "").trim();
+      const ownerUid = String(data.ownerUid || "").trim();
+      const hasPhone = String(data.ownerPhone || "").trim().length > 0;
+      const hasPreciseLocation = ["latitude", "longitude", "ownerLat", "ownerLng", "currentLocation"]
+        .some((key) => data[key] !== undefined && data[key] !== null);
+      return ownerUid && (hasPhone || hasPreciseLocation);
     });
     // Keep every write batch below Firestore's 500-operation limit.
     for (let i = 0; i < eligible.length; i += 200) {
       const batch = db.batch();
       for (const doc of eligible.slice(i, i + 200)) {
         const data = doc.data() || {};
-        batch.set(db.collection("vehicleOwnerContacts").doc(doc.id), {
-          vehicleId: doc.id,
-          ownerUid: String(data.ownerUid).trim(),
-          phone: String(data.ownerPhone).trim(),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        const phone = String(data.ownerPhone || "").trim();
+        if (phone) {
+          batch.set(db.collection("vehicleOwnerContacts").doc(doc.id), {
+            vehicleId: doc.id,
+            ownerUid: String(data.ownerUid).trim(),
+            phone,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
         batch.update(doc.ref, {
           ownerPhone: FieldValue.delete(),
           latitude: FieldValue.delete(),
