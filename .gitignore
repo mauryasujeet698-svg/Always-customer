@@ -42,5 +42,10 @@ mobile/android/local.properties
 .DS_Store
 
 # Signing material and local IDE metadata
+**/keystore/
+*.apk
+*.aab
+*.ipa
+*.dSYM/
 *.provisionprofile
 *.mobileprovision
