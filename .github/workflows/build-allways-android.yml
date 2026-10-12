@@ -4,10 +4,13 @@ on:
     branches:
       - allways-android-app
       - fix/customer-apk-ci-smoke-test
+  pull_request:
+    branches:
+      - allways-android-app
   workflow_dispatch:
 
 concurrency:
-  group: allways-customer-android-release
+  group: allways-customer-android-release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
