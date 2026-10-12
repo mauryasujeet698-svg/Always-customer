@@ -70,7 +70,7 @@ async function sendToUserTokens(uid, title, body, data = {}) {
     if (token) {
       sends.push(
         sendToToken(token, title, body, data).catch((err) => {
-          console.warn("Token send failed for", uid, token, err.message);
+          console.warn("FCM token send failed", { code: String(err?.code || "unknown") });
         })
       );
     }
