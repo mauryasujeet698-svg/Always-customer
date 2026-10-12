@@ -147,6 +147,14 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'customerLat','customerLng','customerLocationUpdatedAt','updatedAt'
           ]))
+        || (signedIn() && resource.data.customerUid == request.auth.uid
+          && resource.data.status in ['Booked','booked','Pending','pending','Requested','requested','Confirmed','confirmed','Accepted','accepted','in review']
+          && request.resource.data.status in ['Cancelled','cancelled']
+          && request.resource.data.cancellationReason is string
+          && request.resource.data.cancellationReason.size() > 0
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status','cancelledBy','cancellationReason','cancelledAt','updatedAt'
+          ]))
         || (signedIn() && resource.data.ownerUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'ownerLat','ownerLng','ownerLocationUpdatedAt','status','updatedAt'
