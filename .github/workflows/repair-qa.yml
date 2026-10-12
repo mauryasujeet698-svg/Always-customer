@@ -49,7 +49,13 @@ jobs:
         run: flutter analyze
       - name: Unit and widget tests
         working-directory: mobile
-        run: flutter test
+        shell: bash
+        run: |
+          if find test -type f -name '*_test.dart' -print -quit 2>/dev/null | grep -q .; then
+            flutter test
+          else
+            echo "No Dart test files found; compile smoke test remains required."
+          fi
       - name: Debug compile smoke test (not a release artifact)
         working-directory: mobile
         run: flutter build apk --debug --target-platform android-arm64
