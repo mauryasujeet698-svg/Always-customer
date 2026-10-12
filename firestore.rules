@@ -42,13 +42,36 @@ service cloud.firestore {
 
     match /deliveryPartners/{userId} {
       allow read: if signedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
+
+      // A partner may create a profile, but cannot self-assign approval.
+      // Approval changes must be performed by the admin.
+      allow create: if isAdmin() || (
+        isOwner(userId) &&
+        (!('approvalStatus' in request.resource.data) ||
+          request.resource.data.approvalStatus == 'pending')
+      );
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['approvalStatus'])
+      );
       allow delete: if isAdmin();
     }
 
     match /ridePartners/{userId} {
       allow read: if signedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
+
+      // Keep ride-partner approval server/admin controlled as well.
+      allow create: if isAdmin() || (
+        isOwner(userId) &&
+        (!('approvalStatus' in request.resource.data) ||
+          request.resource.data.approvalStatus == 'pending')
+      );
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['approvalStatus'])
+      );
       allow delete: if isAdmin();
     }
 
