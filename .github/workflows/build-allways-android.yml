@@ -1,6 +1,6 @@
 name: ALLways Customer legacy APK workflow (Codemagic is primary)
 on:
-  workflow_dispatch:
+  workflow_dispatch
 
 permissions:
   contents: read
@@ -13,4 +13,4 @@ jobs:
         run: |
           echo "The self-hosted Android build has been retired."
           echo "Use the ALLways Customer Android Release workflow in Codemagic."
-          echo "Codemagic validates signing, runs Flutter analysis/tests, and enforces the 25,000,000-byte APK limit."
+          echo "Codemagic validates signing, runs Flutter analysis/tests, and enforces the 35,000,000-byte APK limit."
