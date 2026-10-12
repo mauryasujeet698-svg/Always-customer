@@ -235,13 +235,23 @@ service cloud.firestore {
 
     match /ridePartners/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.get('role', 'customer') != 'admin');
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.get('role', '') == 'carrier'
+        && request.resource.data.get('approvalStatus', '') == 'pending'
+        && request.resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('isOnline', false) == false
+        && request.resource.data.get('availableForRides', false) == false;
       allow update: if isAdmin()
-        || (signedIn() && request.auth.uid == uid
-          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
-          && request.resource.data.get('role', 'customer') != 'admin'
-          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
+        || (signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.get('role', '') == resource.data.get('role', '')
+          && request.resource.data.get('role', '') == 'carrier'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name','fullName','displayName','email','phone','mobile','mobileNumber',
+            'address','profilePhotoUrl','vehicleType','vehicleTypeUpdatedAt','vehicleNumber',
+            'carrierLat','carrierLng','carrierLocationUpdatedAt','lastLocationAt','lastSeenAt','updatedAt'
+          ]));
       allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
 
@@ -321,13 +331,24 @@ service cloud.firestore {
 
     match /deliveryPartners/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow create: if signedIn() && request.auth.uid == uid
-        && (request.resource.data.get('role', 'customer') != 'admin');
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.get('role', '') == 'delivery_partner'
+        && request.resource.data.get('approvalStatus', '') == 'pending'
+        && request.resource.data.get('status', '') == 'pending'
+        && request.resource.data.get('isOnline', false) == false
+        && request.resource.data.get('availableForDeliveries', false) == false;
       allow update: if isAdmin()
-        || (signedIn() && request.auth.uid == uid
-          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer')
-          && request.resource.data.get('role', 'customer') != 'admin'
-          && (request.resource.data.status != 'online' || request.resource.data.approvalStatus == 'approved'));
+        || (signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.get('role', '') == resource.data.get('role', '')
+          && request.resource.data.get('role', '') == 'delivery_partner'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name','fullName','displayName','email','phone','mobile','mobileNumber',
+            'address','profilePhotoUrl','vehicleType','vehicleTypeUpdatedAt','vehicleNumber',
+            'deliveryLat','deliveryLng','lastLat','lastLng','deliveryLocationUpdatedAt',
+            'lastLocationAt','lastSeenAt','updatedAt'
+          ]));
       allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
     }
 
