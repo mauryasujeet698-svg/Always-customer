@@ -123,8 +123,7 @@ service cloud.firestore {
           && (resource.data.get('driverUid', '') == request.auth.uid
             || resource.data.get('carrierUid', '') == request.auth.uid)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status','driverLat','driverLng','driverLocationUpdatedAt','cancelledBy',
-            'cancellationReason','cancelledAt','updatedAt'
+            'driverLat','driverLng','driverLocationUpdatedAt','updatedAt'
           ]));
       allow delete: if isAdmin();
     }
