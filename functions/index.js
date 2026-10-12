@@ -588,8 +588,12 @@ async function rideMatchingRadiusKm() {
 exports.onAutoRideRequestCreated = onDocumentCreated(
   "autoRideRequests/{requestId}",
   async (event) => {
-    const ride = event.data?.data();
-    if (!ride || String(ride.status || "").toLowerCase() !== "searching") return;
+    if (!event.data) return;
+    // Re-read the current request so a fast customer cancellation isn't fanned out as a new offer.
+    const latestSnap = await event.data.ref.get();
+    if (!latestSnap.exists) return;
+    const ride = latestSnap.data() || {};
+    if (String(ride.status || "").toLowerCase() !== "searching" || ride.customerActive === false) return;
     if (!/^\d{4}$/.test(String(ride.confirmationPin || ""))) {
       await event.data.ref.set({
         confirmationPin: newConfirmationPin(),
@@ -618,7 +622,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       .where("status", "==", "online")
       .get();
     const matchingRadiusKm = await rideMatchingRadiusKm();
-    const offerExpiresAt = Date.now() + 30000;
+    const offerExpiresAt = new Date(expiresAtMs);
 
     for (const partner of snap.docs) {
       const p = partner.data() || {};
@@ -640,6 +644,28 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 
       const distance = distanceKm(pickupLat, pickupLng, pLat, pLng);
       if (distance > matchingRadiusKm) continue;
+
+      // The Driver Partner Requests tab reads this per-driver projection. Keep only
+      // dispatch-safe fields here; customer phone/contact data remains private.
+      await db.collection("rideOffers").doc(partner.id).collection("requests")
+        .doc(event.params.requestId).set({
+          requestId: event.params.requestId,
+          offerType: "ride",
+          status: "searching",
+          rideType,
+          pickupLatitude: pickupLat,
+          pickupLongitude: pickupLng,
+          pickupAddress: String(ride.pickupAddress || ride.address || ""),
+          destinationAddress: String(ride.destinationAddress || ride.destination || ""),
+          estimatedFare: Number(ride.estimatedFare ?? ride.fare ?? 0) || 0,
+          fare: Number(ride.fare ?? ride.estimatedFare ?? 0) || 0,
+          customerActive: true,
+          rejected: false,
+          rejectedBy: Array.isArray(ride.rejectedBy) ? ride.rejectedBy : [],
+          createdAt: ride.createdAt || FieldValue.serverTimestamp(),
+          offerExpiresAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
 
       await sendToUser(
         partner.id,
@@ -695,6 +721,27 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
         ridePinVerifiedAt: null,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
+    }
+
+    if (["accepted", "cancelled", "completed", "expired", "rejected"].includes(newStatus)) {
+      const assignedUid = String(after.driverUid || after.carrierUid || "").trim();
+      // Clear stale offer cards after the authoritative request changes state.
+      // Chunk writes below avoid Firestore's 500-write batch limit.
+      const offers = await db.collectionGroup("requests")
+        .where("requestId", "==", event.params.requestId)
+        .get();
+      for (let offset = 0; offset < offers.docs.length; offset += 450) {
+        const batch = db.batch();
+        for (const offerDoc of offers.docs.slice(offset, offset + 450)) {
+          batch.set(offerDoc.ref, {
+            status: newStatus,
+            assignedPartnerUid: assignedUid || FieldValue.delete(),
+            customerActive: !["cancelled", "completed", "expired", "rejected"].includes(newStatus),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+        await batch.commit();
+      }
     }
 
     const customerUid = String(after.customerUid || after.customerId || "").trim();

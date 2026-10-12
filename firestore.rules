@@ -68,6 +68,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /rideOffers/{partnerUid}/requests/{requestId} {
+      // A partner sees only offers addressed to their own UID. Cloud Functions use
+      // Admin SDK privileges to create and retire offers.
+      allow read: if signedIn() && (request.auth.uid == partnerUid || isAdmin());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.auth.uid == partnerUid
+          && resource.data.status == 'searching'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rejected','rejectedAt','updatedAt'])
+          && request.resource.data.rejected == true);
+    }
+
     match /autoRideRequests/{requestId} {
       function onlineRidePartner() {
         return signedIn()
