@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -937,7 +938,7 @@ class Product {
   factory Product.fromJson(Map<String,dynamic> j){
     num n(dynamic x)=>x is num?x:num.tryParse(x?.toString()??'')??0;
     final image=normalizeCatalogImageUrl(j['imageUrl']??j['Image URL']??j['image_url']??j['Image Url']??j['Product Image URL']??j['Image Link']??j['Image']??j['image']??j['photoUrl']??j['Photo URL']??j['photo']??'');
-    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??'').toString(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
+    return Product(id:(j['id']??j['ID']??'').toString(),name:(j['name']??j['title']??j['Product Name']??j['productName']??'Item').toString(),category:(j['category']??j['Category']??j['cat']??'Other').toString().trim(),icon:(j['icon']??j['emoji']??j['Emoji']??'🛍️').toString(),description:(j['description']??j['Description']??j['Product Description']??j['productDescription']??j['Product Details']??j['details']??j['Details']??'').toString().trim(),brand:(j['brand']??j['Brand']??'').toString(),imageUrl:image,price:n(j['price']??j['Price']),stock:n(j['stock']??j['Stock']));
   }
 }
 class CartItem { final Product product; int qty; CartItem(this.product,this.qty); }
@@ -1856,12 +1857,14 @@ class _ShopPageState extends State<ShopPage>{
                       borderRadius:BorderRadius.circular(12),
                     ),
                     child:p.imageUrl.isNotEmpty
-                         ? Image.network(
-                             p.imageUrl,
+                         ? CachedNetworkImage(
+                             imageUrl: normalizeCatalogImageUrl(p.imageUrl),
+                             cacheKey: normalizeCatalogImageUrl(p.imageUrl),
                              fit:BoxFit.cover,
                              width:double.infinity,
                              height:96,
-                             errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:42)),
+                             placeholder:(_,__)=>Container(color:const Color(0xFFF5F5F5)),
+                             errorWidget:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:42)),
                            )
                          : Text(p.icon,style:const TextStyle(fontSize:42)),
                   ),
@@ -2016,7 +2019,7 @@ class _ShopPageState extends State<ShopPage>{
                 final raw=bannerSnap.data?.data()?['imageUrls'];
                 final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(7).toList():<String>[];
                 if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle),const Spacer(),Text(deliveryText,style:const TextStyle(color:green,fontWeight:FontWeight.w900))]));
-                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[Image.network(urls[bannerIndex%urls.length],fit:BoxFit.cover,errorBuilder:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
+                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[CachedNetworkImage(imageUrl:normalizeCatalogImageUrl(urls[bannerIndex%urls.length]),cacheKey:normalizeCatalogImageUrl(urls[bannerIndex%urls.length]),fit:BoxFit.cover,placeholder:(_,__)=>Container(color:const Color(0xFFE7F7EE)),errorWidget:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
               },
             ),
             const SizedBox(height:14),
@@ -2062,7 +2065,7 @@ class CategoryProductsPage extends StatelessWidget{
             Stack(children:[
               Container(height:150,width:double.infinity,alignment:Alignment.center,decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(14)),
                 child:p.imageUrl.isNotEmpty
-                    ? Image.network(p.imageUrl,fit:BoxFit.cover,width:double.infinity,height:150,errorBuilder:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:60)))
+                    ? CachedNetworkImage(imageUrl:normalizeCatalogImageUrl(p.imageUrl),cacheKey:normalizeCatalogImageUrl(p.imageUrl),fit:BoxFit.cover,width:double.infinity,height:150,placeholder:(_,__)=>Container(color:Theme.of(context).colorScheme.surfaceContainerHighest),errorWidget:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:60)))
                     : Text(p.icon,style:const TextStyle(fontSize:60))),
               Positioned(right:0,top:0,child:IconButton(onPressed:()=>onWishlist(p),icon:Icon(liked?Icons.favorite:Icons.favorite_border,color:Colors.red))),
             ]),
@@ -2185,7 +2188,7 @@ class ProductScreen extends StatelessWidget{
        decoration:BoxDecoration(color:Theme.of(c).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(18)),
        clipBehavior:Clip.antiAlias,
        child:product.imageUrl.isNotEmpty
-           ? Image.network(product.imageUrl,fit:BoxFit.cover,width:double.infinity,height:220,errorBuilder:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
+           ? CachedNetworkImage(imageUrl:normalizeCatalogImageUrl(product.imageUrl),cacheKey:normalizeCatalogImageUrl(product.imageUrl),fit:BoxFit.cover,width:double.infinity,height:220,placeholder:(_,__)=>Container(color:Theme.of(c).colorScheme.surfaceContainerHighest),errorWidget:(_,__,___)=>Text(product.icon,style:const TextStyle(fontSize:70)))
            : Text(product.icon,style:const TextStyle(fontSize:70)),
      ),const SizedBox(height:20),
     Text(product.name,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900)),const SizedBox(height:8),Text(product.category,style:TextStyle(color:AllwaysColors.muted)),
@@ -4678,27 +4681,46 @@ class _TripCard extends StatelessWidget {
   bool get terminal=>['cancelled','rejected','completed','delivered','expired'].contains(status.toLowerCase());
 
   Future<void> _cancel(BuildContext context) async {
-    if(!isRide)return;
     final user=FirebaseAuth.instance.currentUser;
     if(user==null)return;
+    const reasons=[
+      'Changed my plans','Booked by mistake','Found another vehicle',
+      'Price or fare issue','Owner or partner not responding','Incorrect booking details','Other',
+    ];
+    final reason=await showDialog<String>(
+      context:context,
+      builder:(dialogContext)=>AlertDialog(
+        title:Text(isRide?'Cancel ride?':'Cancel vehicle booking?'),
+        content:const Text('Please select a reason for cancellation.'),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('Keep booking')),
+          ...reasons.map((value)=>TextButton(onPressed:()=>Navigator.pop(dialogContext,value),child:Text(value))),
+        ],
+      ),
+    );
+    if(reason==null||reason.trim().isEmpty)return;
     try{
       final ref=FirebaseFirestore.instance.collection(collection).doc(bookingId);
       await FirebaseFirestore.instance.runTransaction((tx)async{
         final snap=await tx.get(ref);
-        if(!snap.exists)throw Exception('This ride could not be found.');
+        if(!snap.exists)throw Exception('This booking could not be found.');
         final current=snap.data()??<String,dynamic>{};
-        if((current['customerUid']??'').toString()!=user.uid)throw Exception('This ride does not belong to your account.');
-        final currentStatus=(current['status']??'').toString().toLowerCase();
-        if(['cancelled','rejected','completed','delivered','expired'].contains(currentStatus))throw Exception('This ride can no longer be cancelled.');
-        if(currentStatus=='started')throw Exception('A ride that has started cannot be cancelled from the app. Contact support for help.');
+        if((current['customerUid']??'').toString()!=user.uid)throw Exception('This booking does not belong to your account.');
+        final currentStatus=(current['status']??'').toString().trim().toLowerCase();
+        if(['cancelled','rejected','completed','delivered','expired'].contains(currentStatus))throw Exception('This booking can no longer be cancelled.');
+        if(isRide&&['started','ongoing','in_progress'].contains(currentStatus))throw Exception('A ride that has started cannot be cancelled in the app. Contact support for help.');
+        if(!isRide&&!['booked','pending','requested','confirmed','accepted','in review'].contains(currentStatus))throw Exception('This vehicle booking can no longer be cancelled online.');
         tx.update(ref,{
-          'status':'cancelled','cancelledBy':'customer','cancellationReason':'Customer cancelled the ride',
-          'cancelledAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
+          'status':isRide?'cancelled':'Cancelled',
+          'cancelledBy':'customer',
+          'cancellationReason':reason.trim(),
+          'cancelledAt':FieldValue.serverTimestamp(),
+          'updatedAt':FieldValue.serverTimestamp(),
         });
       });
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Ride cancelled.')));
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Booking cancelled.')));
     }catch(e){
-      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel ride: '+e.toString().replaceFirst('Exception: ',''))));
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not cancel booking: '+e.toString().replaceFirst('Exception: ',''))));
     }
   }
 
@@ -4786,10 +4808,10 @@ class _TripCard extends StatelessWidget {
           if(phone.isNotEmpty)IconButton(onPressed:()=>launchUrl(Uri.parse('tel:'+phone)),icon:const Icon(Icons.call_outlined,color:AllwaysColors.primary)),
         ]),
         const SizedBox(height:10),
-        if(!terminal&&isRide)
+        if(!terminal)
           Row(children:[
-            Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:collection,docId:bookingId,title:'Live ride tracking',mode:'ride',broadcastPrefix:'customer',allowCancel:true))),icon:const Icon(Icons.location_on_outlined,size:18),label:const Text('Track Ride'))),
-            const SizedBox(width:8),
+            if(isRide)Expanded(child:FilledButton.icon(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>LiveTrackingScreen(collection:collection,docId:bookingId,title:'Live ride tracking',mode:'ride',broadcastPrefix:'customer',allowCancel:true))),icon:const Icon(Icons.location_on_outlined,size:18),label:const Text('Track Ride'))),
+            if(isRide)const SizedBox(width:8),
             Expanded(child:OutlinedButton.icon(onPressed:()=>_cancel(context),icon:const Icon(Icons.close,size:18),label:const Text('Cancel'))),
           ]),
         if(terminal||!isRide)
