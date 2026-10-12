@@ -35,7 +35,7 @@ service firebase.storage {
     }
 
     // Seller assets may be public for storefront display, but uploads are
-    // limited to images/PDFs under 10 MiB and the seller's own UID path.
+    // limited to images under 10 MiB and the seller's own UID path.
     match /sellers/{uid}/{allPaths=**} {
       allow read: if true;
       allow write: if signedIn()
