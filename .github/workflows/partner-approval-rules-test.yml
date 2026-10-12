@@ -1,0 +1,35 @@
+name: ALLways Partner Approval Rules Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "security-tests/**"
+      - ".github/workflows/partner-approval-rules-test.yml"
+  push:
+    branches: [security/block-partner-self-approval]
+    paths:
+      - "firestore.rules"
+      - "security-tests/**"
+      - ".github/workflows/partner-approval-rules-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  partner-approval-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        working-directory: security-tests
+        run: npm install --no-audit --no-fund
+      - name: Test partner approval rules in emulator
+        working-directory: security-tests
+        run: npm test
