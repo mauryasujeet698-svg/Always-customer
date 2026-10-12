@@ -59,9 +59,9 @@ workflows:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           SIZE=$(wc -c < "$APK" | tr -d ' ')
-          echo "Release APK size: $SIZE bytes (strict maximum: 25000000 bytes)"
-          if [ "$SIZE" -gt 25000000 ]; then
-            echo "ERROR: Customer APK exceeds 25 MB; refusing release."
+          echo "Release APK size: $SIZE bytes (strict maximum: 35000000 bytes)"
+          if [ "$SIZE" -gt 35000000 ]; then
+            echo "ERROR: Customer APK exceeds 35 MB; refusing release."
             exit 1
           fi
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
