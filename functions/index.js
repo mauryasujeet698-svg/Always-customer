@@ -973,6 +973,13 @@ function catalogValue(row, headers, name, fallback = "") {
   const index = headers.findIndex(h => catalogColumnKey(h) === target);
   return index >= 0 ? row[index] : fallback;
 }
+function catalogValueAny(row, headers, names, fallback = "") {
+  for (const name of names) {
+    const value = catalogValue(row, headers, name, null);
+    if (value !== null && value !== undefined && String(value).trim() !== "") return value;
+  }
+  return fallback;
+}
 function catalogImageUrl(row, headers) {
   const aliases = ["Image URL", "Product Image URL", "Image Link", "Image", "Photo URL", "Photo", "imageUrl"];
   let raw = "";
@@ -1040,6 +1047,7 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
         const product = {
           id,
           name,
+          description: String(catalogValueAny(row, headers, ["Description", "Product Description", "Product Details", "Details"], "")).trim(),
           category: String(catalogValue(row, headers, "Category", "")).trim(),
           emoji: String(catalogValue(row, headers, "Emoji", "")).trim(),
           price: catalogNumber(catalogValue(row, headers, "Price", 0)),
@@ -1052,7 +1060,7 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
         };
         batch.set(db.collection("products").doc(id), product, { merge: true });
         batch.set(db.collection("inventory").doc(id), {
-          id, productId: id, name, category: product.category, price: product.price,
+          id, productId: id, name, description: product.description, category: product.category, price: product.price,
           stock: product.stock, available: product.available, maxQty: product.maxQty,
           imageUrl: product.imageUrl, updatedAt: FieldValue.serverTimestamp(), source: "google_sheets",
         }, { merge: true });
