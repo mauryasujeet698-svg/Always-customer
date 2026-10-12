@@ -1,72 +1,16 @@
-name: ALLways Customer CI (Codemagic release builds)
+name: ALLways Customer legacy APK workflow (Codemagic is primary)
 on:
-  push:
-    branches: [allways-android-app]
-    paths:
-      - "mobile/**"
-      - "functions/**"
-      - "firestore.rules"
-      - "firebase.json"
-      - ".firebaserc"
-      - ".github/workflows/build-allways-android.yml"
-  pull_request:
-    branches: [allways-android-app]
-    paths:
-      - "mobile/**"
-      - "functions/**"
-      - "firestore.rules"
-      - "firebase.json"
-      - ".firebaserc"
-      - ".github/workflows/build-allways-android.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: allways-customer-ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  source-ci:
+  notice:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.35.2"
-          channel: stable
-          cache: true
-
-      - name: Install Flutter packages
-        working-directory: mobile
-        run: flutter pub get
-
-      - name: Analyze Dart
-        working-directory: mobile
-        run: flutter analyze
-
-      - name: Run Flutter tests
-        working-directory: mobile
-        run: flutter test
-
-      - name: Validate Cloud Functions JavaScript
-        run: node --check functions/index.js
-
-      - name: Check patch whitespace
-        run: git diff --check
+      - name: Explain release path
+        run: |
+          echo "The self-hosted Android build has been retired."
+          echo "Use the ALLways Customer Android Release workflow in Codemagic."
+          echo "Codemagic validates signing, runs Flutter analysis/tests, and enforces the 25,000,000-byte APK limit."
