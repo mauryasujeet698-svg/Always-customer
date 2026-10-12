@@ -70,6 +70,71 @@ workflows:
           "$APKSIGNER" verify --verbose "$APK"
           "$APKSIGNER" verify --print-certs "$APK"
           echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')" | tee build/release-checksum.txt
+
+      - name: Validate APK identity, internet permission and release launch
+        script: |
+          set -euo pipefail
+          cd mobile
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK_ROOT"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          AAPT2="$BUILD_TOOLS/aapt2"
+          test -x "$AAPT2"
+          "$AAPT2" dump badging "$APK" | grep -F "package: name='com.allways.app'"
+          "$AAPT2" dump badging "$APK" | grep -F "application-label:'ALLways'"
+          "$AAPT2" dump permissions "$APK" | grep -F "android.permission.INTERNET"
+
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          AVDMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/avdmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n 1)"; fi
+          if [ ! -x "$AVDMANAGER" ]; then AVDMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name avdmanager 2>/dev/null | sort -V | tail -n 1)"; fi
+          EMULATOR="$SDK_ROOT/emulator/emulator"
+          test -x "$SDKMANAGER"
+          test -x "$AVDMANAGER"
+          test -x "$EMULATOR"
+
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "emulator" "platforms;android-35" "system-images;android-35;google_apis;arm64-v8a"
+          echo no | "$AVDMANAGER" create avd --force -n allways-customer-release -k "system-images;android-35;google_apis;arm64-v8a" --device pixel_2
+
+          "$EMULATOR" -avd allways-customer-release -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect > "$CM_BUILD_DIR/customer-emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          cleanup() {
+            adb -s emulator-5554 emu kill >/dev/null 2>&1 || kill "$EMULATOR_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          adb -s emulator-5554 wait-for-device
+          READY=0
+          for attempt in $(seq 1 120); do
+            BOOT="$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$BOOT" = "1" ] && adb -s emulator-5554 shell cmd package list packages >/dev/null 2>&1 && adb -s emulator-5554 shell dumpsys activity activities >/dev/null 2>&1; then
+              READY=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$READY" != "1" ]; then
+            echo "Customer launch test failed: emulator services did not become ready."
+            tail -n 200 "$CM_BUILD_DIR/customer-emulator.log" || true
+            exit 1
+          fi
+
+          adb -s emulator-5554 logcat -c
+          adb -s emulator-5554 install -r "$APK"
+          timeout 90s adb -s emulator-5554 shell am start -W -n com.allways.app/.MainActivity
+          sleep 20
+          if ! adb -s emulator-5554 shell pidof com.allways.app >/dev/null; then
+            echo "Customer release APK process exited after launch."
+            adb -s emulator-5554 logcat -d -t 2500 | grep -E 'FATAL EXCEPTION|AndroidRuntime|Process: com.allways.app|Unable to start activity' || true
+            exit 1
+          fi
+          adb -s emulator-5554 logcat -d -t 2500 | grep -E 'FATAL EXCEPTION.*com.allways.app|Process: com.allways.app.*died' && {
+            echo "Customer startup log contains a fatal crash."
+            exit 1
+          } || true
+          echo "Customer release APK launch smoke test passed."
     artifacts:
       - mobile/build/app/outputs/flutter-apk/app-release.apk
       - mobile/build/release-checksum.txt
