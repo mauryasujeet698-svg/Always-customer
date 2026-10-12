@@ -28,7 +28,8 @@ for (const collection of ["deliveryPartners", "ridePartners"]) {
   test(`${collection}: owner may create a pending profile but cannot self-approve`, async () => {
     const db = env.authenticatedContext("owner-1").firestore();
     await assertSucceeds(setDoc(doc(db, `${collection}/owner-1`), { approvalStatus: "pending" }));
-    await assertFails(setDoc(doc(db, `${collection}/owner-2`), { approvalStatus: "approved" }));
+    const selfApprovingDb = env.authenticatedContext("owner-2").firestore();
+    await assertFails(setDoc(doc(selfApprovingDb, `${collection}/owner-2`), { approvalStatus: "approved" }));
   });
 
   test(`${collection}: owner may edit ordinary fields but cannot change approvalStatus`, async () => {
