@@ -821,8 +821,11 @@ exports.acceptRide = onCall({ region: "asia-south1" }, async (request) => {
     }
 
     const normalizeVehicle = (value) => {
-      const v = String(value || "").trim().toLowerCase();
-      return ["two_wheeler", "motorcycle", "scooter"].includes(v) ? "bike" : v;
+      const v = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      if (["two_wheeler", "motorcycle", "scooter", "bike", "e_bike", "e_bicycle"].includes(v)) return "bike";
+      if (["auto", "auto_rickshaw", "e_rickshaw", "three_wheeler", "tuk_tuk"].includes(v)) return "auto";
+      if (["car", "cab", "taxi", "taxi_cab", "sedan", "hatchback", "suv", "muv", "luxury_car"].includes(v)) return "car";
+      return v;
     };
     const requestedType = normalizeVehicle(ride.rideType || ride.vehicleType || "bike");
     const driverType = normalizeVehicle(partner.vehicleType || "bike");
