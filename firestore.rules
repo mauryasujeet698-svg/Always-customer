@@ -166,9 +166,20 @@ service cloud.firestore {
     }
 
     match /vehicles/{vehicleId} {
+      // Listings are public, so private contact and precise location must never
+      // be written into this collection. Keep those values in vehicleOwnerContacts.
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && !request.resource.data.keys().hasAny([
+          'ownerPhone','latitude','longitude','currentLocation','ownerLat','ownerLng'
+        ]);
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && !request.resource.data.keys().hasAny([
+          'ownerPhone','latitude','longitude','currentLocation','ownerLat','ownerLng'
+        ]));
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
     }
 
     // Vehicle contact data is separated from the publicly readable vehicle listing.
