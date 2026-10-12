@@ -5,9 +5,21 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null && request.auth.token.email == "mauryasujeet698@gmail.com";
     }
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
+    }
+
+    // Identity and onboarding uploads can contain sensitive documents.
+    // Keep them private to the owner and the designated admin.
     match /onboarding/{uid}/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if signedIn()
+        && (request.auth.uid == uid || isAdmin())
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
     }
     match /sellers/{uid}/{allPaths=**} {
       allow read: if true;
