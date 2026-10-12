@@ -1159,8 +1159,8 @@ exports.getVehicleBookingContact = onCall({ region: "asia-south1" }, async (requ
     throw new HttpsError("permission-denied", "You can only view contact details for your own vehicle booking.");
   }
   const bookingStatus = String(booking.status || "").trim().toLowerCase();
-  if (["cancelled", "rejected", "completed", "delivered", "expired"].includes(bookingStatus)) {
-    throw new HttpsError("failed-precondition", "Contact details are no longer available for a finished or cancelled booking.");
+  if (!["booked", "pending", "requested", "confirmed", "accepted", "in review", "approved"].includes(bookingStatus)) {
+    throw new HttpsError("failed-precondition", "Contact details are available only while your booking is active.");
   }
   const vehicleId = String(booking.vehicleId || "").trim();
   if (!vehicleId) throw new HttpsError("failed-precondition", "This booking has no vehicle reference.");
