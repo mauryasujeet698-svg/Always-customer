@@ -1023,12 +1023,38 @@ exports.onVehicleBookingCreated = onDocumentCreated(
 exports.onVehicleBookingUpdated = onDocumentUpdated(
   "vehicleBookings/{bookingId}",
   async (event) => {
-    const before=event.data.before.data()||{};
-    const after=event.data.after.data()||{};
-    if(String(before.status||"").toLowerCase()===String(after.status||"").toLowerCase())return;
-    const uid=String(after.customerUid||"").trim();
-    if(!uid)return;
-    const status=String(after.status||"");
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    if (String(before.status || "").toLowerCase() === String(after.status || "").toLowerCase()) return;
+    const status = String(after.status || "");
+    const normalizedStatus = status.trim().toLowerCase();
+
+    // Release a reserved vehicle only when the booking that owns the reservation
+    // reaches a terminal state. A later reservation must never be cleared.
+    if (["cancelled", "rejected", "completed", "delivered"].includes(normalizedStatus)) {
+      const vehicleId = String(after.vehicleId || "").trim();
+      if (vehicleId) {
+        const vehicleRef = db.collection("vehicles").doc(vehicleId);
+        await db.runTransaction(async (tx) => {
+          const vehicleSnap = await tx.get(vehicleRef);
+          if (!vehicleSnap.exists) return;
+          const vehicle = vehicleSnap.data() || {};
+          if (String(vehicle.bookingId || "") !== event.params.bookingId) return;
+          tx.update(vehicleRef, {
+            status: "available",
+            listingStatus: "active",
+            available: true,
+            bookingId: FieldValue.delete(),
+            reservedByUid: FieldValue.delete(),
+            reservedAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        });
+      }
+    }
+
+    const uid = String(after.customerUid || "").trim();
+    if (!uid) return;
     await sendToUser(
       uid,
       "Vehicle booking update",
@@ -1036,8 +1062,61 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
       { type: "vehicle_booking_status", bookingId: event.params.bookingId, status },
       "customer"
     );
-}
+  }
 );
+
+// Create a vehicle booking atomically with the vehicle's availability change.
+exports.createVehicleBooking = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+  const vehicleId = String(request.data?.vehicleId || "").trim();
+  const rawMode = String(request.data?.mode || "book").trim().toLowerCase();
+  const mode = rawMode === "negotiation" ? "negotiation" : "book";
+  if (!vehicleId) throw new HttpsError("invalid-argument", "Choose a vehicle before booking.");
+
+  const vehicleRef = db.collection("vehicles").doc(vehicleId);
+  const bookingRef = db.collection("vehicleBookings").doc();
+  const customerName = String(request.data?.customerName || request.auth.token?.name || "ALLways customer").trim().slice(0, 120);
+  const customerEmail = String(request.auth.token?.email || request.data?.customerEmail || "").trim().slice(0, 254);
+
+  await db.runTransaction(async (tx) => {
+    const vehicleSnap = await tx.get(vehicleRef);
+    if (!vehicleSnap.exists) throw new HttpsError("not-found", "This vehicle is no longer listed.");
+    const vehicle = vehicleSnap.data() || {};
+    const ownerUid = String(vehicle.ownerUid || "").trim();
+    if (!ownerUid) throw new HttpsError("failed-precondition", "This vehicle has no verified owner.");
+    if (ownerUid === uid) throw new HttpsError("failed-precondition", "You cannot book your own vehicle.");
+    const status = String(vehicle.status || vehicle.listingStatus || "available").trim().toLowerCase();
+    if (vehicle.available === false || !["available", "active", "published", "listed"].includes(status)) {
+      throw new HttpsError("failed-precondition", "This vehicle has already been reserved. Refresh the list to see available vehicles.");
+    }
+    tx.set(bookingRef, {
+      vehicleId,
+      ownerUid,
+      ownerName: String(vehicle.ownerName || "ALLways vehicle owner"),
+      customerUid: uid,
+      customerName,
+      customerEmail,
+      category: String(vehicle.category || vehicle.vehicleType || "Vehicle"),
+      listedPrice: Number(vehicle.price ?? vehicle.pricePerKm ?? 0),
+      mode,
+      status: mode === "negotiation" ? "Pending" : "Booked",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(vehicleRef, {
+      status: "booked",
+      listingStatus: "booked",
+      available: false,
+      bookingId: bookingRef.id,
+      reservedByUid: uid,
+      reservedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { ok: true, bookingId: bookingRef.id, status: mode === "negotiation" ? "Pending" : "Booked" };
+});
 
 // Return a vehicle owner's contact number only to the customer who created a booking.
 exports.getVehicleBookingContact = onCall({ region: "asia-south1" }, async (request) => {

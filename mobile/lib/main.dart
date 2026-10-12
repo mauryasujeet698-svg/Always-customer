@@ -5828,19 +5828,24 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
       if(d['available']==false||!const {'available','active','published','listed'}.contains(status)){
         throw Exception('This vehicle is no longer available. Please refresh the list.');
       }
-      final bookingRef=FirebaseFirestore.instance.collection('vehicleBookings').doc();
-      await bookingRef.set({
-        'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],
-        'customerUid':user.uid,'customerName':user.displayName??'ALLways customer',
-        'customerEmail':user.email??'','category':d['category']??d['vehicleType'],
-        'listedPrice':d['price']??d['pricePerKm'],'mode':negotiate?'negotiation':'book',
-        'status':'Booked','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
-      });
+      final bookingResponse=await FirebaseFunctions.instanceFor(region:'asia-south1')
+          .httpsCallable('createVehicleBooking')
+          .call({
+            'vehicleId':doc.id,
+            'mode':negotiate?'negotiation':'book',
+            'customerName':user.displayName??'ALLways customer',
+            'customerEmail':user.email??'',
+          });
+      final bookingPayload=bookingResponse.data;
+      if(bookingPayload is! Map || bookingPayload['ok']!=true || (bookingPayload['bookingId']??'').toString().trim().isEmpty){
+        throw Exception('The server did not confirm the booking. Please refresh and try again.');
+      }
+      final bookingId=(bookingPayload['bookingId']).toString();
       var ownerPhone='';
       try{
         final response=await FirebaseFunctions.instanceFor(region:'asia-south1')
             .httpsCallable('getVehicleBookingContact')
-            .call({'bookingId':bookingRef.id});
+            .call({'bookingId':bookingId});
         final payload=response.data;
         if(payload is Map)ownerPhone=(payload['phone']??'').toString().trim();
       }catch(_){

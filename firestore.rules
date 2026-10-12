@@ -136,7 +136,9 @@ service cloud.firestore {
     }
 
     match /vehicleBookings/{bookingId} {
-      allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid;
+      // New vehicle bookings must go through createVehicleBooking so availability
+      // and reservation status are updated atomically by a trusted server.
+      allow create: if false;
       allow read: if signedIn() && (
         resource.data.customerUid == request.auth.uid ||
         resource.data.ownerUid == request.auth.uid ||
