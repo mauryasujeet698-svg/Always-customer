@@ -1,0 +1,37 @@
+name: ALLways Firestore Rules Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "security-tests/**"
+      - ".github/workflows/firestore-rules-test.yml"
+  push:
+    branches: [security/main-firestore-access]
+    paths:
+      - "firestore.rules"
+      - "security-tests/**"
+      - ".github/workflows/firestore-rules-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: security-tests/package.json
+      - name: Install test dependencies
+        working-directory: security-tests
+        run: npm install --no-audit --no-fund
+      - name: Test Firestore authorization rules in emulator
+        working-directory: security-tests
+        run: npm test
