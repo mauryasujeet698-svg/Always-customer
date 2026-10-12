@@ -89,7 +89,12 @@ service cloud.firestore {
         return signedIn()
           && exists(/databases/$(database)/documents/ridePartners/$(request.auth.uid))
           && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.status == 'online'
-          && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.vehicleType in ['bike','auto','car','two_wheeler'];
+          && get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.get('rideVehicleType',
+            get(/databases/$(database)/documents/ridePartners/$(request.auth.uid)).data.get('vehicleType', '')) in [
+              'bike','auto','car','two_wheeler','motorcycle','Motorcycle','scooter','Scooter',
+              'e-bike','E-bike','auto rickshaw','Auto Rickshaw','e-rickshaw','E-Rickshaw',
+              'sedan','Sedan','hatchback','Hatchback','suv','SUV','muv','MUV','taxi / cab','Taxi / Cab'
+            ];
       }
 
       allow create: if signedIn() && request.resource.data.customerUid == request.auth.uid
