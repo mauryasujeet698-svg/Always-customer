@@ -72,6 +72,12 @@ service cloud.firestore {
       allow read, write: if isOwner(userId) || isAdmin();
     }
 
+    // Customer-owned subcollections (addresses, favourites, preferences, etc.)
+    // are not covered by the parent-document match in Firestore rules.
+    match /customers/{userId}/{subcollection}/{documentId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
     match /deliveryPartners/{userId} {
       allow read: if signedIn();
       allow create, update: if isOwner(userId) || isAdmin();
