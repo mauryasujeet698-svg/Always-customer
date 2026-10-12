@@ -79,13 +79,13 @@ service cloud.firestore {
     }
 
     match /deliveryPartners/{userId} {
-      allow read: if signedIn();
+      allow read: if isOwner(userId) || isAdmin(); 
       allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /ridePartners/{userId} {
-      allow read: if signedIn();
+      allow read: if isOwner(userId) || isAdmin();
       allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
