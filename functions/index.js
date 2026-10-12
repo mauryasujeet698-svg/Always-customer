@@ -959,7 +959,7 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.
-const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7PpPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
+const CATALOG_SYNC_ENDPOINT = "https://script.google.com/macros/s/AKfycbxnmGS7Q6t7pPWiT50V87JmA0Qbh2tSi1UKLFzN28dQpybjw7vvCufnryi-qpTnq0b0IA/exec";
 function catalogColumnKey(value) {
   return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -1019,21 +1019,30 @@ function catalogNumber(value, fallback = 0) {
 exports.syncCatalogFromGoogleSheet = onSchedule(
   { schedule: "every 5 minutes", timeZone: "Asia/Kolkata", region: "asia-south1" },
   async () => {
-    // 230502 is the first explicitly serviceable pilot pincode.
-    await db.collection("serviceableZones").doc("230502").set({
-      pincode: "230502",
-      status: "serviceable",
-      label: "Serviceable",
-      updatedAt: FieldValue.serverTimestamp(),
-      source: "allways_pilot",
-    }, { merge: true });
-
     const response = await fetch(CATALOG_SYNC_ENDPOINT, { redirect: "follow" });
     if (!response.ok) throw new Error("Catalog Apps Script returned HTTP " + response.status);
     const payload = await response.json();
     if (!payload || payload.success !== true) throw new Error("Catalog Apps Script did not return success:true");
     const headers = Array.isArray(payload.headers) ? payload.headers : [];
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const contentHash = crypto.createHash("sha256")
+      .update(JSON.stringify({ headers, rows }))
+      .digest("hex");
+    const syncRef = db.collection("settings").doc("catalogSync");
+    const previousSync = await syncRef.get();
+    if (previousSync.data()?.contentHash === contentHash) {
+      await syncRef.set({
+        endpoint: CATALOG_SYNC_ENDPOINT,
+        source: "google_sheets",
+        automatic: true,
+        schedule: "every 5 minutes",
+        lastCheckedAt: FieldValue.serverTimestamp(),
+        lastSyncChanged: false,
+        status: "success",
+      }, { merge: true });
+      console.log("Automatic catalog sync: no changes; Firestore product writes skipped.");
+      return;
+    }
     let written = 0;
     for (let i = 0; i < rows.length; i += 400) {
       const batch = db.batch();
@@ -1068,17 +1077,11 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
       }
       await batch.commit();
     }
-    await db.collection("serviceableZones").doc("230502").set({
-      pincode: "230502",
-      status: "serviceable",
-      label: "Pratapgarh pilot zone",
-      updatedAt: FieldValue.serverTimestamp(),
-      source: "ALLways pilot configuration",
-    }, { merge: true });
     await db.collection("settings").doc("catalogSync").set({
       endpoint: CATALOG_SYNC_ENDPOINT, source: "google_sheets", automatic: true,
       schedule: "every 5 minutes", lastSyncAt: FieldValue.serverTimestamp(),
-      lastRowCount: rows.length, lastWrittenCount: written, status: "success",
+      lastRowCount: rows.length, lastWrittenCount: written, contentHash,
+      lastCheckedAt: FieldValue.serverTimestamp(), lastSyncChanged: true, status: "success",
     }, { merge: true });
     console.log("Automatic catalog sync completed:", { rows: rows.length, written });
   }
