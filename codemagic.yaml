@@ -1,0 +1,74 @@
+workflows:
+  allways-customer-android-release:
+    name: ALLways Customer Android Release
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: 3.35.2
+      java: 17
+      groups:
+        - allways_android_release
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: allways-android-app
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Validate required release secrets
+        script: |
+          set -euo pipefail
+          : "${ALLWAYS_KEYSTORE_BASE64:?Add ALLWAYS_KEYSTORE_BASE64 to Codemagic environment group allways_android_release}"
+          : "${ALLWAYS_KEYSTORE_PASSWORD:?Add ALLWAYS_KEYSTORE_PASSWORD to Codemagic environment group allways_android_release}"
+          : "${ALLWAYS_KEY_PASSWORD:?Add ALLWAYS_KEY_PASSWORD to Codemagic environment group allways_android_release}"
+          : "${MAPBOX_PUBLIC_TOKEN:?Add MAPBOX_PUBLIC_TOKEN to Codemagic environment group allways_android_release}"
+          case "$MAPBOX_PUBLIC_TOKEN" in pk.*) ;; *) echo "MAPBOX_PUBLIC_TOKEN must be a public pk.* token"; exit 1 ;; esac
+      - name: Prepare release signing
+        script: |
+          set -euo pipefail
+          cd mobile
+          mkdir -p android/keystore
+          printf '%s' "$ALLWAYS_KEYSTORE_BASE64" | base64 --decode > android/keystore/allways-release.jks
+          chmod 600 android/keystore/allways-release.jks
+          cat > android/key.properties <<EOF
+          storeFile=keystore/allways-release.jks
+          storePassword=$ALLWAYS_KEYSTORE_PASSWORD
+          keyPassword=$ALLWAYS_KEY_PASSWORD
+          keyAlias=allways
+          EOF
+          keytool -list -keystore android/keystore/allways-release.jks -storepass "$ALLWAYS_KEYSTORE_PASSWORD" -alias allways >/dev/null
+      - name: Resolve Flutter dependencies
+        script: |
+          cd mobile
+          flutter pub get
+      - name: Analyze and run tests
+        script: |
+          set -euo pipefail
+          cd mobile
+          flutter analyze
+          flutter test
+      - name: Build signed arm64 release APK
+        script: |
+          set -euo pipefail
+          cd mobile
+          flutter build apk --release --target-platform android-arm64 --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="$MAPBOX_PUBLIC_TOKEN"
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          SIZE=$(wc -c < "$APK" | tr -d ' ')
+          echo "Release APK size: $SIZE bytes (strict maximum: 25000000 bytes)"
+          if [ "$SIZE" -gt 25000000 ]; then
+            echo "ERROR: Customer APK exceeds 25 MB; refusing release."
+            exit 1
+          fi
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          APKSIGNER=$(find "$SDK_ROOT/build-tools" -type f -name apksigner 2>/dev/null | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --print-certs "$APK"
+          echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')" | tee build/release-checksum.txt
+    artifacts:
+      - mobile/build/app/outputs/flutter-apk/app-release.apk
+      - mobile/build/release-checksum.txt
+      - mobile/build/symbols/**
