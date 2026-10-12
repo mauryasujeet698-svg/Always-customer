@@ -1215,6 +1215,11 @@ exports.migrateVehicleContactPrivacy = onCall(
         }, { merge: true });
         batch.update(doc.ref, {
           ownerPhone: FieldValue.delete(),
+          latitude: FieldValue.delete(),
+          longitude: FieldValue.delete(),
+          currentLocation: FieldValue.delete(),
+          ownerLat: FieldValue.delete(),
+          ownerLng: FieldValue.delete(),
           contactPrivacyMigratedAt: FieldValue.serverTimestamp(),
         });
         migrated++;
