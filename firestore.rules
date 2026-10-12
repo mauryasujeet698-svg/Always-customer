@@ -99,8 +99,13 @@ service cloud.firestore {
       allow read: if signedIn() && (
         resource.data.customerUid == request.auth.uid ||
         resource.data.driverUid == request.auth.uid ||
+        resource.data.carrierUid == request.auth.uid ||
         isAdmin() ||
-        onlineRidePartner()
+        (onlineRidePartner()
+          && resource.data.status == 'searching'
+          && resource.data.get('driverUid', null) == null
+          && resource.data.get('carrierUid', null) == null
+          && !(request.auth.uid in resource.data.get('rejectedBy', [])))
       );
 
       allow update: if isAdmin()
@@ -224,7 +229,7 @@ service cloud.firestore {
     }
 
     match /ridePartners/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid
         && (request.resource.data.get('role', 'customer') != 'admin');
       allow update: if isAdmin()
@@ -310,7 +315,7 @@ service cloud.firestore {
     }
 
     match /deliveryPartners/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid
         && (request.resource.data.get('role', 'customer') != 'admin');
       allow update: if isAdmin()
