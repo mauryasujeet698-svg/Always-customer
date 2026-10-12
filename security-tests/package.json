@@ -1,0 +1,12 @@
+{
+  "name": "allways-partner-approval-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-allways-approval-test \"node --test partner-approval.rules.test.cjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.16.0"
+  }
+}
