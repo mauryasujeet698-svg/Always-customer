@@ -2,7 +2,7 @@ workflows:
   allways-customer-android-release:
     name: ALLways Customer Android Release
     max_build_duration: 60
-    instance_type: linux_x2
+    instance_type: mac_mini_m2
     environment:
       flutter: 3.35.2
       java: 17
@@ -14,8 +14,9 @@ workflows:
           set -euo pipefail
           : "${ALLWAYS_KEYSTORE_BASE64:?Add ALLWAYS_KEYSTORE_BASE64 to Codemagic environment group allways_android_release}"
           : "${ALLWAYS_KEYSTORE_PASSWORD:?Add ALLWAYS_KEYSTORE_PASSWORD to Codemagic environment group allways_android_release}"
-          : "${ALLWAYS_KEY_PASSWORD:?Add ALLWAYS_KEY_PASSWORD to Codemagic environment group allways_android_release}"
           : "${MAPBOX_PUBLIC_TOKEN:?Add MAPBOX_PUBLIC_TOKEN to Codemagic environment group allways_android_release}"
+          # The key password commonly matches the keystore password; use an override only if different.
+          export ALLWAYS_KEY_PASSWORD="${ALLWAYS_KEY_PASSWORD:-$ALLWAYS_KEYSTORE_PASSWORD}"
           case "$MAPBOX_PUBLIC_TOKEN" in pk.*) ;; *) echo "MAPBOX_PUBLIC_TOKEN must be a public pk.* token"; exit 1 ;; esac
       - name: Prepare release signing
         script: |
@@ -24,10 +25,11 @@ workflows:
           mkdir -p android/keystore
           printf '%s' "$ALLWAYS_KEYSTORE_BASE64" | base64 --decode > android/keystore/allways-release.jks
           chmod 600 android/keystore/allways-release.jks
+          KEY_PASSWORD="${ALLWAYS_KEY_PASSWORD:-$ALLWAYS_KEYSTORE_PASSWORD}"
           cat > android/key.properties <<EOF
           storeFile=keystore/allways-release.jks
           storePassword=$ALLWAYS_KEYSTORE_PASSWORD
-          keyPassword=$ALLWAYS_KEY_PASSWORD
+          keyPassword=$KEY_PASSWORD
           keyAlias=allways
           EOF
           keytool -list -keystore android/keystore/allways-release.jks -storepass "$ALLWAYS_KEYSTORE_PASSWORD" -alias allways >/dev/null
