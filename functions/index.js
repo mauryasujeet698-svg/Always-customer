@@ -1,5 +1,5 @@
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, FieldPath } = require("firebase-admin/firestore");
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const crypto = require("crypto");
@@ -1024,6 +1024,91 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
       "customer"
     );
 }
+);
+
+// Return a vehicle owner's contact number only to the customer who created a booking.
+exports.getVehicleBookingContact = onCall({ region: "asia-south1" }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+  const bookingId = String(request.data?.bookingId || "").trim();
+  if (!bookingId) throw new HttpsError("invalid-argument", "A booking ID is required.");
+
+  const bookingSnap = await db.collection("vehicleBookings").doc(bookingId).get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Vehicle booking not found.");
+  const booking = bookingSnap.data() || {};
+  if (String(booking.customerUid || "") !== uid) {
+    throw new HttpsError("permission-denied", "You can only view contact details for your own vehicle booking.");
+  }
+  const vehicleId = String(booking.vehicleId || "").trim();
+  if (!vehicleId) throw new HttpsError("failed-precondition", "This booking has no vehicle reference.");
+  const vehicleSnap = await db.collection("vehicles").doc(vehicleId).get();
+  if (!vehicleSnap.exists) throw new HttpsError("not-found", "The booked vehicle is no longer listed.");
+  const vehicle = vehicleSnap.data() || {};
+  const ownerUid = String(booking.ownerUid || vehicle.ownerUid || "").trim();
+  if (!ownerUid || String(vehicle.ownerUid || ownerUid) !== ownerUid) {
+    throw new HttpsError("permission-denied", "The vehicle owner could not be verified.");
+  }
+  const contactSnap = await db.collection("vehicleOwnerContacts").doc(vehicleId).get();
+  const contact = contactSnap.data() || {};
+  // Fallback supports older public listings until the Admin migration has removed
+  // ownerPhone from every existing vehicles document.
+  const phone = String(contact.phone || contact.ownerPhone || vehicle.ownerPhone || "").trim();
+  if (!phone) throw new HttpsError("failed-precondition", "The vehicle owner contact is not available yet. Please contact ALLways support.");
+  return {
+    ok: true,
+    phone,
+    ownerName: String(booking.ownerName || vehicle.ownerName || "ALLways vehicle owner"),
+  };
+});
+
+// One-time migration: move ownerPhone from public vehicle documents to private contact documents.
+// The caller (Admin) requests pages so large collections can be migrated without an unbounded function.
+exports.migrateVehicleContactPrivacy = onCall(
+  { region: "asia-south1", timeoutSeconds: 540, memory: "512MiB", maxInstances: 1 },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+    const email = String(request.auth.token?.email || "").trim().toLowerCase();
+    if (email !== "mauryasujeet698@gmail.com") {
+      throw new HttpsError("permission-denied", "The primary ALLways Admin account is required for this migration.");
+    }
+    const cursor = String(request.data?.cursor || "").trim();
+    const pageSize = 1000;
+    let query = db.collection("vehicles").orderBy(FieldPath.documentId()).limit(pageSize);
+    if (cursor) query = query.startAfter(cursor);
+    const snap = await query.get();
+    if (snap.empty) return { ok: true, migrated: 0, nextCursor: cursor, done: true };
+    let migrated = 0;
+    const eligible = snap.docs.filter((doc) => {
+      const data = doc.data() || {};
+      return String(data.ownerUid || "").trim() && String(data.ownerPhone || "").trim();
+    });
+    // Keep every write batch below Firestore's 500-operation limit.
+    for (let i = 0; i < eligible.length; i += 200) {
+      const batch = db.batch();
+      for (const doc of eligible.slice(i, i + 200)) {
+        const data = doc.data() || {};
+        batch.set(db.collection("vehicleOwnerContacts").doc(doc.id), {
+          vehicleId: doc.id,
+          ownerUid: String(data.ownerUid).trim(),
+          phone: String(data.ownerPhone).trim(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        batch.update(doc.ref, {
+          ownerPhone: FieldValue.delete(),
+          contactPrivacyMigratedAt: FieldValue.serverTimestamp(),
+        });
+        migrated++;
+      }
+      await batch.commit();
+    }
+    return {
+      ok: true,
+      migrated,
+      nextCursor: snap.docs[snap.docs.length - 1].id,
+      done: snap.size < pageSize,
+    };
+  }
 );
 
 // Automatic Google Sheets -> Firestore catalog synchronization.

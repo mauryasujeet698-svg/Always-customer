@@ -169,6 +169,22 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
     }
 
+    // Vehicle contact data is separated from the publicly readable vehicle listing.
+    // Customers receive a phone only through getVehicleBookingContact after booking.
+    match /vehicleOwnerContacts/{vehicleId} {
+      allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.vehicleId == vehicleId
+        && request.resource.data.phone is string;
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.vehicleId == vehicleId
+        && request.resource.data.phone is string;
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+    }
+
     match /fcmTokens/{uid} {
       allow create, update, delete: if signedIn() && request.auth.uid == uid;
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());

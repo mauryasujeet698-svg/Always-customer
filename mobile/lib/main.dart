@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -4915,7 +4916,17 @@ class _TripCard extends StatelessWidget {
   }
 
   Future<void> _viewDetails(BuildContext context) async {
-    final phone=_s(data['partnerPhone']??data['driverPhone']??data['carrierPhone']??data['ownerPhone']);
+    var phone=_s(data['partnerPhone']??data['driverPhone']??data['carrierPhone']??data['ownerPhone']);
+    if(!isRide&&phone.isEmpty){
+      try{
+        final response=await FirebaseFunctions.instanceFor(region:'asia-south1')
+            .httpsCallable('getVehicleBookingContact')
+            .call({'bookingId':bookingId});
+        final payload=response.data;
+        if(payload is Map)phone=(payload['phone']??'').toString().trim();
+      }catch(_){}
+    }
+    if(!context.mounted)return;
     final fare=data['fare']??data['price']??data['amount']??data['listedPrice'];
     await showDialog<void>(context:context,builder:(d)=>AlertDialog(
       title:Text(isRide?'Ride details':'Vehicle booking details'),
@@ -4929,7 +4940,10 @@ class _TripCard extends StatelessWidget {
         if(fare!=null)...[const SizedBox(height:8),Text('Fare / price: ₹'+fare.toString())],
         if(data['createdAt'] is Timestamp)...[const SizedBox(height:8),Text('Created: ${(data['createdAt'] as Timestamp).toDate().toLocal()}')],
       ])),
-      actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))],
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close')),
+        if(phone.isNotEmpty)FilledButton.icon(onPressed:()=>launchUrl(Uri.parse('tel:'+phone)),icon:const Icon(Icons.call),label:const Text('Call owner')),
+      ],
     ));
   }
 
@@ -5815,12 +5829,34 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
       if(d['available']==false||!const {'available','active','published','listed'}.contains(status)){
         throw Exception('This vehicle is no longer available. Please refresh the list.');
       }
-      await FirebaseFirestore.instance.collection('vehicleBookings').add({'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],'ownerPhone':d['ownerPhone'],'customerUid':user.uid,'customerName':user.displayName??'ALLways customer','customerEmail':user.email??'','category':d['category']??d['vehicleType'],'listedPrice':d['price']??d['pricePerKm'],'mode':negotiate?'negotiation':'book','status':'Booked','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp()});
+      final bookingRef=FirebaseFirestore.instance.collection('vehicleBookings').doc();
+      await bookingRef.set({
+        'vehicleId':doc.id,'ownerUid':d['ownerUid'],'ownerName':d['ownerName'],
+        'customerUid':user.uid,'customerName':user.displayName??'ALLways customer',
+        'customerEmail':user.email??'','category':d['category']??d['vehicleType'],
+        'listedPrice':d['price']??d['pricePerKm'],'mode':negotiate?'negotiation':'book',
+        'status':'Booked','createdAt':FieldValue.serverTimestamp(),'updatedAt':FieldValue.serverTimestamp(),
+      });
+      var ownerPhone='';
+      try{
+        final response=await FirebaseFunctions.instanceFor(region:'asia-south1')
+            .httpsCallable('getVehicleBookingContact')
+            .call({'bookingId':bookingRef.id});
+        final payload=response.data;
+        if(payload is Map)ownerPhone=(payload['phone']??'').toString().trim();
+      }catch(_){
+        // The booking is already recorded; never report contact lookup failure as a failed booking.
+      }
       if(!mounted)return;
       await showDialog<void>(context:context,builder:(c)=>AlertDialog(
         title:Text(negotiate?'Booking request sent':'Vehicle booking request sent'),
-        content:Text(negotiate?'The vehicle owner can now contact you to negotiate and confirm the final price.':'Your booking request was sent. The vehicle owner can contact you to confirm the booking.'),
-        actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Done')),FilledButton.icon(onPressed:()=>_call(d['ownerPhone']?.toString()??''),icon:const Icon(Icons.call),label:const Text('Contact owner'))],
+        content:Text(negotiate
+            ? (ownerPhone.isEmpty?'Your request was sent. Owner contact will be available once verified.':'The owner can contact you to negotiate the final price. Contact: '+ownerPhone)
+            : (ownerPhone.isEmpty?'Your booking request was sent. Owner contact will be available once verified.':'Your booking request was sent. Owner contact: '+ownerPhone)),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Done')),
+          if(ownerPhone.isNotEmpty)FilledButton.icon(onPressed:()=>_call(ownerPhone),icon:const Icon(Icons.call),label:const Text('Contact owner')),
+        ],
       ));
     }catch(e){
       if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Could not book this vehicle: '+e.toString().replaceFirst('Exception: ',''))));
