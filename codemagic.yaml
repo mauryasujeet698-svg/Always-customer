@@ -123,7 +123,7 @@ workflows:
 
           adb -s emulator-5554 logcat -c
           adb -s emulator-5554 install -r "$APK"
-          timeout 90s adb -s emulator-5554 shell am start -W -n com.allways.app/.MainActivity
+          python3 -c 'import subprocess, sys;\ntry:\n subprocess.run(sys.argv[1:], timeout=90, check=True)\nexcept subprocess.TimeoutExpired:\n print("Customer activity launch timed out after 90 seconds.", file=sys.stderr); sys.exit(124)' adb -s emulator-5554 shell am start -W -n com.allways.app/.MainActivity
           sleep 20
           if ! adb -s emulator-5554 shell pidof com.allways.app >/dev/null; then
             echo "Customer release APK process exited after launch."
