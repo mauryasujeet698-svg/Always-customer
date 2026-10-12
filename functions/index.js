@@ -1068,14 +1068,27 @@ exports.onVehicleBookingUpdated = onDocumentUpdated(
     }
 
     const uid = String(after.customerUid || "").trim();
-    if (!uid) return;
-    await sendToUser(
-      uid,
-      "Vehicle booking update",
-      "Your vehicle booking status is " + status + ".",
-      { type: "vehicle_booking_status", bookingId: event.params.bookingId, status },
-      "customer"
-    );
+    if (uid) {
+      await sendToUser(
+        uid,
+        "Vehicle booking update",
+        "Your vehicle booking status is " + status + ".",
+        { type: "vehicle_booking_status", bookingId: event.params.bookingId, status },
+        "customer"
+      );
+    }
+    if (["cancelled", "rejected", "completed", "delivered"].includes(normalizedStatus)) {
+      const ownerUid = String(after.ownerUid || "").trim();
+      if (ownerUid) {
+        await sendToUser(
+          ownerUid,
+          "Vehicle booking update",
+          "A vehicle booking changed to " + status + ".",
+          { type: "vehicle_booking_owner_update", bookingId: event.params.bookingId, vehicleId: String(after.vehicleId || ""), status },
+          "carrier"
+        );
+      }
+    }
   }
 );
 
@@ -1298,9 +1311,10 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
       return;
     }
     let written = 0;
-    for (let i = 0; i < rows.length; i += 400) {
+    // Each product creates two documents; 200 products = 400 writes, below Firestore's 500-write batch limit.
+    for (let i = 0; i < rows.length; i += 200) {
       const batch = db.batch();
-      for (const row of rows.slice(i, i + 400)) {
+      for (const row of rows.slice(i, i + 200)) {
         const rawId = catalogValue(row, headers, "ID", "");
         const name = String(catalogValue(row, headers, "Product Name", "")).trim();
         if (!name) continue;
