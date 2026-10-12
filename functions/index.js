@@ -1012,12 +1012,26 @@ exports.onAllwaysAnnouncementCreated = onDocumentCreated(
 exports.onVehicleBookingCreated = onDocumentCreated(
   "vehicleBookings/{bookingId}",
   async (event) => {
-    const booking=event.data?.data();
-    if(!booking)return;
-    const ownerUid=String(booking.ownerUid||"").trim();
-    if(!ownerUid)return;
-    
-}
+    const booking = event.data?.data();
+    if (!booking) return;
+    const ownerUid = String(booking.ownerUid || "").trim();
+    if (!ownerUid) return;
+    const negotiated = String(booking.mode || "").toLowerCase() === "negotiation";
+    await sendToUser(
+      ownerUid,
+      negotiated ? "New vehicle booking request" : "New vehicle booking",
+      negotiated
+        ? "A customer requested your vehicle and would like to discuss the price."
+        : "A customer booked your listed vehicle.",
+      {
+        type: "vehicle_booking_created",
+        bookingId: event.params.bookingId,
+        vehicleId: String(booking.vehicleId || ""),
+        status: String(booking.status || ""),
+      },
+      "carrier"
+    );
+  }
 );
 
 exports.onVehicleBookingUpdated = onDocumentUpdated(
