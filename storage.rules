@@ -1,29 +1,40 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /banners/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.token.email == "mauryasujeet698@gmail.com";
-    }
     function signedIn() {
       return request.auth != null;
     }
     function isAdmin() {
       return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
     }
+    function isAllowedImageOrPdf() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+
+    // Public storefront banners; only the designated admin can change them.
+    match /banners/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isAllowedImageOrPdf();
+    }
 
     // Identity and onboarding uploads can contain sensitive documents.
-    // Keep them private to the owner and the designated admin.
+    // Keep them private to the owner and designated admin.
     match /onboarding/{uid}/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if signedIn()
         && (request.auth.uid == uid || isAdmin())
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf');
+        && isAllowedImageOrPdf();
     }
+
+    // Seller assets may be public for storefront display, but uploads are
+    // limited to images/PDFs under 10 MiB and the seller's own UID path.
     match /sellers/{uid}/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow write: if signedIn()
+        && request.auth.uid == uid
+        && isAllowedImageOrPdf();
     }
   }
 }
