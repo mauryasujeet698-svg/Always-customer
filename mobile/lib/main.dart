@@ -1378,15 +1378,13 @@ class _ShellState extends State<Shell> {
     productsWatch?.cancel();
     try {
       productsWatch = FirebaseFirestore.instance.collection('products').limit(1000).snapshots().listen((snapshot) {
-        if (snapshot.docs.isEmpty) return;
-        final updated = snapshot.docs.map((d) {
+        final updated = snapshot.docs.where((d) => d.data()['available'] != false).map((d) {
           final data = Map<String,dynamic>.from(d.data());
           data['id'] = d.id;
           if (data['icon'] == null && data['emoji'] != null) data['icon'] = data['emoji'];
-          if (data['available'] == false) data['stock'] = 0;
           return Product.fromJson(data);
         }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
-        if (updated.isEmpty || !mounted) return;
+        if (!mounted) return;
         setState(() {
           products = updated;
           loading = false;
@@ -1408,18 +1406,15 @@ class _ShellState extends State<Shell> {
       // Google Sheets into products/{id} and inventory/{id}.
       final snap=await FirebaseFirestore.instance.collection('products').limit(1000).get();
       if(snap.docs.isNotEmpty){
-        final list=snap.docs.map((d){
+        final list=snap.docs.where((d)=>d.data()['available']!=false).map((d){
           final data=Map<String,dynamic>.from(d.data());
           data['id']=d.id;
           data['imageUrl']=(data['imageUrl']??data['Image URL']??data['image_url']??data['Image']??data['image']??data['photoUrl']??data['Photo URL']??'').toString().trim();
           if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
-          if(data['available']==false)data['stock']=0;
           return Product.fromJson(data);
         }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
-        if(list.isNotEmpty){
-          if(mounted)setState((){products=list;loading=false;error=null;});
-          return;
-        }
+        if(mounted)setState((){products=list;loading=false;error=null;});
+        return;
       }
     }catch(e){
       firestoreError=e;
@@ -1431,18 +1426,15 @@ class _ShellState extends State<Shell> {
     try{
       final inventorySnap=await FirebaseFirestore.instance.collection('inventory').limit(1000).get();
       if(inventorySnap.docs.isNotEmpty){
-        final list=inventorySnap.docs.map((d){
+        final list=inventorySnap.docs.where((d)=>d.data()['available']!=false).map((d){
           final data=Map<String,dynamic>.from(d.data());
           data['id']=d.id;
           data['imageUrl']=(data['imageUrl']??data['Image URL']??data['image_url']??data['Image']??data['image']??data['photoUrl']??data['Photo URL']??'').toString().trim();
           if(data['icon']==null&&data['emoji']!=null)data['icon']=data['emoji'];
-          if(data['available']==false)data['stock']=0;
           return Product.fromJson(data);
         }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
-        if(list.isNotEmpty){
-          if(mounted)setState((){products=list;loading=false;error=null;});
-          return;
-        }
+        if(mounted)setState((){products=list;loading=false;error=null;});
+        return;
       }
     }catch(e){
       firestoreError=firestoreError??e;
@@ -1487,12 +1479,13 @@ class _ShellState extends State<Shell> {
       if(decoded is String)decoded=jsonDecode(decoded);
       final raw=decoded is Map ? (decoded['products']??decoded['data']??decoded['items']??decoded) : decoded;
       if(raw is! List)throw Exception('Invalid inventory response');
-      final list=raw.whereType<Map>().map((x){
-        final data=Map<String,dynamic>.from(x);
-        if(data['icon']==null&&data['Emoji']!=null)data['icon']=data['Emoji'];
-        if(data['emoji']!=null&&data['icon']==null)data['icon']=data['emoji'];
-        return Product.fromJson(data);
-      }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
+      final list=raw.whereType<Map>().map((x)=>Map<String,dynamic>.from(x))
+        .where((data)=>data['available']!=false&&data['Available']!=false)
+        .map((data){
+          if(data['icon']==null&&data['Emoji']!=null)data['icon']=data['Emoji'];
+          if(data['emoji']!=null&&data['icon']==null)data['icon']=data['emoji'];
+          return Product.fromJson(data);
+        }).where((p)=>p.id.isNotEmpty&&p.name.isNotEmpty).toList();
       if(list.isEmpty)throw Exception('Inventory response contained no products');
       if(mounted)setState((){products=list;loading=false;error=null;});
       return;
