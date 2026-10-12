@@ -731,50 +731,104 @@ function normalizeRideVehicleType(value) {
 exports.setPartnerShift = onCall({ region: "asia-south1" }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in is required.");
+
   const role = String(request.data?.role || "").trim().toLowerCase();
-  if (role !== "carrier") throw new HttpsError("invalid-argument", "Unsupported partner shift role.");
+  if (!["carrier", "delivery_partner"].includes(role)) {
+    throw new HttpsError("invalid-argument", "Unsupported partner shift role.");
+  }
   const online = request.data?.online === true;
-  const partnerRef = db.collection("ridePartners").doc(uid);
+  const isCarrier = role === "carrier";
+  const collectionName = isCarrier ? "ridePartners" : "deliveryPartners";
+  const partnerRef = db.collection(collectionName).doc(uid);
 
   return db.runTransaction(async (tx) => {
     const partnerSnap = await tx.get(partnerRef);
-    if (!partnerSnap.exists) throw new HttpsError("failed-precondition", "Complete your driver profile before changing shift status.");
+    if (!partnerSnap.exists) {
+      throw new HttpsError(
+        "failed-precondition",
+        isCarrier ? "Complete your driver profile before changing shift status." :
+          "Complete your delivery partner profile before changing shift status."
+      );
+    }
     const partner = partnerSnap.data() || {};
-    if (String(partner.approvalStatus || "").trim().toLowerCase() !== "approved") {
+    if (online && String(partner.approvalStatus || "").trim().toLowerCase() !== "approved") {
       throw new HttpsError("permission-denied", "Admin approval is required before going online.");
     }
-    const rideVehicleType = normalizeRideVehicleType(partner.vehicleType || partner.vehicleCategory || "");
-    if (online && !rideVehicleType) {
-      throw new HttpsError("failed-precondition", "Your approved profile needs a supported bike, auto or car vehicle type before going online.");
+    if (!isCarrier && partner.role && String(partner.role).trim().toLowerCase() !== "delivery_partner") {
+      throw new HttpsError("permission-denied", "This account is not registered as a delivery partner.");
     }
 
-    const activeRideId = String(partner.activeRideId || "").trim();
-    let activeRideStillRunning = false;
-    if (activeRideId) {
-      const rideSnap = await tx.get(db.collection("autoRideRequests").doc(activeRideId));
-      if (rideSnap.exists) {
-        const rideStatus = String(rideSnap.data()?.status || "").trim().toLowerCase();
-        activeRideStillRunning = !["cancelled", "completed", "rejected", "expired", "delivered"].includes(rideStatus);
+    if (isCarrier) {
+      const rideVehicleType = normalizeRideVehicleType(partner.vehicleType || partner.vehicleCategory || "");
+      if (online && !rideVehicleType) {
+        throw new HttpsError("failed-precondition", "Your approved profile needs a supported bike, auto or car vehicle type before going online.");
+      }
+
+      const activeRideId = String(partner.activeRideId || "").trim();
+      let activeRideStillRunning = false;
+      if (activeRideId) {
+        const rideSnap = await tx.get(db.collection("autoRideRequests").doc(activeRideId));
+        if (rideSnap.exists) {
+          const rideStatus = String(rideSnap.data()?.status || "").trim().toLowerCase();
+          activeRideStillRunning = !["cancelled", "completed", "rejected", "expired", "delivered"].includes(rideStatus);
+        }
+      }
+      if (!online && activeRideStillRunning) {
+        throw new HttpsError("failed-precondition", "Complete or resolve your active ride before going offline.");
+      }
+
+      const shiftSessionId = online ? crypto.randomUUID() : null;
+      tx.set(partnerRef, {
+        status: online ? "online" : "offline",
+        rideVehicleType: rideVehicleType || partner.rideVehicleType || "",
+        shiftStatus: online ? "on_duty" : "off_duty",
+        isOnline: online,
+        availableForRides: online && !activeRideStillRunning,
+        shiftSessionId: online ? shiftSessionId : FieldValue.delete(),
+        shiftStartedAt: online ? FieldValue.serverTimestamp() : (partner.shiftStartedAt || null),
+        shiftEndedAt: online ? FieldValue.delete() : FieldValue.serverTimestamp(),
+        activeRideId: activeRideStillRunning ? activeRideId : FieldValue.delete(),
+        statusUpdatedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { ok: true, shiftSessionId, shiftStatus: online ? "on_duty" : "off_duty" };
+    }
+
+    const currentOrderId = String(partner.currentOrderId || "").trim();
+    const pendingOrderId = String(partner.pendingOrderId || "").trim();
+    const orderIds = [...new Set([currentOrderId, pendingOrderId].filter(Boolean))];
+    const activeOrderIds = new Set();
+    for (const orderId of orderIds) {
+      const orderSnap = await tx.get(db.collection("orders").doc(orderId));
+      if (!orderSnap.exists) continue;
+      const status = String(orderSnap.data()?.status || "").trim().toLowerCase();
+      if (!["delivered", "cancelled", "canceled", "rejected", "expired", "failed", "completed"].includes(status)) {
+        activeOrderIds.add(orderId);
       }
     }
-    if (!online && activeRideStillRunning) {
-      throw new HttpsError("failed-precondition", "Complete or resolve your active ride before going offline.");
+    const currentOrderStillRunning = currentOrderId !== "" && activeOrderIds.has(currentOrderId);
+    const pendingOrderStillRunning = pendingOrderId !== "" && activeOrderIds.has(pendingOrderId);
+    const activeDeliveryStillRunning = currentOrderStillRunning || pendingOrderStillRunning;
+    if (!online && activeDeliveryStillRunning) {
+      throw new HttpsError("failed-precondition", "Complete or resolve your active delivery before going offline.");
     }
 
     const shiftSessionId = online ? crypto.randomUUID() : null;
     tx.set(partnerRef, {
       status: online ? "online" : "offline",
-      rideVehicleType: rideVehicleType || partner.rideVehicleType || "",
-      shiftStatus: online ? "on_duty" : "off_duty",
       isOnline: online,
-      availableForRides: online && !activeRideStillRunning,
+      shiftStatus: online ? "on_duty" : "off_duty",
+      dutyStatus: online ? (activeDeliveryStillRunning ? "on_delivery" : "on_duty") : "off_duty",
+      availableForDeliveries: online && !activeDeliveryStillRunning,
       shiftSessionId: online ? shiftSessionId : FieldValue.delete(),
       shiftStartedAt: online ? FieldValue.serverTimestamp() : (partner.shiftStartedAt || null),
       shiftEndedAt: online ? FieldValue.delete() : FieldValue.serverTimestamp(),
-      activeRideId: activeRideStillRunning ? activeRideId : FieldValue.delete(),
+      currentOrderId: currentOrderStillRunning ? currentOrderId : FieldValue.delete(),
+      pendingOrderId: pendingOrderStillRunning ? pendingOrderId : FieldValue.delete(),
       statusUpdatedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+
     return { ok: true, shiftSessionId, shiftStatus: online ? "on_duty" : "off_duty" };
   });
 });
