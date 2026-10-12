@@ -905,7 +905,7 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
   const collection = type === "ride" ? "autoRideRequests" : "orders";
   const ref = db.collection(collection).doc(id);
 
-  return db.runTransaction(async (tx) => {
+  const outcome = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "The request could not be found.");
 
@@ -918,9 +918,23 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
       throw new HttpsError("permission-denied", "You are not assigned to this request.");
     }
 
+    const lockUntil = data.pinLockedUntil?.toMillis ? data.pinLockedUntil.toMillis()
+      : (data.pinLockedUntil instanceof Date ? data.pinLockedUntil.getTime() : 0);
+    if (Number.isFinite(lockUntil) && lockUntil > Date.now()) {
+      return { pinLocked: true, retryAfterMs: lockUntil - Date.now() };
+    }
+
     const expected = String(data.confirmationPin || "").trim();
     if (!expected || expected !== pin) {
-      throw new HttpsError("permission-denied", "Incorrect confirmation PIN.");
+      const failedAttempts = Math.max(0, Number(data.pinFailedAttempts || 0)) + 1;
+      const locked = failedAttempts >= 5;
+      tx.update(ref, {
+        pinFailedAttempts: failedAttempts,
+        pinLockedUntil: locked ? new Date(Date.now() + 5 * 60 * 1000) : FieldValue.delete(),
+        pinLastFailedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return { pinError: true, locked };
     }
     if (type === "delivery" &&
         String(data.paymentMethod || "COD").toUpperCase() === "COD" &&
@@ -938,6 +952,9 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
         status: "started",
         ridePinVerified: true,
         ridePinVerifiedAt: FieldValue.serverTimestamp(),
+        pinFailedAttempts: 0,
+        pinLockedUntil: FieldValue.delete(),
+        pinLastFailedAt: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
@@ -950,12 +967,24 @@ exports.verifyConfirmationPin = onCall({ region: "asia-south1" }, async (request
         status: "Delivered",
         deliveryPinVerified: true,
         deliveryPinVerifiedAt: FieldValue.serverTimestamp(),
+        pinFailedAttempts: 0,
+        pinLockedUntil: FieldValue.delete(),
+        pinLastFailedAt: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
 
     return { ok: true, verified: true };
   });
+  if (outcome?.pinLocked) {
+    throw new HttpsError("resource-exhausted", "Too many incorrect PIN attempts. Wait five minutes before retrying.");
+  }
+  if (outcome?.pinError) {
+    throw new HttpsError("permission-denied", outcome.locked
+      ? "Too many incorrect PIN attempts. The PIN is locked for five minutes."
+      : "Incorrect confirmation PIN.");
+  }
+  return outcome;
 });
 
 
