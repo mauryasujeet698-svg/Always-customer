@@ -1021,7 +1021,7 @@ class CartItem { final Product product; int qty; CartItem(this.product,this.qty)
 
 class Shell extends StatefulWidget { const Shell({super.key}); State<Shell> createState()=>_ShellState(); }
 class _ShellState extends State<Shell> {
-  int tab=0; List<Product> products=[]; bool loading=true; String? error; Timer? timer;
+  int tab=0; List<Product> products=[]; bool loading=true; String? error;
   final Map<String,CartItem> cart={}; List<Map<String,dynamic>> addresses=[]; User? user; final Set<String> wishlistIds={};
   StreamSubscription<User?>? auth;
   StreamSubscription<QuerySnapshot<Map<String,dynamic>>>? productsWatch;
@@ -1038,7 +1038,6 @@ class _ShellState extends State<Shell> {
 
   @override void initState(){
     super.initState(); user=FirebaseAuth.instance.currentUser; loadInventory(); listenForProductChanges(); checkForUpdate();
-    timer=Timer.periodic(const Duration(seconds:20),(_){loadInventory(silent:true);checkForUpdate();});
     auth=FirebaseAuth.instance.authStateChanges().listen((u){
       if (!mounted) return;
       setState(() { user=u; });
@@ -1066,7 +1065,7 @@ class _ShellState extends State<Shell> {
     });
     if(user!=null){setupNotifications();loadAddresses();loadWishlist();}
   }
-  @override void dispose(){timer?.cancel();auth?.cancel();productsWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
+  @override void dispose(){auth?.cancel();productsWatch?.cancel();messages?.cancel();openedMessages?.cancel();tokenRefresh?.cancel();super.dispose();}
 
   Future<void> setupNotifications() async {
     final activeUser = user;
