@@ -599,7 +599,8 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
       }, { merge: true });
     }
 
-    const rideType = String(ride.rideType || "bike").toLowerCase();
+    const rideType = normalizeRideVehicleType(ride.rideType || ride.vehicleType || "bike");
+    if (!rideType) return;
     const createdMs = ride.createdAt?.toMillis ? ride.createdAt.toMillis() : Date.now();
     const expiresAtMs = ride.expiresAt?.toMillis ? ride.expiresAt.toMillis() : createdMs + 30 * 60 * 1000;
     if (!ride.expiresAt) {
@@ -621,10 +622,7 @@ exports.onAutoRideRequestCreated = onDocumentCreated(
 
     for (const partner of snap.docs) {
       const p = partner.data() || {};
-      const type = String(p.vehicleType || "bike").toLowerCase();
-      const normalizedType = type === "two_wheeler" || type === "motorcycle" || type === "scooter"
-        ? "bike"
-        : (type === "cab" || type === "sedan" || type === "hatchback" ? "car" : type);
+      const normalizedType = normalizeRideVehicleType(p.rideVehicleType || p.vehicleType || p.vehicleCategory || "bike");
       if (normalizedType !== rideType) continue;
       if (String(p.approvalStatus || "approved").toLowerCase() !== "approved") continue;
       if (String(p.activeRideId || "").trim()) continue;
@@ -714,6 +712,14 @@ exports.onAutoRideRequestUpdated = onDocumentUpdated(
 
 // Secure confirmation PIN verification. Only the assigned carrier/delivery partner can
 // advance the protected state, and the PIN itself is never returned by this function.
+function normalizeRideVehicleType(value) {
+  const v = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (["two_wheeler", "motorcycle", "scooter", "bike", "e_bike", "e_bicycle"].includes(v)) return "bike";
+  if (["auto", "auto_rickshaw", "e_rickshaw", "three_wheeler", "tuk_tuk"].includes(v)) return "auto";
+  if (["car", "cab", "taxi", "taxi_cab", "sedan", "hatchback", "suv", "muv", "luxury_car"].includes(v)) return "car";
+  return "";
+}
+
 // Server-authoritative Driver Partner shift state. Clients cannot mark themselves
 // approved or overwrite assignment status directly.
 exports.setPartnerShift = onCall({ region: "asia-south1" }, async (request) => {
@@ -730,6 +736,10 @@ exports.setPartnerShift = onCall({ region: "asia-south1" }, async (request) => {
     const partner = partnerSnap.data() || {};
     if (String(partner.approvalStatus || "").trim().toLowerCase() !== "approved") {
       throw new HttpsError("permission-denied", "Admin approval is required before going online.");
+    }
+    const rideVehicleType = normalizeRideVehicleType(partner.vehicleType || partner.vehicleCategory || "");
+    if (online && !rideVehicleType) {
+      throw new HttpsError("failed-precondition", "Your approved profile needs a supported bike, auto or car vehicle type before going online.");
     }
 
     const activeRideId = String(partner.activeRideId || "").trim();
@@ -748,6 +758,7 @@ exports.setPartnerShift = onCall({ region: "asia-south1" }, async (request) => {
     const shiftSessionId = online ? crypto.randomUUID() : null;
     tx.set(partnerRef, {
       status: online ? "online" : "offline",
+      rideVehicleType: rideVehicleType || partner.rideVehicleType || "",
       shiftStatus: online ? "on_duty" : "off_duty",
       isOnline: online,
       availableForRides: online && !activeRideStillRunning,
@@ -820,15 +831,8 @@ exports.acceptRide = onCall({ region: "asia-south1" }, async (request) => {
       throw new HttpsError("deadline-exceeded", "This ride request has expired.");
     }
 
-    const normalizeVehicle = (value) => {
-      const v = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      if (["two_wheeler", "motorcycle", "scooter", "bike", "e_bike", "e_bicycle"].includes(v)) return "bike";
-      if (["auto", "auto_rickshaw", "e_rickshaw", "three_wheeler", "tuk_tuk"].includes(v)) return "auto";
-      if (["car", "cab", "taxi", "taxi_cab", "sedan", "hatchback", "suv", "muv", "luxury_car"].includes(v)) return "car";
-      return v;
-    };
-    const requestedType = normalizeVehicle(ride.rideType || ride.vehicleType || "bike");
-    const driverType = normalizeVehicle(partner.vehicleType || "bike");
+    const requestedType = normalizeRideVehicleType(ride.rideType || ride.vehicleType || "bike");
+    const driverType = normalizeRideVehicleType(partner.rideVehicleType || partner.vehicleType || partner.vehicleCategory || "bike");
     if (!["bike", "auto", "car"].includes(requestedType) || requestedType !== driverType) {
       throw new HttpsError("failed-precondition", "This ride type does not match your approved vehicle.");
     }
