@@ -1309,7 +1309,12 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
     const payload = await response.json();
     if (!payload || payload.success !== true) throw new Error("Catalog Apps Script did not return success:true");
     const headers = Array.isArray(payload.headers) ? payload.headers : [];
-    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    // Support both header/row and product-object response shapes from Apps Script.
+    const rows = Array.isArray(payload.rows)
+      ? payload.rows
+      : Array.isArray(payload.products)
+        ? payload.products
+        : [];
     const contentHash = crypto.createHash("sha256").update(JSON.stringify({ headers, rows })).digest("hex");
     const syncRef = db.collection("settings").doc("catalogSync");
     const previousSync = await syncRef.get();
@@ -1323,27 +1328,30 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
       return;
     }
     let written = 0;
+    let deactivated = 0;
+    const seenIds = new Set();
     // Each product creates two documents; 200 products = 400 writes, below Firestore's 500-write batch limit.
     for (let i = 0; i < rows.length; i += 200) {
       const batch = db.batch();
       for (const row of rows.slice(i, i + 200)) {
-        const rawId = catalogValue(row, headers, "ID", "");
-        const name = String(catalogValue(row, headers, "Product Name", "")).trim();
+        const rawId = catalogValueAny(row, headers, ["ID", "id", "productId", "product_id"], "");
+        const name = String(catalogValueAny(row, headers, ["Product Name", "name", "title", "productName", "product_name"], "")).trim();
         if (!name) continue;
         const fallbackId = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         const id = String(rawId || fallbackId).trim();
-        if (!id) continue;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
         const product = {
           id,
           name,
-          description: String(catalogValueAny(row, headers, ["Description", "Product Description", "Product Details", "Details"], "")).trim(),
+          description: String(catalogValueAny(row, headers, ["Description", "Product Description", "Product Details", "details"], "")).trim(),
           imageVersion: String(catalogValueAny(row, headers, ["Image Version", "Image Updated At", "imageVersion", "image_version"], "")).trim(),
-          category: String(catalogValue(row, headers, "Category", "")).trim(),
-          emoji: String(catalogValue(row, headers, "Emoji", "")).trim(),
-          price: catalogNumber(catalogValue(row, headers, "Price", 0)),
-          stock: catalogNumber(catalogValue(row, headers, "Stock", 0)),
-          available: catalogBool(catalogValue(row, headers, "Available", true), true),
-          maxQty: catalogNumber(catalogValue(row, headers, "Max Qty", 10), 10),
+          category: String(catalogValueAny(row, headers, ["Category", "category", "cat"], "")).trim(),
+          emoji: String(catalogValueAny(row, headers, ["Emoji", "emoji", "icon"], "")).trim(),
+          price: catalogNumber(catalogValueAny(row, headers, ["Price", "price"], 0)),
+          stock: catalogNumber(catalogValueAny(row, headers, ["Stock", "stock", "quantity"], 0)),
+          available: catalogBool(catalogValueAny(row, headers, ["Available", "available", "active"], true), true),
+          maxQty: catalogNumber(catalogValueAny(row, headers, ["Max Qty", "maxQty", "max_qty"], 10), 10),
           imageUrl: catalogImageUrl(row, headers),
           updatedAt: FieldValue.serverTimestamp(),
           source: "google_sheets",
@@ -1358,10 +1366,36 @@ exports.syncCatalogFromGoogleSheet = onSchedule(
       }
       await batch.commit();
     }
+    if (written === 0) {
+      throw new Error("Catalog payload contained no valid named products; refusing to report a successful sync.");
+    }
+
+    // Removed source rows are disabled rather than deleted so historical order references remain.
+    // This cleanup runs only when the source content hash changes.
+    const existingProducts = await db.collection("products").get();
+    const staleIds = existingProducts.docs.filter((doc) => !seenIds.has(doc.id)).map((doc) => doc.id);
+    for (let i = 0; i < staleIds.length; i += 200) {
+      const batch = db.batch();
+      for (const id of staleIds.slice(i, i + 200)) {
+        batch.set(db.collection("products").doc(id), {
+          available: false, stock: 0,
+          removedFromCatalogAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(), source: "google_sheets",
+        }, { merge: true });
+        batch.set(db.collection("inventory").doc(id), {
+          available: false, stock: 0,
+          removedFromCatalogAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(), source: "google_sheets",
+        }, { merge: true });
+        deactivated++;
+      }
+      await batch.commit();
+    }
+
     await db.collection("settings").doc("catalogSync").set({
       endpoint: CATALOG_SYNC_ENDPOINT, source: "google_sheets", automatic: true,
       schedule: "every 5 minutes", lastSyncAt: FieldValue.serverTimestamp(),
-      lastRowCount: rows.length, lastWrittenCount: written, contentHash,
+      lastRowCount: rows.length, lastWrittenCount: written, lastDisabledCount: deactivated, contentHash,
       lastCheckedAt: FieldValue.serverTimestamp(), lastSyncChanged: true, status: "success",
     }, { merge: true });
     console.log("Automatic catalog sync completed:", { rows: rows.length, written });
