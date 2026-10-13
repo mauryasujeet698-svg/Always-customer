@@ -1,0 +1,30 @@
+name: Firebase Functions Syntax Check
+
+on:
+  pull_request:
+    paths:
+      - "functions/**"
+      - ".github/workflows/functions-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - ".github/workflows/functions-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  functions-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Check JavaScript syntax
+        run: node --check functions/index.js
