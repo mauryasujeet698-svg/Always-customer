@@ -111,6 +111,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release-assets"
           cp "$APK" "$GITHUB_WORKSPACE/release-assets/allways-customer-v${VERSION}.apk"
           cp build/release-checksum.txt "$GITHUB_WORKSPACE/release-assets/allways-customer-checksum.txt"
+          flutter build appbundle --release --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="$MAPBOX_PUBLIC_TOKEN"
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          test -s "$AAB"
+          sha256sum "$AAB" | tee build/appbundle-checksum.txt
+          cp "$AAB" "$GITHUB_WORKSPACE/release-assets/allways-customer-v${VERSION}.aab"
+          cp build/appbundle-checksum.txt "$GITHUB_WORKSPACE/release-assets/allways-customer-appbundle-checksum.txt"
 
       - name: Build release-mode x86_64 APK for launch smoke test
         working-directory: mobile
@@ -137,6 +143,17 @@ jobs:
           path: |
             release-assets/allways-customer-v${{ env.APP_VERSION }}.apk
             release-assets/allways-customer-checksum.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Google Play App Bundle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-customer-play-aab-v${{ env.APP_VERSION }}
+          path: |
+            release-assets/allways-customer-v${{ env.APP_VERSION }}.aab
+            release-assets/allways-customer-appbundle-checksum.txt
           if-no-files-found: error
           retention-days: 14
 
