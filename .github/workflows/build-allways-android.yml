@@ -85,7 +85,11 @@ jobs:
           if [ "$analyze_status" -ne 0 ]; then
             echo "::warning::Flutter analyzer reported lint warnings/infos; review the full log before production release."
           fi
-          flutter test
+          if [ -d test ]; then
+            flutter test
+          else
+            echo "::warning::No Flutter test/ directory exists in this repository; automated unit tests were skipped."
+          fi
 
       - name: Build signed arm64 production APK
         working-directory: mobile
