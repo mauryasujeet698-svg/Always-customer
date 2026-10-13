@@ -116,6 +116,10 @@ jobs:
           fi
           "$AAPT2" dump badging "$APK" | grep -F "package: name='com.allways.app'"
           "$AAPT2" dump badging "$APK" | grep -F "application-label:'ALLways'"
+          TARGET_SDK=$("$AAPT2" dump badging "$APK" | sed -n "s/.*targetSdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p")
+          test -n "$TARGET_SDK"
+          if [ "$TARGET_SDK" -lt 36 ]; then echo "::error::Google Play submission requires target SDK 36 or higher; found $TARGET_SDK."; exit 1; fi
+          echo "Verified target SDK: $TARGET_SDK"
           "$AAPT2" dump permissions "$APK" | grep -F "android.permission.INTERNET"
           echo "APK_SHA256=$(sha256sum "$APK" | awk '{print $1}')" | tee build/release-checksum.txt
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
