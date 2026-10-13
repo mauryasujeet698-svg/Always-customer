@@ -4,6 +4,11 @@ on:
     branches:
       - allways-android-app
       - fix/customer-apk-ci-smoke-test
+      - "fix/**"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 concurrency:
