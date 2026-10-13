@@ -113,6 +113,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release-assets"
           cp "$APK" "$GITHUB_WORKSPACE/release-assets/allways-customer-v${VERSION}.apk"
           cp build/release-checksum.txt "$GITHUB_WORKSPACE/release-assets/allways-customer-checksum.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/release-assets/allways-latest.apk"
+          cp build/release-checksum.txt "$GITHUB_WORKSPACE/release-assets/allways-latest-checksum.txt"
           flutter build appbundle --release --shrink --dart-define=MAPBOX_PUBLIC_TOKEN="$MAPBOX_PUBLIC_TOKEN"
           AAB="build/app/outputs/bundle/release/app-release.aab"
           test -s "$AAB"
@@ -145,6 +147,8 @@ jobs:
           path: |
             release-assets/allways-customer-v${{ env.APP_VERSION }}.apk
             release-assets/allways-customer-checksum.txt
+            release-assets/allways-latest.apk
+            release-assets/allways-latest-checksum.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -171,5 +175,7 @@ jobs:
           files: |
             release-assets/allways-customer-v${{ env.APP_VERSION }}.apk
             release-assets/allways-customer-checksum.txt
+            release-assets/allways-latest.apk
+            release-assets/allways-latest-checksum.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
