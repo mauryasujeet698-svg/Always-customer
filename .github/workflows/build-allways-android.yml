@@ -72,9 +72,19 @@ jobs:
       - name: Analyze and test
         working-directory: mobile
         run: |
-          # Keep existing lint findings visible without blocking release validation on warnings/infos.
-          # Analyzer output remains in the run log and must be reviewed before production release.
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+          # Keep all analyzer output visible. Existing warnings/infos are tracked as lint debt,
+          # but actual analyzer errors still fail the release validation job.
+          set +e
+          flutter analyze 2>&1 | tee /tmp/allways-flutter-analyze.log
+          analyze_status=${PIPESTATUS[0]}
+          set -e
+          if grep -Eq 'error[[:space:]]+•' /tmp/allways-flutter-analyze.log; then
+            echo "::error::Flutter analyzer reported one or more errors."
+            exit 1
+          fi
+          if [ "$analyze_status" -ne 0 ]; then
+            echo "::warning::Flutter analyzer reported lint warnings/infos; review the full log before production release."
+          fi
           flutter test
 
       - name: Build signed arm64 production APK
