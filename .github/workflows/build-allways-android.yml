@@ -12,8 +12,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: allways-customer-android-release
-  cancel-in-progress: true
+  group: allways-customer-android-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
