@@ -89,3 +89,72 @@ body.theme-dark .productQty button{background:#18221c;color:#dff5e6;border-color
 body.theme-dark .cancelOrderBtn,
 body.theme-dark .removeItemBtn{background:#2b1919;color:#ffb9b9;border-color:#6d3b3b}
 body.theme-dark .close{background:#263029;color:#f2f6f3}
+
+/* Complete the explicit theme toggle for controls and status text that were
+   previously inheriting light-mode colors in dark mode. */
+body.theme-dark .location strong,
+body.theme-dark .section-head h2,
+body.theme-dark .product h3,
+body.theme-dark .product .price,
+body.theme-dark .travel-card b,
+body.theme-dark .coming-soon h2,
+body.theme-dark .orderCard strong,
+body.theme-dark .orderCard b,
+body.theme-dark .modal-card h2,
+body.theme-dark .modal-card h3,
+body.theme-dark .auth-head h2,
+body.theme-dark label,
+body.theme-dark .checkout-row,
+body.theme-dark .checkout-total,
+body.theme-dark .adminGrid span,
+body.theme-dark .adminOrderHead,
+body.theme-dark .admin-toolbar,
+body.theme-dark .orderTop,
+body.theme-dark .productQty b{color:#f2f6f3}
+body.theme-dark .locationBtn,
+body.theme-dark .cat.active,
+body.theme-dark .status,
+body.theme-dark .travel-panel button,
+body.theme-dark .adminActions a,
+body.theme-dark .productQty .removeMini{color:#dff5e6}
+body.theme-dark .locationBtn,
+body.theme-dark .cat.active,
+body.theme-dark .status{background:#193021;border-color:#41604a}
+body.theme-dark .travel-panel,
+body.theme-dark .travel-card,
+body.theme-dark .empty,
+body.theme-dark .coming-soon,
+body.theme-dark .orderCard,
+body.theme-dark .orderCard .etaBox,
+body.theme-dark .thankBox,
+body.theme-dark .rateBox,
+body.theme-dark .adminItems,
+body.theme-dark .adminNote,
+body.theme-dark .adminEta input,
+body.theme-dark .field,
+body.theme-dark .search input,
+body.theme-dark .travel-panel input,
+body.theme-dark .travel-panel select,
+body.theme-dark .adminActions select{background:#111614;color:#f2f6f3;border-color:#3b4740}
+body.theme-dark .orderCard p,
+body.theme-dark .orderCard small,
+body.theme-dark .travel-card small,
+body.theme-dark .policy,
+body.theme-dark .coming-soon p,
+body.theme-dark .adminGrid small,
+body.theme-dark .admin-summary small,
+body.theme-dark .trackStep small{color:#b7c2bb}
+body.theme-dark .checkout-row{border-color:#303a34}
+body.theme-dark .checkout-row *,
+body.theme-dark .checkout-total{color:#f2f6f3}
+body.theme-dark .primary,
+body.theme-dark .add,
+body.theme-dark .adminEta button{background:#168347;color:#fff}
+body.theme-dark button:disabled,
+body.theme-dark .add:disabled{background:#303a34;color:#aeb9b1;border-color:#46534b}
+body.theme-dark .cancelReason{background:#2b1919;color:#ffc7c7}
+body.theme-dark .successIcon{background:#193021;color:#9de2b5}
+body.theme-dark .thankBox{color:#dff5e6}
+body.theme-dark .orderTracker .trackStep.done span{background:#193021;border-color:#4c8b63;color:#dff5e6}
+body.theme-dark .hero{color:#fff}
+
