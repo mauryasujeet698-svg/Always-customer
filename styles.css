@@ -25,3 +25,23 @@
 .adminNote{width:100%;padding:10px;border:1px solid #dbe6df;border-radius:10px;margin:5px 0 8px}
 
 .favBtn{float:right;border:0;background:#fff1f5;color:#c51b58;border-radius:50%;width:34px;height:34px;font-size:22px;cursor:pointer}.favBtn.saved{background:#ffe1eb}.rateBox{margin-top:10px;padding:10px;background:#fffaf0;border-radius:11px}.stars{display:flex;gap:5px;margin-top:6px}.rateBtn{border:0;background:none;color:#e6a400;font-size:24px;cursor:pointer}.ratingDone{margin-top:10px;padding:9px;background:#eef8f1;color:#245f3e;border-radius:10px;font-size:13px}.cancelReason{margin-top:8px;padding:9px;background:#fff5f5;color:#9b2c2c;border-radius:10px;font-size:13px}.smallAction{width:auto!important;padding:9px 12px!important;font-size:13px!important;margin-right:7px}.orderActions{display:flex;justify-content:flex-end;align-items:center;gap:6px}.orderActions .secondary{margin-top:0}.field select{background:#fff}
+
+/* Explicit dark-mode theme with high-contrast text and form controls. */
+body.theme-dark{background:#101412;color:#f2f6f3}
+body.theme-dark .topbar,body.theme-dark .product,body.theme-dark .orderCard,body.theme-dark .modal-card,body.theme-dark .auth-card,body.theme-dark .travel-panel,body.theme-dark .travel-card,body.theme-dark .empty,body.theme-dark .coming-soon,body.theme-dark .adminOrder,body.theme-dark .admin-summary>div{background:#171c19;color:#f2f6f3;border-color:#303a34}
+body.theme-dark .ghost,body.theme-dark .search input,body.theme-dark .travel-panel input,body.theme-dark .travel-panel select,body.theme-dark .field,body.theme-dark .googleBtn,body.theme-dark .secondary,body.theme-dark .cat,body.theme-dark .tab,body.theme-dark .adminActions select,body.theme-dark .adminEta input,body.theme-dark .adminNote{background:#111614;color:#f2f6f3;border-color:#3b4740}
+body.theme-dark .location strong,body.theme-dark .section-head h2,body.theme-dark .product h3,body.theme-dark .product .price,body.theme-dark .travel-card b,body.theme-dark .coming-soon h2,body.theme-dark .orderCard strong,body.theme-dark .orderCard b,body.theme-dark .modal-card h2,body.theme-dark .modal-card h3,body.theme-dark .auth-head h2,body.theme-dark label,body.theme-dark .checkout-row,body.theme-dark .checkout-total,body.theme-dark .adminGrid span,body.theme-dark .orderTop,body.theme-dark .productQty b{color:#f2f6f3}
+body.theme-dark .muted,body.theme-dark .location small,body.theme-dark .product small,body.theme-dark .section-head span,body.theme-dark footer,body.theme-dark .coming-soon p,body.theme-dark .orderCard p,body.theme-dark .orderCard small,body.theme-dark .travel-card small,body.theme-dark .policy,body.theme-dark .adminGrid small,body.theme-dark .admin-summary small,body.theme-dark .trackStep small{color:#b7c2bb}
+body.theme-dark .free-banner,body.theme-dark .etaBox,body.theme-dark .adminItems,body.theme-dark .ratingDone,body.theme-dark .auth-note,body.theme-dark .thankBox{background:#193021;color:#d9f2e1}
+body.theme-dark .cat.active,body.theme-dark .locationBtn,body.theme-dark .status{background:#193021;color:#9de2b5;border-color:#4c8b63}
+body.theme-dark .tab.active{background:#087b3e;color:#fff}
+body.theme-dark .qtyControl button,body.theme-dark .productQty button{background:#18221c;color:#dff5e6;border-color:#41604a}
+body.theme-dark .cancelOrderBtn,body.theme-dark .removeItemBtn{background:#2b1919;color:#ffb9b9;border-color:#6d3b3b}
+body.theme-dark .close{background:#263029;color:#f2f6f3}
+body.theme-dark .checkout-row{border-color:#303a34}
+body.theme-dark .checkout-row *,body.theme-dark .checkout-total{color:#f2f6f3}
+body.theme-dark .primary,body.theme-dark .add,body.theme-dark .adminEta button{background:#168347;color:#fff}
+body.theme-dark button:disabled,body.theme-dark .add:disabled{background:#303a34;color:#aeb9b1;border-color:#46534b}
+body.theme-dark .cancelReason{background:#2b1919;color:#ffc7c7}
+body.theme-dark .successIcon{background:#193021;color:#9de2b5}
+body.theme-dark .hero{color:#fff}
