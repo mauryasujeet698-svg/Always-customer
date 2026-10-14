@@ -1525,7 +1525,7 @@ class _ShellState extends State<Shell> {
   num get total=>cart.values.fold(0,(s,x)=>s+x.product.price*x.qty);
 
   void add(Product p){
-    if(user==null){login();return;} if(p.stock<=0)return;
+    if(p.stock<=0)return;
     final q=cart[p.id]?.qty??0;
     if(q>=p.stock){msg('Only '+p.stock.toString()+' available.');return;}
     setState(()=>cart[p.id]=CartItem(p,q+1));msg(p.name+' added to cart');
@@ -1564,9 +1564,13 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> toggleWishlist(Product p) async {
-    if(user==null){login();return;}
-    final ref=FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').doc(p.id);
     final adding=!wishlistIds.contains(p.id);
+    if(user==null){
+      setState((){if(adding)wishlistIds.add(p.id);else wishlistIds.remove(p.id);});
+      msg(adding?'Added to wishlist on this device':'Removed from wishlist');
+      return;
+    }
+    final ref=FirebaseFirestore.instance.collection('customers').doc(user!.uid).collection('wishlist').doc(p.id);
     setState((){if(adding)wishlistIds.add(p.id);else wishlistIds.remove(p.id);});
     try{
       if(adding){
@@ -2025,7 +2029,7 @@ class _ShopPageState extends State<ShopPage>{
   List<String> get cats{final found=<String>{for(final p in widget.products)if(p.category.trim().isNotEmpty)p.category.trim()};final out=<String>[];for(final x in preferred)if(found.contains(x))out.add(x);out.addAll(found.where((x)=>!out.contains(x)).toList()..sort());return ['All',...out];}
   List<Product> byCat(String n)=>n=='All'?List<Product>.from(widget.products):widget.products.where((p)=>p.category.trim().toLowerCase()==n.trim().toLowerCase()).toList();
   void openCat(BuildContext c,String n)=>Navigator.push(c,MaterialPageRoute(builder:(_)=>CategoryProductsPage(category:n,products:byCat(n),onAdd:widget.onAdd,cart:widget.cart,onQty:widget.onQty,wishlistIds:widget.wishlistIds,onWishlist:widget.onWishlist)));
-  Widget categoryChip(BuildContext c,String n)=>InkWell(onTap:()=>openCat(c,n),borderRadius:BorderRadius.circular(16),child:SizedBox(width:76,child:Column(children:[Container(height:60,width:60,decoration:BoxDecoration(color:n=='All'?const Color(0xFFE7F7EE):const Color(0xFFF4F4F4),borderRadius:BorderRadius.circular(18)),alignment:Alignment.center,child:Text(icons[n]??'🛍️',style:const TextStyle(fontSize:28))),const SizedBox(height:5),Text(n,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontSize:10.5,fontWeight:FontWeight.w700))])));
+  Widget categoryChip(BuildContext c,String n)=>InkWell(onTap:()=>openCat(c,n),borderRadius:BorderRadius.circular(16),child:SizedBox(width:76,child:Column(children:[Container(height:60,width:60,decoration:BoxDecoration(color:n=='All'?Theme.of(c).colorScheme.primaryContainer:Theme.of(c).colorScheme.surfaceContainerHigh,borderRadius:BorderRadius.circular(18)),alignment:Alignment.center,child:Text(icons[n]??'🛍️',style:const TextStyle(fontSize:28))),const SizedBox(height:5),Text(n,maxLines:1,overflow:TextOverflow.ellipsis,textAlign:TextAlign.center,style:const TextStyle(fontSize:10.5,fontWeight:FontWeight.w700))])));
   Widget productCard(BuildContext c,Product p){
     final item=widget.cart[p.id];
     final liked=widget.wishlistIds.contains(p.id);
@@ -2058,7 +2062,7 @@ class _ShopPageState extends State<ShopPage>{
                     width:double.infinity,
                     alignment:Alignment.center,
                     decoration:BoxDecoration(
-                      color:const Color(0xFFF5F5F5),
+                      color:Theme.of(c).colorScheme.surfaceContainerHighest,
                       borderRadius:BorderRadius.circular(12),
                     ),
                     child:p.imageUrl.isNotEmpty
@@ -2068,7 +2072,7 @@ class _ShopPageState extends State<ShopPage>{
                              fit:BoxFit.cover,
                              width:double.infinity,
                              height:96,
-                             placeholder:(_,__)=>Container(color:const Color(0xFFF5F5F5)),
+                             placeholder:(_,__)=>Container(color:Theme.of(c).colorScheme.surfaceContainerHighest),
                              errorWidget:(_,__,___)=>Text(p.icon,style:const TextStyle(fontSize:42)),
                            )
                          : Text(p.icon,style:const TextStyle(fontSize:42)),
@@ -2173,7 +2177,7 @@ class _ShopPageState extends State<ShopPage>{
                 Text(heroSubtitle,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(color:Theme.of(c).colorScheme.onSurfaceVariant,fontSize:12,fontWeight:FontWeight.w500)),
               ])),
               IconButton(onPressed:()=>Navigator.pushNamed(c,'/notifications-settings'),icon:ValueListenableBuilder<bool>(valueListenable:unreadNotificationNotifier,builder:(_,u,__)=>Badge(isLabelVisible:u,child:const Icon(Icons.notifications_none_outlined)))),
-              IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:widget.onOpenCart))),icon:const Icon(Icons.favorite_border)),
+              IconButton(onPressed:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>WishlistPage(onAdd:widget.onAdd,onBuyAll:widget.onOpenCart,guestItems:widget.products.where((p)=>widget.wishlistIds.contains(p.id)).toList(),onGuestRemove:widget.onWishlist))),icon:const Icon(Icons.favorite_border)),
               IconButton(onPressed:widget.onOpenCart,icon:Badge(isLabelVisible:widget.cart.isNotEmpty,child:const Icon(Icons.shopping_cart_outlined))),
             ]),
             InkWell(onTap:changeLocation,borderRadius:BorderRadius.circular(14),child:Container(padding:const EdgeInsets.symmetric(horizontal:12,vertical:11),decoration:BoxDecoration(color:Theme.of(c).colorScheme.surface,borderRadius:BorderRadius.circular(16),border:Border.all(color:Theme.of(c).colorScheme.outlineVariant)),child:Row(children:[const Icon(Icons.location_on_outlined,size:20,color:green),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Deliver to',style:TextStyle(fontSize:10,color:AllwaysColors.muted)),Text(location,maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontWeight:FontWeight.w800,color:Theme.of(c).colorScheme.onSurface))])),const Text('Change',style:TextStyle(color:green,fontWeight:FontWeight.w800))]))),
@@ -2209,7 +2213,7 @@ class _ShopPageState extends State<ShopPage>{
                   if(offerEnabled)
                     Card(child:ListTile(leading:const Icon(Icons.local_offer_outlined,color:green),title:Text((ds['specialOfferTitle']??'Just for you').toString(),style:const TextStyle(fontWeight:FontWeight.w900)),subtitle:Text((ds['specialOfferMessage']??'More scheduled delivery slots are available today.').toString()))),
                   if(widget.cart.isNotEmpty)
-                    Card(color:AllwaysColors.primarySoft,child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[
+                    Card(color:Theme.of(context).colorScheme.primaryContainer,child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[
                       const Icon(Icons.local_shipping_outlined,color:green),
                       const SizedBox(width:8),
                       Expanded(child:Text(sub>=threshold?'FREE scheduled delivery unlocked!':'Add ₹'+(threshold-sub).ceil().toString()+' more to get FREE scheduled delivery',style:const TextStyle(fontWeight:FontWeight.w800))),
@@ -2223,8 +2227,8 @@ class _ShopPageState extends State<ShopPage>{
               builder:(context,bannerSnap){
                 final raw=bannerSnap.data?.data()?['imageUrls'];
                 final urls=raw is List?raw.map((e)=>e.toString()).where((e)=>e.isNotEmpty).take(7).toList():<String>[];
-                if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:const Color(0xFFE7F7EE),borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle),const Spacer(),Text(deliveryText,style:const TextStyle(color:green,fontWeight:FontWeight.w900))]));
-                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[CachedNetworkImage(imageUrl:_displayImageUrl(urls[bannerIndex%urls.length],width:1000,height:450,version:_imageVersionString(bannerSnap.data?.data()?['imageVersion']??bannerSnap.data?.data()?['imageUpdatedAt'])),cacheKey:_displayImageUrl(urls[bannerIndex%urls.length],width:1000,height:450,version:_imageVersionString(bannerSnap.data?.data()?['imageVersion']??bannerSnap.data?.data()?['imageUpdatedAt'])),fit:BoxFit.cover,placeholder:(_,__)=>Container(color:const Color(0xFFE7F7EE)),errorWidget:(_,__,___)=>Container(color:const Color(0xFFE7F7EE))),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
+                if(urls.isEmpty)return Container(height:150,padding:const EdgeInsets.all(18),decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHigh,borderRadius:BorderRadius.circular(18)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(fontSize:23,fontWeight:FontWeight.w900)),const SizedBox(height:6),Text(heroSubtitle,style:TextStyle(color:Theme.of(context).colorScheme.onSurfaceVariant)),const Spacer(),Text(deliveryText,style:TextStyle(color:Theme.of(context).colorScheme.primary,fontWeight:FontWeight.w900))]));
+                return SizedBox(height:160,child:ClipRRect(borderRadius:BorderRadius.circular(18),child:Stack(fit:StackFit.expand,children:[CachedNetworkImage(imageUrl:_displayImageUrl(urls[bannerIndex%urls.length],width:1000,height:450,version:_imageVersionString(bannerSnap.data?.data()?['imageVersion']??bannerSnap.data?.data()?['imageUpdatedAt'])),cacheKey:_displayImageUrl(urls[bannerIndex%urls.length],width:1000,height:450,version:_imageVersionString(bannerSnap.data?.data()?['imageVersion']??bannerSnap.data?.data()?['imageUpdatedAt'])),fit:BoxFit.cover,placeholder:(_,__)=>Container(color:Theme.of(context).colorScheme.surfaceContainerHigh),errorWidget:(_,__,___)=>Container(color:Theme.of(context).colorScheme.surfaceContainerHigh)),Container(decoration:const BoxDecoration(gradient:LinearGradient(begin:Alignment.bottomCenter,end:Alignment.topCenter,colors:[Colors.black54,Colors.transparent]))),Positioned(left:16,right:16,bottom:14,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(heroTitle,style:const TextStyle(color:Colors.white,fontSize:22,fontWeight:FontWeight.w900)),Text(deliveryText,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.w700))]))])));
               },
             ),
             const SizedBox(height:14),
@@ -4253,7 +4257,7 @@ class _OnDemandRidePageState extends State<OnDemandRidePage> {
   Future<void> _requestRide() async {
     final u=FirebaseAuth.instance.currentUser;
     if(u==null){
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));
+      await Navigator.push(context,MaterialPageRoute(builder:(_)=>AuthScreen()));
       return;
     }
     if(pickup==null){
@@ -5872,7 +5876,7 @@ class _VehicleBookingPageState extends State<VehicleBookingPage> {
 
   Future<void> _book(DocumentSnapshot<Map<String,dynamic>> doc,{required bool negotiate}) async {
     final user=FirebaseAuth.instance.currentUser;
-    if(user==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Please sign in first.')));return;}
+    if(user==null){await Navigator.push(context,MaterialPageRoute(builder:(_)=>AuthScreen()));return;}
     final d=doc.data()??{};
     try{
       final status=(d['status']??d['listingStatus']??'available').toString().toLowerCase();
@@ -6102,7 +6106,9 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
 class WishlistPage extends StatefulWidget {
   final void Function(Product)? onAdd;
   final VoidCallback? onBuyAll;
-  const WishlistPage({super.key, this.onAdd, this.onBuyAll});
+  final List<Product> guestItems;
+  final Future<void> Function(Product)? onGuestRemove;
+  const WishlistPage({super.key, this.onAdd, this.onBuyAll, this.guestItems = const [], this.onGuestRemove});
   @override State<WishlistPage> createState() => _WishlistPageState();
 }
 
@@ -6120,7 +6126,7 @@ class _WishlistPageState extends State<WishlistPage> {
   Future<void> load() async {
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) {
-      if (mounted) setState(() => loading = false);
+      if (mounted) setState(() { items = List<Product>.from(widget.guestItems); loading = false; });
       return;
     }
     try {
@@ -6134,7 +6140,11 @@ class _WishlistPageState extends State<WishlistPage> {
 
   Future<void> remove(Product product) async {
     final u = FirebaseAuth.instance.currentUser;
-    if (u == null) return;
+    if (u == null) {
+      await widget.onGuestRemove?.call(product);
+      if (mounted) setState(() => items.removeWhere((x) => x.id == product.id));
+      return;
+    }
     try {
       await FirebaseFirestore.instance.collection('customers').doc(u.uid).collection('wishlist').doc(product.id).delete();
       if (mounted) setState(() => items.removeWhere((x) => x.id == product.id));
