@@ -240,11 +240,13 @@ Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
     if(data!=null){
       final version=(data['version']??'').toString().trim();
       final apkUrl=(data['apkUrl']??data['url']??'').toString().trim();
-      if(version.isNotEmpty&&apkUrl.isNotEmpty){
+      final digest=(data['sha256']??data['digest']??'').toString().trim().toLowerCase().replaceFirst(RegExp(r'^sha256:'),'');
+      final uri=Uri.tryParse(apkUrl);
+      if(version.isNotEmpty&&uri!=null&&uri.scheme=='https'&&RegExp(r'^[a-f0-9]{64}$').hasMatch(digest)){
         return <String,dynamic>{
           'version':version,
           'url':apkUrl,
-          'digest':(data['sha256']??data['digest']??'').toString().trim(),
+          'digest':digest,
           'notes':(data['notes']??'').toString(),
           'mandatory':data['mandatory']!=false,
         };
@@ -259,18 +261,36 @@ Future<Map<String,dynamic>?> _fetchAllwaysUpdateManifest() async {
     if(data is! Map)return null;
     final remote=RegExp(r'(\d+\.\d+\.\d+)').firstMatch((data['name']??'').toString())?.group(1)??'';
     final assets=data['assets'] is List?data['assets'] as List:const [];
+    Map? apkAsset;
+    Map? checksumAsset;
     for(final raw in assets){
-      if(raw is Map&&(raw['name']??'').toString()=='allways-latest.apk'){
-        final url=(raw['browser_download_url']??'').toString().trim();
-        if(remote.isNotEmpty&&url.isNotEmpty){
-          return <String,dynamic>{
-            'version':remote,
-            'url':url,
-            'digest':(raw['digest']??'').toString().trim(),
-            'notes':(data['body']??'').toString(),
-            'mandatory':true,
-          };
+      if(raw is! Map) continue;
+      final name=(raw['name']??'').toString();
+      if(name=='allways-latest.apk') apkAsset=raw;
+      if(name=='allways-latest-checksum.txt') checksumAsset=raw;
+    }
+    if(apkAsset!=null&&remote.isNotEmpty){
+      final url=(apkAsset['browser_download_url']??'').toString().trim();
+      final uri=Uri.tryParse(url);
+      var digest=(apkAsset['digest']??'').toString().trim().toLowerCase().replaceFirst(RegExp(r'^sha256:'),'');
+      if(!RegExp(r'^[a-f0-9]{64}$').hasMatch(digest)&&checksumAsset!=null){
+        final checksumUrl=(checksumAsset['browser_download_url']??'').toString().trim();
+        final checksumUri=Uri.tryParse(checksumUrl);
+        if(checksumUri!=null&&checksumUri.scheme=='https'){
+          final checksumResponse=await http.get(checksumUri).timeout(const Duration(seconds:8));
+          if(checksumResponse.statusCode==200){
+            digest=RegExp(r'\b([a-fA-F0-9]{64})\b').firstMatch(checksumResponse.body)?.group(1)?.toLowerCase()??'';
+          }
         }
+      }
+      if(uri!=null&&uri.scheme=='https'&&RegExp(r'^[a-f0-9]{64}$').hasMatch(digest)){
+        return <String,dynamic>{
+          'version':remote,
+          'url':url,
+          'digest':digest,
+          'notes':(data['body']??'').toString(),
+          'mandatory':true,
+        };
       }
     }
   }catch(_){}
@@ -1327,12 +1347,14 @@ class _ShellState extends State<Shell> {
       final downloadUrl=u+(u.contains('?')?'&':'?')+'cacheBust='+DateTime.now().millisecondsSinceEpoch.toString();
       await Dio().download(downloadUrl,file.path,deleteOnError:true,onReceiveProgress:(received,total){if(total>0)controller.value=received/total;});
       final expected=(_updateDigest??'').replaceFirst(RegExp(r'^sha256:'),'').trim().toLowerCase();
-      if(expected.isNotEmpty){
-        final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
-        if(actual!=expected){
-          try{await file.delete();}catch(_){}
-          throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
-        }
+      if(!RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)){
+        try{await file.delete();}catch(_){}
+        throw Exception('Update manifest has no valid SHA-256 digest. The update was not installed.');
+      }
+      final actual=(await sha256.bind(file.openRead()).first).toString().toLowerCase();
+      if(actual!=expected){
+        try{await file.delete();}catch(_){}
+        throw Exception('Update verification failed. The downloaded APK did not match the release digest.');
       }
       if(mounted)Navigator.of(context).pop();
       final result=await const MethodChannel('com.allways.app/apk_installer').invokeMethod<String>('installApk',{'path':file.path});
@@ -2329,11 +2351,23 @@ class _AutoBannerCarouselState extends State<_AutoBannerCarousel> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: LayoutBuilder(
-                builder: (context, constraints) => Image.network(
-                  cloudinaryImageUrl(widget.urls[i], width: constraints.maxWidth, height: widget.height),
-                  fit: BoxFit.cover, width: double.infinity,
-                  errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
-                ),
+                builder: (context, constraints) {
+                  final imageUrl = cloudinaryImageUrl(
+                    widget.urls[i],
+                    width: constraints.maxWidth,
+                    height: widget.height,
+                  );
+                  return CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    cacheKey: imageUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    placeholder: (_, __) => const ColoredBox(color: Color(0xFFE7F7EE)),
+                    errorWidget: (_, __, ___) => const Center(
+                      child: Icon(Icons.broken_image_outlined),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -2780,10 +2814,15 @@ class _OrdersPageState extends State<OrdersPage> {
       child: img.startsWith('http')
           ? ClipRRect(
               borderRadius: BorderRadius.circular(13),
-              child: Image.network(
-                img,
+              child: CachedNetworkImage(
+                imageUrl: img,
+                cacheKey: img,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted),
+                placeholder: (_, __) => ColoredBox(color: background),
+                errorWidget: (_, __, ___) => Icon(
+                  Icons.inventory_2_outlined,
+                  color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted,
+                ),
               ),
             )
           : Center(
