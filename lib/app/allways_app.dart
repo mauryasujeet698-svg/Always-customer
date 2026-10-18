@@ -44,7 +44,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/ride', builder: (context, state) => const RideRequestScreen()),
       GoRoute(path: '/addresses', builder: (context, state) => const SavedAddressesScreen()),
-      GoRoute(path: '/support', builder: (context, state) => SupportScreen(orderId: state.uri.queryParameters['orderId']),)
+      GoRoute(path: '/support', builder: (context, state) => SupportScreen(orderId: state.uri.queryParameters['orderId'])),
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
