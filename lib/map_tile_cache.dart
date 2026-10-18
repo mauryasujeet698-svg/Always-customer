@@ -12,7 +12,7 @@ Future<void> initializeAllwaysCustomerMapTileCache() async {
   try {
     final directory = await getTemporaryDirectory();
     final store = FileCacheStore(
-      directory.path + Platform.pathSeparator + 'allways_customer_map_tiles',
+      '${directory.path}${Platform.pathSeparator}allways_customer_map_tiles',
     );
     allwaysCustomerMapTileProvider = CachedTileProvider(
       store: store,
