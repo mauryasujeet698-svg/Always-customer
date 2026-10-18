@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -35,7 +34,8 @@ class FavoritesController extends AsyncNotifier<Set<String>> {
       throw StateError('Sign in to save favourite products.');
     }
 
-    final next = Set<String>.from(state.asData?.value ?? const <String>{});
+    final current = state.asData?.value ?? await future;
+    final next = Set<String>.from(current);
     if (!next.add(productId)) next.remove(productId);
     final immutable = Set<String>.unmodifiable(next);
     state = AsyncData(immutable);
