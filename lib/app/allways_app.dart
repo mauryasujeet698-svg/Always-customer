@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_mode_provider.dart';
 import '../features/auth/presentation/auth_providers.dart';
+import '../features/addresses/presentation/saved_addresses_screen.dart';
+import '../features/support/presentation/support_screen.dart';
 import '../features/auth/presentation/phone_login_screen.dart';
 import '../features/checkout/presentation/checkout_screen.dart';
 import '../features/home/presentation/home_screen.dart';
@@ -40,6 +42,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OrdersScreen(),
       ),
       GoRoute(path: '/ride', builder: (context, state) => const RideRequestScreen()),
+      GoRoute(path: '/addresses', builder: (context, state) => const SavedAddressesScreen()),
+      GoRoute(path: '/support', builder: (context, state) => const SupportScreen()),
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
