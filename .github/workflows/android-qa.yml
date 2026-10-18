@@ -79,7 +79,7 @@ jobs:
           text = text.replace('android:label="app"', 'android:label="ALLways"')
           default_channel = '<meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="allways_customer_updates"/>'
           if "com.google.firebase.messaging.default_notification_channel_id" not in text:
-              text = text.replace("</application>", f"        {default_channel}\\n    </application>", 1)
+              text = text.replace("</application>", f"        {default_channel}\n    </application>", 1)
           manifest.write_text(text)
 
           # Native notification bridge: FCM automatically displays notification
