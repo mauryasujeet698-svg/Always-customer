@@ -57,6 +57,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /sosAlerts/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
     match /supportTickets/{ticketId} {
       allow create: if signedIn()
         && request.resource.data.requesterId == request.auth.uid
