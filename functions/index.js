@@ -626,3 +626,6 @@ exports.acceptRide = partnerFunctions.acceptRide;
 exports.dispatchRideOffers = partnerFunctions.dispatchRideOffers;
 exports.offerWaitingRidesToDriver = partnerFunctions.offerWaitingRidesToDriver;
 exports.syncRideOfferStates = partnerFunctions.syncRideOfferStates;
+
+const customerOrderFunctions = require("./customer_order_functions");
+exports.createCustomerOrder = customerOrderFunctions.createCustomerOrder;
