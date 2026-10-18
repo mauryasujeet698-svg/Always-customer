@@ -262,7 +262,7 @@ class _ShopTabState extends ConsumerState<ShopTab> {
         ),
       ),
       data: (allProducts) {
-        final categories = ['All', ...allProducts.map((p) => p.category).where((c) => c.isNotEmpty).toSet().toList()..sort()];
+        final categories = allProducts.map((p) => p.category).where((c) => c.isNotEmpty).toSet().toList()..sort();\n        categories.insert(0, 'All');
         final filtered = allProducts.where((p) {
           final categoryMatch = _category == 'All' || p.category == _category;
           final queryMatch = widget.searchQuery.isEmpty ||
