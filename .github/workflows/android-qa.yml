@@ -77,7 +77,113 @@ jobs:
               if perm not in text:
                   text = text.replace("<application", f"    {tag}\n    <application", 1)
           text = text.replace('android:label="app"', 'android:label="ALLways"')
+          default_channel = '<meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="allways_customer_updates"/>'
+          if "com.google.firebase.messaging.default_notification_channel_id" not in text:
+              text = text.replace("</application>", f"        {default_channel}\\n    </application>", 1)
           manifest.write_text(text)
+
+          # Native notification bridge: FCM automatically displays notification
+          # payloads in background; this bridge displays them while foregrounded.
+          activity = Path("android/app/src/main/kotlin/com/allways/app/MainActivity.kt")
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text(r'''package com.allways.app
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.Context
+          import android.content.Intent
+          import android.os.Build
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {
+              private val notificationChannelId = "allways_customer_updates"
+
+              override fun onCreate(savedInstanceState: android.os.Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  createNotificationChannel()
+              }
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  MethodChannel(
+                      flutterEngine.dartExecutor.binaryMessenger,
+                      "allways_notifications"
+                  ).setMethodCallHandler { call, result ->
+                      when (call.method) {
+                          "showNotification" -> {
+                              try {
+                                  showNotification(
+                                      call.argument<String>("title") ?: "ALLways",
+                                      call.argument<String>("body") ?: "You have a new ALLways update."
+                                  )
+                                  result.success(null)
+                              } catch (error: SecurityException) {
+                                  result.error(
+                                      "NOTIFICATION_PERMISSION",
+                                      error.message ?: "Notification permission is not granted.",
+                                      null
+                                  )
+                              } catch (error: Exception) {
+                                  result.error("NOTIFICATION_FAILED", error.message, null)
+                              }
+                          }
+                          else -> result.notImplemented()
+                      }
+                  }
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      manager.createNotificationChannel(
+                          NotificationChannel(
+                              notificationChannelId,
+                              "ALLways updates",
+                              NotificationManager.IMPORTANCE_HIGH
+                          ).apply {
+                              description = "Order, ride and service notifications"
+                              enableVibration(true)
+                          }
+                      )
+                  }
+              }
+
+              private fun showNotification(title: String, body: String) {
+                  createNotificationChannel()
+                  val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                  }
+                  val immutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      PendingIntent.FLAG_IMMUTABLE
+                  } else 0
+                  val pending = intent?.let {
+                      PendingIntent.getActivity(
+                          this,
+                          (System.currentTimeMillis() and 0x7fffffff).toInt(),
+                          it,
+                          PendingIntent.FLAG_UPDATE_CURRENT or immutable
+                      )
+                  }
+                  val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      Notification.Builder(this, notificationChannelId)
+                  } else {
+                      Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+                  }
+                  builder
+                      .setSmallIcon(android.R.drawable.ic_dialog_info)
+                      .setContentTitle(title)
+                      .setContentText(body)
+                      .setAutoCancel(true)
+                      .setContentIntent(pending)
+                  (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                      .notify((System.currentTimeMillis() and 0x7fffffff).toInt(), builder.build())
+              }
+          }
+          ''')
           PY
           python3 - <<'PY'
           import json
