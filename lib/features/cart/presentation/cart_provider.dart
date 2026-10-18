@@ -14,6 +14,17 @@ class CartController extends Notifier<Map<String, int>> {
     state = Map.unmodifiable(next);
   }
 
+  void setQuantity(String productId, int quantity, {int maximum = 99}) {
+    final next = Map<String, int>.from(state);
+    final safe = quantity.clamp(0, maximum).toInt();
+    if (safe == 0) {
+      next.remove(productId);
+    } else {
+      next[productId] = safe;
+    }
+    state = Map.unmodifiable(next);
+  }
+
   void decrement(String productId) {
     final next = Map<String, int>.from(state);
     final current = next[productId] ?? 0;
