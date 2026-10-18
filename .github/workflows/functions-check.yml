@@ -1,0 +1,29 @@
+name: ALLways Functions Source Validation
+
+on:
+  pull_request:
+    branches: [main, security/redact-fcm-token-logs]
+    paths:
+      - "functions/**"
+      - ".github/workflows/functions-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - ".github/workflows/functions-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-functions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Cloud Functions syntax
+        run: node --check functions/index.js
+      - name: Check Functions package metadata
+        run: node -e "const p=require('./functions/package.json'); if (!p.private || !p.engines || p.engines.node !== '22') process.exit(1); console.log('Functions package metadata is valid.')"
