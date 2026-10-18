@@ -97,7 +97,7 @@ class _AllwaysCustomerAppState extends ConsumerState<AllwaysCustomerApp> {
   @override
   Widget build(BuildContext context) {
     ref.listen(authStateProvider, (previous, next) {
-      final user = next.valueOrNull;
+      final user = next.asData?.value;
       if (user != null) {
         unawaited(
           ref.read(customerNotificationServiceProvider).registerForUser(user),
