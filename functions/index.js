@@ -78,7 +78,68 @@ async function sendToUserTokens(uid, title, body, data = {}) {
   await Promise.all(sends);
 }
 
-/** Admin announcements -> FCM topic */
+/** Admin announcements -> registered device tokens (reliable for Android and web clients). */
+async function sendToAudienceTokens(audience, title, body, data = {}) {
+  const db = getFirestore();
+  const normalizedAudience = String(audience || "all_users").trim().toLowerCase();
+  const allowedRoles = {
+    all_users: null,
+    customers: new Set(["customer", "customers"]),
+    admins: new Set(["admin", "admins"]),
+    carriers: new Set(["carrier", "carriers"]),
+    delivery_partners: new Set(["delivery_partner", "delivery partner", "delivery-partner", "delivery_partners"]),
+  };
+  if (!ALLOWED_TOPICS.has(normalizedAudience)) {
+    throw new Error("Invalid notification audience: " + normalizedAudience);
+  }
+
+  // Apps register each FCM token under fcmTokens/{uid}/tokens/{token}.
+  // Sending to concrete registrations avoids relying only on topic subscriptions.
+  const tokenDocs = await db.collectionGroup("tokens").get();
+  const sends = [];
+  tokenDocs.forEach((doc) => {
+    const tokenData = doc.data() || {};
+    const role = String(tokenData.role || "").trim().toLowerCase();
+    const audienceRoles = allowedRoles[normalizedAudience];
+    if (audienceRoles && !audienceRoles.has(role)) return;
+    const token = String(tokenData.token || doc.id || "").trim();
+    if (!token) return;
+    sends.push(
+      getMessaging().send({
+        token,
+        android: {
+          priority: "high",
+          notification: { priority: "high", sound: "default" },
+        },
+        notification: {
+          title: String(title || "ALLways"),
+          body: String(body || ""),
+        },
+        data: Object.fromEntries(
+          Object.entries(data).map(([key, value]) => [key, String(value ?? "")])
+        ),
+      }).then(() => ({ok: true})).catch(async (error) => {
+        if (["messaging/registration-token-not-registered", "messaging/invalid-registration-token"].includes(error.code)) {
+          await doc.ref.delete().catch(() => {});
+        }
+        console.warn("Announcement token send failed:", error.code || error.message);
+        return {ok: false};
+      })
+    );
+  });
+
+  if (sends.length === 0) {
+    throw new Error("No registered FCM device tokens found for audience: " + normalizedAudience);
+  }
+  const results = await Promise.all(sends);
+  const successful = results.filter((result) => result.ok).length;
+  if (successful === 0) {
+    throw new Error("FCM could not deliver to any registered device token for audience: " + normalizedAudience);
+  }
+  return {successful, failed: results.length - successful};
+}
+
+/** Admin announcements -> FCM device tokens */
 exports.sendAnnouncement = onDocumentCreated(
   "announcements/{announcementId}",
   async (event) => {
@@ -88,11 +149,12 @@ exports.sendAnnouncement = onDocumentCreated(
     const data = snapshot.data() || {};
     if (data.status === "sent") return;
 
-    const topic = String(data.topic || data.targetAudience || "all_users").trim();
-    if (!ALLOWED_TOPICS.has(topic)) {
+    const audience = String(data.topic || data.targetAudience || "all_users").trim().toLowerCase();
+    if (!ALLOWED_TOPICS.has(audience)) {
       await snapshot.ref.update({
         status: "failed",
-        error: "Invalid notification topic",
+        error: "Invalid notification audience: " + audience,
+        processedAt: FieldValue.serverTimestamp(),
       });
       return;
     }
@@ -101,26 +163,28 @@ exports.sendAnnouncement = onDocumentCreated(
     const body = String(data.body || "").trim();
 
     try {
-      await sendToTopic(topic, title, body, {
+      const result = await sendToAudienceTokens(audience, title, body, {
         announcementId: event.params.announcementId,
         type: String(data.type || "announcement"),
-        topic,
+        topic: audience,
       });
       await snapshot.ref.update({
         status: "sent",
         sentAt: FieldValue.serverTimestamp(),
+        delivery: result,
+        error: FieldValue.delete(),
       });
     } catch (error) {
       console.error("ALLways announcement notification failed:", error);
       await snapshot.ref.update({
         status: "failed",
         error: String(error && error.message ? error.message : error),
+        processedAt: FieldValue.serverTimestamp(),
       });
       throw error;
     }
   }
 );
-
 /** Order created/updated -> notify customer + assigned partner */
 exports.notifyOrderChange = onDocumentUpdated(
   "orders/{orderId}",
