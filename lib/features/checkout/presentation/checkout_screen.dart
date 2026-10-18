@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/order_sync_service.dart';
 import '../../auth/domain/phone_gate.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../cart/presentation/cart_provider.dart';
@@ -303,6 +305,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Persist the order first. A failed optional Sheets sync must not make
       // a successfully saved Firestore order appear to have failed.
       await doc.set(order);
+      unawaited(syncOrderToGoogleAppsScript(order));
       ref.read(cartProvider.notifier).clear();
       if (mounted) {
         await showDialog<void>(
