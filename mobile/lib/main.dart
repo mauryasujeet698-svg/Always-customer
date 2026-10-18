@@ -2329,11 +2329,29 @@ class _AutoBannerCarouselState extends State<_AutoBannerCarousel> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: LayoutBuilder(
-                builder: (context, constraints) => Image.network(
-                  cloudinaryImageUrl(widget.urls[i], width: constraints.maxWidth, height: widget.height),
-                  fit: BoxFit.cover, width: double.infinity,
-                  errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined)),
-                ),
+                builder: (context, constraints) {
+                  final imageUrl = cloudinaryImageUrl(
+                    widget.urls[i],
+                    width: constraints.maxWidth,
+                    height: widget.height,
+                  );
+                  return CachedNetworkImage(
+                    key: ValueKey(widget.urls[i]),
+                    imageUrl: imageUrl,
+                    cacheKey: imageUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    placeholder: (_, __) => const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    errorWidget: (_, __, ___) =>
+                        const Center(child: Icon(Icons.broken_image_outlined)),
+                  );
+                },
               ),
             ),
           ),
@@ -2780,10 +2798,22 @@ class _OrdersPageState extends State<OrdersPage> {
       child: img.startsWith('http')
           ? ClipRRect(
               borderRadius: BorderRadius.circular(13),
-              child: Image.network(
-                img,
+              child: CachedNetworkImage(
+                key: ValueKey(img),
+                imageUrl: img,
+                cacheKey: img,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(Icons.inventory_2_outlined, color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted),
+                placeholder: (_, __) => const Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                errorWidget: (_, __, ___) => Icon(
+                  Icons.inventory_2_outlined,
+                  color: dark ? const Color(0xFFB8BBC3) : AllwaysColors.muted,
+                ),
               ),
             )
           : Center(
