@@ -79,9 +79,22 @@ jobs:
           text = text.replace('android:label="app"', 'android:label="ALLways"')
           manifest.write_text(text)
           PY
-          test -f android/app/google-services.json
-          grep -q '"package_name": "com.allways.app"' android/app/google-services.json
-          grep -q 'applicationId = "com.allways.app"' android/app/build.gradle.kts
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path("android/app/google-services.json").read_text())
+          registered = {
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for client in config.get("client", [])
+          }
+          if "com.allways.app" not in registered:
+              raise SystemExit(f"Firebase config missing com.allways.app; found: {sorted(registered)}")
+          gradle = Path("android/app/build.gradle.kts").read_text()
+          if 'applicationId = "com.allways.app"' not in gradle:
+              raise SystemExit("Android applicationId was not set to com.allways.app")
+          if 'id("com.google.gms.google-services")' not in gradle:
+              raise SystemExit("Google Services Gradle plugin was not applied")
+          PY
 
       - name: Install dependencies
         run: flutter pub get
