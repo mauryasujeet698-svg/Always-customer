@@ -21,6 +21,11 @@ dependencies:
   shared_preferences: ^2.5.3
   http: ^1.5.0
   geolocator: ^14.0.2
+  flutter_map: ^6.0.0
+  latlong2: ^0.9.0
+  flutter_map_cache: ^2.1.0
+  http_cache_file_store: ^2.0.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
