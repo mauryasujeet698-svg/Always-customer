@@ -35,7 +35,7 @@ class SavedAddressesScreen extends ConsumerWidget {
       ),
       body: addresses.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const Center(child: Text('Could not load saved addresses.')),
+        error: (_, _) => const Center(child: Text('Could not load saved addresses.')),
         data: (items) {
           if (items.isEmpty) {
             return const Center(
@@ -52,7 +52,7 @@ class SavedAddressesScreen extends ConsumerWidget {
             key: const PageStorageKey<String>('customer-saved-addresses'),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final address = items[index];
               return Card(

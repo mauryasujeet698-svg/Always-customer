@@ -28,10 +28,14 @@ class CustomerNotificationService {
 
       await FirebaseMessaging.instance.subscribeToTopic('all_users');
       await FirebaseMessaging.instance.subscribeToTopic('customers');
+      // Keep FCM registration tokens until the trusted sender and every app
+      // migrate together to Firebase Installation IDs.
+      // ignore: deprecated_member_use
       await _saveToken(user.uid, await FirebaseMessaging.instance.getToken());
       _registeredUid = user.uid;
 
       await _tokenSubscription?.cancel();
+      // ignore: deprecated_member_use
       _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen(
         (token) => _saveToken(user.uid, token),
       );
@@ -51,6 +55,7 @@ class CustomerNotificationService {
       _registeredUid = null;
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // ignore: deprecated_member_use
         final token = await FirebaseMessaging.instance.getToken();
         if (token != null && token.isNotEmpty) {
           await FirebaseFirestore.instance

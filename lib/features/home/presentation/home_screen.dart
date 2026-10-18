@@ -296,7 +296,7 @@ class _ShopTabState extends ConsumerState<ShopTab> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final category = categories[index];
                     final selected = _category == category;
@@ -397,12 +397,12 @@ class ProductCard extends ConsumerWidget {
                               imageUrl: product.imageUrl,
                               fit: BoxFit.cover,
                               memCacheHeight: 320,
-                              placeholder: (_, __) => Container(
+                              placeholder: (_, _) => Container(
                                 color: const Color(0xFFF0F5F1),
                                 alignment: Alignment.center,
                                 child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                               ),
-                              errorWidget: (_, __, ___) => _ProductPlaceholder(emoji: product.emoji),
+                              errorWidget: (_, _, _) => _ProductPlaceholder(emoji: product.emoji),
                             )
                           : _ProductPlaceholder(emoji: product.emoji),
                       Positioned(

@@ -180,17 +180,21 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
         ),
       );
     } on FirebaseException catch (error) {
-      if (mounted) setState(() {
-        _busy = false;
-        _message = null;
-        _error = 'Could not request the ride (${error.code}). Please try again.';
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _message = null;
+          _error = 'Could not request the ride (${error.code}). Please try again.';
+        });
+      }
     } catch (error) {
-      if (mounted) setState(() {
-        _busy = false;
-        _message = null;
-        _error = error.toString().replaceFirst('Bad state: ', '');
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _message = null;
+          _error = error.toString().replaceFirst('Bad state: ', '');
+        });
+      }
     }
   }
 

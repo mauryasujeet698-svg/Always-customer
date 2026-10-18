@@ -74,7 +74,7 @@ class OrdersList extends ConsumerWidget {
           key: const PageStorageKey<String>('customer-orders-list'),
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
           itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             final document = docs[index];
             final order = document.data();

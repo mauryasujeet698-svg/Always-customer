@@ -82,17 +82,21 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
         },
       );
     } on FirebaseAuthException catch (error) {
-      if (mounted) setState(() {
-        _busy = false;
-        _error = _friendlyError(error);
-        _message = null;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = _friendlyError(error);
+          _message = null;
+        });
+      }
     } catch (error) {
-      if (mounted) setState(() {
-        _busy = false;
-        _error = error.toString();
-        _message = null;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = error.toString();
+          _message = null;
+        });
+      }
     }
   }
 
@@ -118,10 +122,12 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
-      if (mounted) setState(() {
-        _busy = false;
-        _message = null;
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _message = null;
+        });
+      }
     }
   }
 

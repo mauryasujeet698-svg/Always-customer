@@ -71,7 +71,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       appBar: AppBar(title: const Text('Complete your order')),
       body: productsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const Center(child: Text('Your cart could not be loaded. Return to Shop and retry.')),
+        error: (_, _) => const Center(child: Text('Your cart could not be loaded. Return to Shop and retry.')),
         data: (products) {
           final selected = products.where((p) => (cart[p.id] ?? 0) > 0).toList();
           if (selected.isEmpty) {
@@ -88,7 +88,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
           final subtotal = selected.fold<double>(
             0,
-            (sum, product) => sum + product.price * (cart[product.id] ?? 0),
+            (runningTotal, product) => runningTotal + product.price * (cart[product.id] ?? 0),
           );
           final delivery = subtotal >= 499 ? 0.0 : 30.0;
           final total = subtotal + delivery;
@@ -156,7 +156,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               if (savedAddressesAsync != null)
                 savedAddressesAsync.when(
                   loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
                   data: (addresses) {
                     if (addresses.isEmpty) return const SizedBox.shrink();
                     final safeValue = addresses.any((item) => item.id == _selectedAddressId)
@@ -165,7 +165,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: DropdownButtonFormField<String>(
-                        value: safeValue,
+                        initialValue: safeValue,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Use a saved address',
