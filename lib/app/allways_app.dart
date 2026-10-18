@@ -14,6 +14,7 @@ import '../features/home/presentation/home_screen.dart';
 import '../features/notifications/customer_notification_service.dart';
 import '../features/orders/presentation/orders_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
+import '../features/rides/presentation/ride_request_screen.dart';
 
 final customerNotificationServiceProvider =
     Provider<CustomerNotificationService>((ref) {
@@ -38,6 +39,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/orders',
         builder: (context, state) => const OrdersScreen(),
       ),
+      GoRoute(path: '/ride', builder: (context, state) => const RideRequestScreen()),
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
