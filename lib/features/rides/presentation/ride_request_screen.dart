@@ -3,12 +3,16 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/theme/app_theme.dart';
+import '../../../features/auth/domain/phone_gate.dart';
+import '../../../map_tile_cache.dart';
 
 class RideRequestScreen extends StatefulWidget {
   const RideRequestScreen({super.key});
@@ -20,13 +24,24 @@ class RideRequestScreen extends StatefulWidget {
 class _RideRequestScreenState extends State<RideRequestScreen> {
   final _destination = TextEditingController();
   final _http = http.Client();
+  late final MapController _mapController;
+  LatLng? _pickupPoint;
+  LatLng? _destinationPoint;
+  bool _findingMapPlace = false;
   String _vehicle = 'bike';
   bool _busy = false;
   String? _message;
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _mapController = MapController();
+  }
+
+  @override
   void dispose() {
+    _mapController.dispose();
     _destination.dispose();
     _http.close();
     super.dispose();
@@ -88,6 +103,80 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
     return jsonDecode(source);
   }
 
+  Future<Position?> _getCurrentPosition() async {
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) throw StateError('Enable location services to use the pickup map.');
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw StateError('Location permission is required to set your pickup point.');
+    }
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 15),
+      ),
+    );
+  }
+
+  Future<void> _useCurrentLocation() async {
+    if (_findingMapPlace || _busy) return;
+    setState(() { _findingMapPlace = true; _error = null; _message = 'Finding your location…'; });
+    try {
+      final position = await _getCurrentPosition();
+      final point = LatLng(position.latitude, position.longitude);
+      final place = await _reverseGeocode(point.latitude, point.longitude);
+      if (!mounted) return;
+      setState(() {
+        _pickupPoint = point;
+        _message = (place?['display_name'] ?? 'Pickup location selected').toString();
+      });
+      _mapController.move(point, 15);
+    } catch (error) {
+      if (mounted) setState(() {
+        _error = error.toString().replaceFirst('Bad state: ', '');
+        _message = null;
+      });
+    } finally {
+      if (mounted) setState(() => _findingMapPlace = false);
+    }
+  }
+
+  Future<void> _searchDestinationOnMap() async {
+    final query = _destination.text.trim();
+    if (query.isEmpty) {
+      setState(() => _error = 'Enter a destination to search the map.');
+      return;
+    }
+    if (_findingMapPlace || _busy) return;
+    setState(() { _findingMapPlace = true; _error = null; _message = 'Searching for destination…'; });
+    try {
+      final place = await _geocode(query);
+      final lat = double.tryParse((place?['lat'] ?? '').toString());
+      final lng = double.tryParse((place?['lon'] ?? '').toString());
+      if (place == null || lat == null || lng == null) {
+        throw StateError('Destination not found. Try adding your village or district.');
+      }
+      final point = LatLng(lat, lng);
+      if (!mounted) return;
+      setState(() {
+        _destinationPoint = point;
+        _message = (place['display_name'] ?? query).toString();
+      });
+      _mapController.move(point, 14);
+    } catch (error) {
+      if (mounted) setState(() {
+        _error = error.toString().replaceFirst('Bad state: ', '');
+        _message = null;
+      });
+    } finally {
+      if (mounted) setState(() => _findingMapPlace = false);
+    }
+  }
+
   Future<void> _requestRide() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -95,6 +184,13 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
       if (mounted && FirebaseAuth.instance.currentUser != null) {
         setState(() { _message = 'Signed in. You can now request your ride.'; });
       }
+      return;
+    }
+    if (!hasVerifiedPhoneForCheckout(user.phoneNumber)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verify your phone number before requesting a ride.')),
+      );
+      await context.push('/login');
       return;
     }
     final destinationText = _destination.text.trim();
@@ -106,32 +202,23 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
 
     setState(() { _busy = true; _error = null; _message = 'Checking location permission…'; });
     try {
-      final enabled = await Geolocator.isLocationServiceEnabled();
-      if (!enabled) {
-        throw StateError('Enable location services to request a ride.');
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw StateError('Location permission is required to request a ride.');
-      }
-
       setState(() => _message = 'Finding your pickup location…');
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
+      final position = await _getCurrentPosition();
+      final pickupPoint = LatLng(position.latitude, position.longitude);
+      if (mounted) {
+        setState(() => _pickupPoint = pickupPoint);
+        _mapController.move(pickupPoint, 14);
+      }
 
       setState(() => _message = 'Finding your destination…');
       final pickup = await _reverseGeocode(position.latitude, position.longitude);
       final destination = await _geocode(destinationText);
       final destinationLat = double.tryParse((destination?['lat'] ?? '').toString());
       final destinationLng = double.tryParse((destination?['lon'] ?? '').toString());
+      if (destinationLat != null && destinationLng != null && mounted) {
+        final point = LatLng(destinationLat, destinationLng);
+        setState(() => _destinationPoint = point);
+      }
 
       final pickupAddress = (pickup?['display_name'] ?? 'Current location').toString();
       final destinationAddress =
@@ -256,12 +343,77 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
                 prefixIcon: Icon(Icons.location_on_outlined),
               ),
             ),
-            const SizedBox(height: 10),
-            Card(child: const ListTile(
-              leading: Icon(Icons.my_location, color: AllwaysTheme.green),
-              title: Text('Pickup location'),
-              subtitle: Text('Current device location will be used after permission is granted.'),
-            )),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Expanded(child: Text('Map & locations', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+                TextButton.icon(
+                  onPressed: _findingMapPlace || _busy ? null : _useCurrentLocation,
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('Use location'),
+                ),
+              ],
+            ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
+                height: 230,
+                child: FlutterMap(
+                  key: const PageStorageKey<String>('customer-ride-map'),
+                  mapController: _mapController,
+                  options: const MapOptions(
+                    initialCenter: LatLng(22.0, 78.0),
+                    initialZoom: 4.5,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.allways.app',
+                      maxZoom: 19,
+                      tileProvider: allwaysCustomerMapTileProvider,
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        if (_pickupPoint != null)
+                          Marker(
+                            point: _pickupPoint!,
+                            width: 44,
+                            height: 44,
+                            child: const Icon(Icons.location_on, color: AllwaysTheme.green, size: 40),
+                          ),
+                        if (_destinationPoint != null)
+                          Marker(
+                            point: _destinationPoint!,
+                            width: 44,
+                            height: 44,
+                            child: const Icon(Icons.flag_circle, color: Colors.deepOrange, size: 36),
+                          ),
+                      ],
+                    ),
+                    const RichAttributionWidget(
+                      attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: _findingMapPlace || _busy ? null : _searchDestinationOnMap,
+              icon: _findingMapPlace
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.search),
+              label: const Text('Find destination on map'),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.my_location, color: AllwaysTheme.green),
+                title: const Text('Pickup location'),
+                subtitle: Text(_pickupPoint == null
+                    ? 'Use your current location to select pickup.'
+                    : 'Pickup point selected.'),
+              ),
+            ),
             if (_message != null) ...[
               const SizedBox(height: 8),
               Text(_message!, style: const TextStyle(color: AllwaysTheme.green)),
