@@ -301,11 +301,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     required double delivery,
     required double total,
   }) async {
-    if (!hasVerifiedPhoneForCheckout(user?.phoneNumber)) {
+    final currentUser = user;
+    if (currentUser == null ||
+        !hasVerifiedPhoneForCheckout(currentUser.phoneNumber)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Verify your phone number before placing an order.')),
       );
       await context.push('/login');
+      return;
+    }
+    final phoneDigits = currentUser.phoneNumber!.replaceAll(RegExp(r'\\D'), '');
+    final cleanPhone = phoneDigits.length > 10
+        ? phoneDigits.substring(phoneDigits.length - 10)
+        : phoneDigits;
+    if (cleanPhone.length != 10) {
+      setState(() => _error = 'The verified mobile number is invalid. Verify it again before ordering.');
       return;
     }
     if (_name.text.trim().isEmpty || _address.text.trim().isEmpty) {
@@ -330,7 +340,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .call<Map<String, dynamic>>({
         'requestId': requestId,
         'name': _name.text.trim(),
-        'email': user.email ?? '',
+        'email': currentUser.email ?? '',
         'address': _address.text.trim(),
         'note': _note.text.trim(),
         'expectedSubtotal': subtotal,
@@ -349,12 +359,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
       try {
         await ref.read(savedAddressRepositoryProvider).upsert(
-          uid: user.uid,
+          uid: currentUser.uid,
           name: _name.text.trim(),
           phone: cleanPhone,
           address: _address.text.trim(),
         );
-        ref.invalidate(savedAddressesProvider(user.uid));
+        ref.invalidate(savedAddressesProvider(currentUser.uid));
       } catch (_) {}
       ref.read(cartProvider.notifier).clear();
       if (mounted) {
