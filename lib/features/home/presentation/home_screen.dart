@@ -33,12 +33,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
-    final products = ref.watch(productsProvider).valueOrNull ?? const <Product>[];
+    final products = ref.watch(productsProvider).asData?.value ?? const <Product>[];
     final cartCount = cart.values.fold<int>(0, (sum, count) => sum + count);
     final subtotal = products.fold<double>(0, (sum, product) {
       return sum + product.price * (cart[product.id] ?? 0);
     });
-    final auth = ref.watch(authStateProvider).valueOrNull;
+    final auth = ref.watch(authStateProvider).asData?.value;
 
     return Scaffold(
       appBar: AppBar(
@@ -262,7 +262,8 @@ class _ShopTabState extends ConsumerState<ShopTab> {
         ),
       ),
       data: (allProducts) {
-        final categories = allProducts.map((p) => p.category).where((c) => c.isNotEmpty).toSet().toList()..sort();\n        categories.insert(0, 'All');
+        final categories = allProducts.map((p) => p.category).where((c) => c.isNotEmpty).toSet().toList()..sort();
+        categories.insert(0, 'All');
         final filtered = allProducts.where((p) {
           final categoryMatch = _category == 'All' || p.category == _category;
           final queryMatch = widget.searchQuery.isEmpty ||
