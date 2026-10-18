@@ -75,8 +75,10 @@ test("rejects customer order without a verified phone claim", async () => {
   ));
 });
 
-test("verified owner may place their own COD order", async () => {
-  await assertSucceeds(setDoc(
+test("verified customers still cannot write orders directly from the client", async () => {
+  // Customer orders must go through createCustomerOrder, which validates the
+  // verified phone and recalculates prices, stock, fees and totals server-side.
+  await assertFails(setDoc(
     doc(signedIn("customer-a", {phone_number: "+919876543210"}), "orders/order-a"),
     order("order-a", "customer-a"),
   ));
