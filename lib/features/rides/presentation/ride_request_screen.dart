@@ -136,10 +136,12 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
       });
       _mapController.move(point, 15);
     } catch (error) {
-      if (mounted) setState(() {
-        _error = error.toString().replaceFirst('Bad state: ', '');
-        _message = null;
-      });
+      if (mounted) {
+        setState(() {
+          _error = error.toString().replaceFirst('Bad state: ', '');
+          _message = null;
+        });
+      }
     } finally {
       if (mounted) setState(() => _findingMapPlace = false);
     }
@@ -168,10 +170,12 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
       });
       _mapController.move(point, 14);
     } catch (error) {
-      if (mounted) setState(() {
-        _error = error.toString().replaceFirst('Bad state: ', '');
-        _message = null;
-      });
+      if (mounted) {
+        setState(() {
+          _error = error.toString().replaceFirst('Bad state: ', '');
+          _message = null;
+        });
+      }
     } finally {
       if (mounted) setState(() => _findingMapPlace = false);
     }
