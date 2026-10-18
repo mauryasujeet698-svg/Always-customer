@@ -29,37 +29,6 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/deliveryPartners/$(uid))
         && get(/databases/$(database)/documents/deliveryPartners/$(uid)).data.get('approvalStatus', '') == 'approved';
     }
-    function validCustomerOrder(orderId) {
-      return verifiedIndianPhoneMatches(request.resource.data.phone)
-        && request.resource.data.keys().hasAll([
-          'id', 'customerId', 'name', 'phone', 'address', 'items',
-          'subtotal', 'delivery', 'total', 'paymentMethod', 'paymentStatus', 'status'
-        ])
-        && request.resource.data.keys().hasOnly([
-          'id', 'customerId', 'email', 'name', 'phone', 'address', 'note',
-          'items', 'subtotal', 'delivery', 'total', 'paymentMethod',
-          'paymentStatus', 'confirmationPin', 'status', 'estimatedDelivery',
-          'statusNote', 'cancellationReason', 'rating', 'createdAt',
-          'updatedAt', 'time'
-        ])
-        && request.resource.data.id == orderId
-        && request.resource.data.customerId == request.auth.uid
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.address is string
-        && request.resource.data.address.size() >= 8
-        && request.resource.data.items is list
-        && request.resource.data.items.size() > 0
-        && request.resource.data.subtotal is number
-        && request.resource.data.delivery is number
-        && request.resource.data.total is number
-        && request.resource.data.subtotal >= 0
-        && request.resource.data.delivery >= 0
-        && request.resource.data.total == request.resource.data.subtotal + request.resource.data.delivery
-        && request.resource.data.paymentMethod == 'COD'
-        && request.resource.data.paymentStatus == 'unpaid'
-        && request.resource.data.status == 'New Order';
-    }
     function customerMayCancelOrder() {
       return signedIn()
         && resource.data.get('customerId', '') == request.auth.uid
@@ -126,7 +95,7 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow create: if validCustomerOrder(orderId);
+      allow create: if isAdmin();
       allow read: if isAdmin()
         || (signedIn() && resource.data.get('customerId', '') == request.auth.uid)
         || (signedIn() && resource.data.get('carrierUid', '') == request.auth.uid)
