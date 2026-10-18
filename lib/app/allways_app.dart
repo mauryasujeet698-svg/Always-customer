@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -69,7 +70,7 @@ class _AllwaysCustomerAppState extends ConsumerState<AllwaysCustomerApp> {
   @override
   void initState() {
     super.initState();
-    _foregroundMessages = FirebaseMessaging.onMessage.listen((message) {
+    _foregroundMessages = FirebaseMessaging.onMessage.listen((message) async {
       final title = message.notification?.title ??
           message.data['title']?.toString() ??
           'ALLways';
@@ -77,18 +78,49 @@ class _AllwaysCustomerAppState extends ConsumerState<AllwaysCustomerApp> {
           message.data['body']?.toString() ??
           message.data['message']?.toString() ??
           '';
+      try {
+        await const MethodChannel('allways_notifications').invokeMethod<void>(
+          'showNotification',
+          {'title': title, 'body': body},
+        );
+      } catch (_) {
+        // In-app feedback remains available if native notification display fails.
+      }
       customerScaffoldMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text(body.isEmpty ? title : '$title: $body')),
       );
     });
     _openedMessages = FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      ref.read(appRouterProvider).go('/orders');
+      _openNotificationRoute(message.data);
     });
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null && mounted) {
-        ref.read(appRouterProvider).go('/orders');
+        _openNotificationRoute(message.data);
       }
     }).catchError((_) {});
+  }
+
+  void _openNotificationRoute(Map<String, dynamic> data) {
+    final router = ref.read(appRouterProvider);
+    final target = (data['screen'] ?? data['type'] ?? data['target'] ?? 'orders')
+        .toString()
+        .trim()
+        .toLowerCase();
+    switch (target) {
+      case 'ride':
+      case 'ride_update':
+      case 'autoriderequest':
+        router.go('/ride');
+      case 'profile':
+      case 'account':
+        router.go('/profile');
+      case 'support':
+      case 'support_ticket':
+        final orderId = (data['orderId'] ?? '').toString();
+        router.go(orderId.isEmpty ? '/support' : '/support?orderId=${Uri.encodeComponent(orderId)}');
+      default:
+        router.go('/orders');
+    }
   }
 
   @override
