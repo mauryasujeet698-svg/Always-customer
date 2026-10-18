@@ -3,71 +3,295 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return signedIn() && request.auth.token.email == "mauryasujeet698@gmail.com";
+      return signedIn() && request.auth.token.get('admin', false) == true;
     }
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function verifiedPhone() {
+      return signedIn()
+        && request.auth.token.get('phone_number', '') is string
+        && request.auth.token.get('phone_number', '').size() > 0;
+    }
+    function verifiedIndianPhoneMatches(phone) {
+      return verifiedPhone() && phone is string
+        && phone.matches('^[0-9]{10}$')
+        && request.auth.token.get('phone_number', '') == '+91' + phone;
+    }
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    function approvedCarrier(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/ridePartners/$(uid))
+        && get(/databases/$(database)/documents/ridePartners/$(uid)).data.get('approvalStatus', '') == 'approved';
+    }
+    function approvedDelivery(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/deliveryPartners/$(uid))
+        && get(/databases/$(database)/documents/deliveryPartners/$(uid)).data.get('approvalStatus', '') == 'approved';
+    }
+    function customerMayCancelOrder() {
+      return signedIn()
+        && resource.data.get('customerId', '') == request.auth.uid
+        && resource.data.get('status', '') in ['New Order', 'Confirmed']
+        && changedOnly(['status', 'statusNote', 'cancellationReason', 'updatedAt'])
+        && request.resource.data.status == 'Cancelled'
+        && request.resource.data.cancellationReason is string
+        && request.resource.data.cancellationReason.size() > 0;
+    }
+    function customerMayRateOrder() {
+      return signedIn()
+        && resource.data.get('customerId', '') == request.auth.uid
+        && resource.data.get('status', '') in ['Delivered', 'delivered', 'Completed', 'completed']
+        && (!('rating' in resource.data) || resource.data.rating == null)
+        && changedOnly(['rating', 'ratedAt', 'updatedAt'])
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5;
+    }
+    function deliveryMayUpdateLocation() {
+      return signedIn()
+        && resource.data.get('carrierUid', '') == request.auth.uid
+        && approvedDelivery(request.auth.uid)
+        && resource.data.get('status', '') in ['Assigned', 'assigned', 'Confirmed', 'confirmed', 'Preparing', 'preparing', 'Picked Up', 'picked_up', 'Out for delivery', 'Out for Delivery', 'On the way', 'In Transit', 'in_transit', 'Arrived']
+        && changedOnly(['carrierLat', 'carrierLng', 'carrierLocationUpdatedAt'])
+        && request.resource.data.carrierLat is number
+        && request.resource.data.carrierLng is number;
+    }
+    function driverMayUpdateLocation() {
+      return signedIn()
+        && resource.data.get('driverUid', '') == request.auth.uid
+        && approvedCarrier(request.auth.uid)
+        && resource.data.get('status', '') in ['accepted', 'arrived', 'started', 'on_trip', 'in_progress', 'ongoing', 'driver_arrived', 'ride_started']
+        && changedOnly(['driverLat', 'driverLng', 'driverLocationUpdatedAt'])
+        && request.resource.data.driverLat is number
+        && request.resource.data.driverLng is number;
     }
 
-    match /products/{productId} {
+    match /products/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
-
-    match /inventory/{productId} {
+    match /inventory/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
-
-    match /fcmTokens/{userId}/tokens/{tokenId} {
-      allow read, write: if isOwner(userId);
+    match /fcmTokens/{uid}/tokens/{tokenId} {
+      allow read, write: if isOwner(uid) || isAdmin();
     }
-
-    match /announcements/{id} {
-      allow read: if signedIn();
-      allow create: if isAdmin();
-      allow update, delete: if false;
+    match /customers/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid)
+        && request.resource.data.get('role', 'customer') == 'customer'
+        && !request.resource.data.get('admin', false);
+      allow update: if isAdmin()
+        || (isOwner(uid)
+          && changedOnly([
+            'name', 'displayName', 'email', 'phone', 'mobileNumber',
+            'photoURL', 'profilePhotoUrl', 'notificationPreferences',
+            'savedAddresses', 'favoriteIds', 'updatedAt'
+          ])
+          && request.resource.data.get('role', 'customer') == resource.data.get('role', 'customer'));
+      allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
-      allow create: if signedIn();
-      allow read: if signedIn();
-      allow update: if signedIn();
+      allow create: if isAdmin();
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.get('customerId', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('carrierUid', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('deliveryPartnerUid', '') == request.auth.uid);
+      allow update: if isAdmin() || customerMayCancelOrder() || customerMayRateOrder() || deliveryMayUpdateLocation();
       allow delete: if isAdmin();
     }
-
-    match /customers/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
-    }
-
-    match /deliveryPartners/{userId} {
-      allow read: if signedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /ridePartners/{userId} {
-      allow read: if signedIn();
-      allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
-    }
-
     match /autoRideRequests/{rideId} {
-      allow read, create, update: if signedIn();
+      allow create: if verifiedPhone()
+        && request.resource.data.keys().hasAll([
+          'customerId', 'pickupAddress', 'destinationAddress',
+          'pickupLatitude', 'pickupLongitude', 'rideType', 'status',
+          'confirmationPin', 'requestedAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'customerEmail', 'customerPhone',
+          'pickupAddress', 'destinationAddress', 'pickupLatitude', 'pickupLongitude',
+          'destinationLatitude', 'destinationLongitude', 'rideType',
+          'confirmationPin', 'status', 'requestedAt', 'updatedAt'
+        ])
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.status == 'searching'
+        && request.resource.data.rideType in ['bike', 'auto', 'car']
+        && request.resource.data.pickupLatitude is number
+        && request.resource.data.pickupLongitude is number
+        && (!('customerPhone' in request.resource.data)
+          || request.resource.data.customerPhone == request.auth.token.get('phone_number', ''));
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.get('customerId', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('driverUid', '') == request.auth.uid);
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.get('customerId', '') == request.auth.uid
+          && resource.data.get('status', '') in ['searching', 'accepted', 'arrived']
+          && changedOnly(['status', 'cancelledBy', 'cancellationReason', 'cancelledAt', 'updatedAt'])
+          && request.resource.data.status == 'cancelled')
+        || driverMayUpdateLocation();
       allow delete: if isAdmin();
     }
-
+    match /rideOffers/{driverUid} {
+      allow read: if isOwner(driverUid) || isAdmin();
+      allow write: if isAdmin();
+      match /requests/{rideId} {
+        allow read: if isOwner(driverUid) || isAdmin();
+        allow update: if isAdmin()
+          || (isOwner(driverUid)
+            && resource.data.get('status', '') == 'searching'
+            && request.resource.data.get('status', '') == 'searching'
+            && request.resource.data.get('rejected', false) == true
+            && changedOnly(['rejected', 'rejectedAt']));
+        allow create, delete: if isAdmin();
+      }
+    }
+    match /ridePartners/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'carrier'
+        && request.resource.data.approvalStatus == 'pending'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.get('availableForRides', false) == false
+        && request.resource.data.keys().hasOnly([
+          'uid', 'role', 'name', 'displayName', 'email', 'phone',
+          'mobileNumber', 'address', 'vehicleType', 'vehicleNumber',
+          'profilePhotoUrl', 'approvalStatus', 'status',
+          'availableForDeliveries', 'availableForRides', 'isOnline',
+          'createdAt', 'submittedAt'
+        ]);
+      allow update: if isAdmin()
+        || (isOwner(uid)
+          && resource.data.uid == uid
+          && changedOnly([
+            'name', 'displayName', 'email', 'phone', 'mobileNumber',
+            'address', 'vehicleType', 'vehicleNumber', 'profilePhotoUrl',
+            'carrierLat', 'carrierLng', 'carrierLocationUpdatedAt',
+            'lastLocationAt', 'lastSeenAt'
+          ]));
+      allow delete: if isAdmin();
+    }
+    match /deliveryPartners/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'delivery_partner'
+        && request.resource.data.approvalStatus == 'pending'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.get('availableForDeliveries', false) == false
+        && request.resource.data.keys().hasOnly([
+          'uid', 'role', 'name', 'displayName', 'email', 'phone',
+          'mobileNumber', 'address', 'vehicleType', 'vehicleNumber',
+          'profilePhotoUrl', 'approvalStatus', 'status',
+          'availableForDeliveries', 'availableForRides', 'isOnline',
+          'createdAt', 'submittedAt'
+        ]);
+      allow update: if isAdmin()
+        || (isOwner(uid)
+          && resource.data.uid == uid
+          && changedOnly([
+            'name', 'displayName', 'email', 'phone', 'mobileNumber',
+            'address', 'vehicleType', 'vehicleNumber', 'profilePhotoUrl',
+            'deliveryLat', 'deliveryLng', 'lastLat', 'lastLng',
+            'deliveryLocationUpdatedAt', 'lastLocationAt', 'lastSeenAt'
+          ]));
+      allow delete: if isAdmin();
+    }
+    match /sellers/{sellerUid} {
+      allow read: if isAdmin() || isOwner(sellerUid)
+        || (resource.data.get('approvalStatus', '') == 'approved'
+          && resource.data.get('isActive', true) == true);
+      allow create: if isAdmin()
+        || (isOwner(sellerUid)
+          && get(/databases/$(database)/documents/customers/$(sellerUid)).data.get('role', '') == 'seller'
+          && request.resource.data.uid == sellerUid
+          && request.resource.data.get('approvalStatus', 'pending') == 'pending');
+      allow update: if isAdmin()
+        || (isOwner(sellerUid)
+          && get(/databases/$(database)/documents/customers/$(sellerUid)).data.get('role', '') == 'seller'
+          && changedOnly([
+            'businessName', 'shopName', 'name', 'displayName', 'email',
+            'phone', 'mobileNumber', 'address', 'description', 'about',
+            'logoUrl', 'bannerUrl', 'items', 'offers', 'openingHours',
+            'isOpen', 'updatedAt'
+          ]));
+      allow delete: if isAdmin();
+      match /offers/{offerId} {
+        allow read: if isAdmin() || isOwner(sellerUid)
+          || get(/databases/$(database)/documents/sellers/$(sellerUid)).data.get('approvalStatus', '') == 'approved';
+        allow write: if isAdmin()
+          || (isOwner(sellerUid)
+            && get(/databases/$(database)/documents/customers/$(sellerUid)).data.get('role', '') == 'seller');
+      }
+    }
+    match /announcements/{id} {
+      allow read: if isAdmin() || signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    match /settings/{settingId} {
+      allow read: if isAdmin() || settingId in [
+        'app', 'appUpdate', 'driverPartnerAppUpdate', 'deliveryPartnerAppUpdate',
+        'banners', 'homepage', 'serviceAvailability', 'deliverySettings', 'rideSettings'
+      ];
+      allow write: if isAdmin();
+    }
+    match /serviceableZones/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /serviceAreas/{id} {
+      allow read, write: if isAdmin();
+    }
     match /supportTickets/{ticketId} {
       allow create: if signedIn()
         && request.resource.data.requesterId == request.auth.uid
-        && request.resource.data.requesterRole in ['customer','carrier','delivery_partner'];
-      allow read: if isAdmin() || (signedIn() && resource.data.requesterId == request.auth.uid);
+        && request.resource.data.requesterRole in ['customer', 'carrier', 'delivery_partner', 'seller'];
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.requesterId == request.auth.uid);
       allow update: if isAdmin()
         || (signedIn() && resource.data.requesterId == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['message','updatedAt']));
+          && changedOnly(['message', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+    // Legacy snake_case tickets are kept during the native app migration.
+    match /support_tickets/{ticketId} {
+      allow create: if signedIn()
+        && (request.resource.data.get('uid', '') == request.auth.uid
+          || request.resource.data.get('requesterId', '') == request.auth.uid)
+        && request.resource.data.get('status', 'open') in ['open', 'pending'];
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.get('uid', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('requesterId', '') == request.auth.uid);
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.get('uid', request.resource.data.get('requesterId', '')) == request.auth.uid
+          && changedOnly(['message', 'updatedAt']));
       allow delete: if isAdmin();
     }
 
+    match /privacyRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'role', 'type', 'reason', 'status', 'createdAt'])
+        && request.resource.data.status == 'open';
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+    match /sosAlerts/{alertId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role in ['carrier', 'delivery_partner']
+        && request.resource.data.status == 'open'
+        && request.resource.data.keys().hasOnly(['uid', 'role', 'createdAt', 'status']);
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Fail closed for collections not explicitly included above.
     match /{document=**} {
       allow read, write: if isAdmin();
     }
