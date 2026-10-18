@@ -463,7 +463,7 @@ class TravelTab extends StatelessWidget {
       const SizedBox(height: 8),
       const Text('Local rides and parcel services', style: TextStyle(color: Colors.grey)),
       const SizedBox(height: 16),
-      _serviceCard(context, icon: Icons.two_wheeler, title: 'Local rides', subtitle: 'Request a bike, auto or car ride', available: true, onTap: () => context.push('/login')),
+      _serviceCard(context, icon: Icons.two_wheeler, title: 'Local rides', subtitle: 'Request a bike, auto or car ride', available: true, onTap: () => context.push('/ride')),
       const SizedBox(height: 10),
       _serviceCard(context, icon: Icons.local_shipping_outlined, title: 'Parcel delivery', subtitle: 'Send items locally', available: false, onTap: () {}),
       const SizedBox(height: 10),
