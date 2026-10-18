@@ -103,7 +103,7 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
     return jsonDecode(source);
   }
 
-  Future<Position?> _getCurrentPosition() async {
+  Future<Position> _getCurrentPosition() async {
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) throw StateError('Enable location services to use the pickup map.');
     var permission = await Geolocator.checkPermission();
