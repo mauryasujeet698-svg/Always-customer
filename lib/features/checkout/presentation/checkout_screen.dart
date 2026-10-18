@@ -53,7 +53,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen(authStateProvider, (previous, next) {
-      final user = next.valueOrNull;
+      final user = next.asData?.value;
       if (user != null && hasVerifiedPhoneForCheckout(user.phoneNumber)) {
         if (_phone.text != user.phoneNumber) _phone.text = user.phoneNumber!;
         if (_name.text.trim().isEmpty && (user.displayName ?? '').isNotEmpty) {
@@ -63,7 +63,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
 
     final cart = ref.watch(cartProvider);
-    final auth = ref.watch(authStateProvider).valueOrNull;
+    final auth = ref.watch(authStateProvider).asData?.value;
     final productsAsync = ref.watch(productsProvider);
     final savedAddressesAsync = auth == null ? null : ref.watch(savedAddressesProvider(auth.uid));
 
