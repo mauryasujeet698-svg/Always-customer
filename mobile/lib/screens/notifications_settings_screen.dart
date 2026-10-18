@@ -37,8 +37,8 @@ class _NotificationsSettingsScreenState
       _orderUpdates = prefs.getBool('notification_orderUpdates') ?? true;
       _deliveryUpdates = prefs.getBool('notification_deliveryUpdates') ?? true;
       _travelUpdates = prefs.getBool('notification_travelUpdates') ?? true;
-      _offersPromotions = prefs.getBool('notification_offers') ?? false;
-      _announcements = prefs.getBool('notification_announcements') ?? false;
+      _offersPromotions = prefs.getBool('notification_offers') ?? true;
+      _announcements = prefs.getBool('notification_announcements') ?? true;
     });
   }
 
