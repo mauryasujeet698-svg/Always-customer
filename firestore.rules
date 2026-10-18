@@ -83,7 +83,7 @@ service cloud.firestore {
       return signedIn()
         && resource.data.get('carrierUid', '') == request.auth.uid
         && approvedDelivery(request.auth.uid)
-        && resource.data.get('status', '') in ['Assigned', 'assigned', 'Picked Up', 'Out for delivery', 'Arrived']
+        && resource.data.get('status', '') in ['Assigned', 'assigned', 'Confirmed', 'confirmed', 'Preparing', 'preparing', 'Picked Up', 'picked_up', 'Out for delivery', 'Out for Delivery', 'On the way', 'In Transit', 'in_transit', 'Arrived']
         && changedOnly(['carrierLat', 'carrierLng', 'carrierLocationUpdatedAt'])
         && request.resource.data.carrierLat is number
         && request.resource.data.carrierLng is number;
@@ -92,7 +92,7 @@ service cloud.firestore {
       return signedIn()
         && resource.data.get('driverUid', '') == request.auth.uid
         && approvedCarrier(request.auth.uid)
-        && resource.data.get('status', '') in ['accepted', 'arrived', 'started']
+        && resource.data.get('status', '') in ['accepted', 'arrived', 'started', 'on_trip', 'in_progress', 'ongoing', 'driver_arrived', 'ride_started']
         && changedOnly(['driverLat', 'driverLng', 'driverLocationUpdatedAt'])
         && request.resource.data.driverLat is number
         && request.resource.data.driverLng is number;
@@ -288,6 +288,22 @@ service cloud.firestore {
           && changedOnly(['message', 'updatedAt']));
       allow delete: if isAdmin();
     }
+    // Legacy snake_case tickets are kept during the native app migration.
+    match /support_tickets/{ticketId} {
+      allow create: if signedIn()
+        && (request.resource.data.get('uid', '') == request.auth.uid
+          || request.resource.data.get('requesterId', '') == request.auth.uid)
+        && request.resource.data.get('status', 'open') in ['open', 'pending'];
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.get('uid', '') == request.auth.uid)
+        || (signedIn() && resource.data.get('requesterId', '') == request.auth.uid);
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.get('uid', request.resource.data.get('requesterId', '')) == request.auth.uid
+          && changedOnly(['message', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
     match /privacyRequests/{requestId} {
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
