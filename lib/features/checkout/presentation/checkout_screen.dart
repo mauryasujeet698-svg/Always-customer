@@ -176,7 +176,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           child: Text(item.address, maxLines: 1, overflow: TextOverflow.ellipsis),
                         )).toList(),
                         onChanged: _placingOrder ? null : (id) {
-                          final item = addresses.where((address) => address.id == id).firstOrNull;
+                          SavedAddress? item;
+                          for (final address in addresses) {
+                            if (address.id == id) {
+                              item = address;
+                              break;
+                            }
+                          }
                           if (item == null) return;
                           setState(() => _selectedAddressId = id);
                           _name.text = item.name;
