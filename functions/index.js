@@ -618,3 +618,11 @@ exports.notifyRideUpdate = onDocumentUpdated(
     }
   }
 );
+
+// Server-authoritative partner shifts and private ride dispatch offers.
+const partnerFunctions = require("./partner_functions");
+exports.setPartnerShift = partnerFunctions.setPartnerShift;
+exports.acceptRide = partnerFunctions.acceptRide;
+exports.dispatchRideOffers = partnerFunctions.dispatchRideOffers;
+exports.offerWaitingRidesToDriver = partnerFunctions.offerWaitingRidesToDriver;
+exports.syncRideOfferStates = partnerFunctions.syncRideOfferStates;
