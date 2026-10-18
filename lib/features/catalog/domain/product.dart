@@ -51,7 +51,7 @@ class Product {
           .toString(),
       description: (data['description'] ?? data['Description'] ?? '').toString(),
       brand: (data['brand'] ?? data['Brand'] ?? '').toString(),
-      maxQty: _asInt(data['maxQty'] ?? data['Max Qty'], fallback: 10).clamp(1, 99),
+      maxQty: _asInt(data['maxQty'] ?? data['Max Qty'], fallback: 10).clamp(1, 99).toInt(),
     );
   }
 
