@@ -11,7 +11,6 @@ class CustomerNotificationService {
 
   Future<void> registerForUser(User user) async {
     if (_registeredUid == user.uid) return;
-    _registeredUid = user.uid;
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -30,6 +29,7 @@ class CustomerNotificationService {
       await FirebaseMessaging.instance.subscribeToTopic('all_users');
       await FirebaseMessaging.instance.subscribeToTopic('customers');
       await _saveToken(user.uid, await FirebaseMessaging.instance.getToken());
+      _registeredUid = user.uid;
 
       await _tokenSubscription?.cancel();
       _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen(
@@ -45,6 +45,7 @@ class CustomerNotificationService {
     await prefs.setBool('notifications_enabled', enabled);
     if (!enabled) {
       await FirebaseMessaging.instance.unsubscribeFromTopic('customers');
+      await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
       await _tokenSubscription?.cancel();
       _tokenSubscription = null;
       _registeredUid = null;
