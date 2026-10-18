@@ -1,0 +1,13 @@
+{
+  "name": "allways-firestore-security-tests",
+  "private": true,
+  "description": "Isolated Firestore Security Rules tests for ALLways",
+  "scripts": {
+    "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-allways-rules-test \"node --test firestore.rules.test.cjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.16.0"
+  }
+}

@@ -30,9 +30,41 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow create: if signedIn();
-      allow read: if signedIn();
-      allow update: if signedIn();
+      // Orders are private. Customers, assigned delivery/ride partners, and Admin only.
+      allow create: if signedIn()
+        && (request.resource.data.get('customerId', '') == request.auth.uid
+          || request.resource.data.get('customerUid', '') == request.auth.uid);
+      allow read: if isAdmin() || (signedIn() && (
+        resource.data.get('customerId', '') == request.auth.uid
+        || resource.data.get('customerUid', '') == request.auth.uid
+        || resource.data.get('carrierUid', '') == request.auth.uid
+        || resource.data.get('deliveryPartnerUid', '') == request.auth.uid
+      ));
+      allow update: if isAdmin()
+        || (signedIn()
+          && (resource.data.get('customerId', '') == request.auth.uid
+            || resource.data.get('customerUid', '') == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status','statusNote','cancellationReason','updatedAt','customerLat',
+            'customerLng','customerLocationUpdatedAt','rating','ratedAt'
+          ])
+          && (
+            request.resource.data.status == resource.data.status
+            || (request.resource.data.status == 'Cancelled'
+              && resource.data.status in ['New Order','Confirmed','Pending','pending'])
+          )
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['rating','ratedAt'])
+            || (request.resource.data.rating is number
+              && request.resource.data.rating >= 1
+              && request.resource.data.rating <= 5
+              && resource.data.status in ['Delivered','delivered','Completed','completed'])))
+        || (signedIn()
+          && (resource.data.get('carrierUid', '') == request.auth.uid
+            || resource.data.get('deliveryPartnerUid', '') == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'carrierLat','carrierLng','carrierLocationUpdatedAt',
+            'deliveryPartnerLat','deliveryPartnerLng','deliveryPartnerLocationUpdatedAt','updatedAt'
+          ]));
       allow delete: if isAdmin();
     }
 
@@ -40,20 +72,59 @@ service cloud.firestore {
       allow read, write: if isOwner(userId) || isAdmin();
     }
 
+    // Customer-owned subcollections (addresses, favourites, preferences, etc.)
+    // are not covered by the parent-document match in Firestore rules.
+    match /customers/{userId}/{subcollection}/{documentId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
     match /deliveryPartners/{userId} {
-      allow read: if signedIn();
+      allow read: if isOwner(userId) || isAdmin(); 
       allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /ridePartners/{userId} {
-      allow read: if signedIn();
+      allow read: if isOwner(userId) || isAdmin();
       allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /autoRideRequests/{rideId} {
-      allow read, create, update: if signedIn();
+      // Ride request records may contain precise locations and verification PINs.
+      // Ride discovery should use per-partner rideOffers projections instead.
+      allow create: if signedIn()
+        && (request.resource.data.get('customerUid', '') == request.auth.uid
+          || request.resource.data.get('customerId', '') == request.auth.uid)
+        && request.resource.data.get('status', '') == 'searching';
+      allow read: if isAdmin() || (signedIn() && (
+        resource.data.get('customerUid', '') == request.auth.uid
+        || resource.data.get('customerId', '') == request.auth.uid
+        || resource.data.get('driverUid', '') == request.auth.uid
+        || resource.data.get('carrierUid', '') == request.auth.uid
+      ));
+      allow update: if isAdmin()
+        || (signedIn()
+          && (resource.data.get('customerUid', '') == request.auth.uid
+            || resource.data.get('customerId', '') == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status','cancelledBy','cancellationReason','cancelledAt','customerActive',
+            'customerLat','customerLng','customerLocationUpdatedAt','updatedAt','expiredAt'
+          ])
+          && (
+            request.resource.data.status == resource.data.status
+            || (request.resource.data.status in ['cancelled','Cancelled']
+              && resource.data.status in ['searching','requested','accepted','assigned','arriving','arrived','started','New Order','Confirmed'])
+            || (request.resource.data.status == 'expired'
+              && resource.data.get('expiresAt', null) is timestamp
+              && resource.data.expiresAt <= request.time)
+          ))
+        || (signedIn()
+          && (resource.data.get('driverUid', '') == request.auth.uid
+            || resource.data.get('carrierUid', '') == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'driverLat','driverLng','driverLocationUpdatedAt','updatedAt'
+          ]));
       allow delete: if isAdmin();
     }
 
