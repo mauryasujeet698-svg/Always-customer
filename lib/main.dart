@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'app/allways_app.dart';
+import 'map_tile_cache.dart';
 
 @pragma('vm:entry-point')
 Future<void> allwaysFirebaseMessagingBackgroundHandler(
@@ -15,6 +16,7 @@ Future<void> allwaysFirebaseMessagingBackgroundHandler(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeAllwaysCustomerMapTileCache();
 
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(
