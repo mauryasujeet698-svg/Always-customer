@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +32,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
   bool _placingOrder = false;
   String? _error;
+  String? _orderRequestId;
   String? _selectedAddressId;
 
   @override
@@ -39,10 +41,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final user = FirebaseAuth.instance.currentUser;
     _name.text = user?.displayName ?? '';
     _phone.text = user?.phoneNumber ?? '';
+    _name.addListener(_resetOrderRequestId);
+    _address.addListener(_resetOrderRequestId);
+    _note.addListener(_resetOrderRequestId);
+  }
+
+  void _resetOrderRequestId() {
+    if (!_placingOrder) _orderRequestId = null;
   }
 
   @override
   void dispose() {
+    _name.removeListener(_resetOrderRequestId);
+    _address.removeListener(_resetOrderRequestId);
+    _note.removeListener(_resetOrderRequestId);
     _name.dispose();
     _phone.dispose();
     _address.dispose();
@@ -304,60 +316,37 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     setState(() { _placingOrder = true; _error = null; });
     try {
-      final now = DateTime.now();
-      final phoneDigits = (user!.phoneNumber ?? '').replaceAll(RegExp(r'\D'), '');
-      final cleanPhone = phoneDigits.length > 10
-          ? phoneDigits.substring(phoneDigits.length - 10)
-          : phoneDigits;
-      if (cleanPhone.length != 10) {
-        throw StateError('The verified phone number is not a valid 10-digit Indian number.');
-      }
-
-      final items = products.map((product) => <String, dynamic>{
+      final requestId = _orderRequestId ??=
+          '\${DateTime.now().microsecondsSinceEpoch}_\${Random.secure().nextInt(1 << 32)}';
+      final requestItems = products.map((product) => <String, dynamic>{
         'id': product.id,
-        'name': product.name,
         'qty': quantities[product.id] ?? 0,
-        'price': product.price,
       }).where((item) => (item['qty'] as int) > 0).toList();
 
-      // Keep the Firestore document ID equal to the visible order ID, as the
-      // existing partner and admin apps resolve orders using this ID.
-      final timeSuffix = now.millisecondsSinceEpoch.toString().substring(6);
-      final randomSuffix = Random.secure().nextInt(10000).toString().padLeft(4, '0');
-      final visibleId = 'AW$timeSuffix$randomSuffix';
-      final doc = FirebaseFirestore.instance.collection('orders').doc(visibleId);
-      final pin = (1000 + Random.secure().nextInt(9000)).toString();
-      final order = <String, dynamic>{
-        'id': visibleId,
-        'customerId': user.uid,
-        'email': user.email ?? '',
+      // Trusted Cloud Function recalculates prices, stock, fees and totals.
+      // This client sends only product IDs and quantities.
+      final result = await FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('createCustomerOrder')
+          .call<Map<String, dynamic>>({
+        'requestId': requestId,
         'name': _name.text.trim(),
-        'phone': cleanPhone,
+        'email': user.email ?? '',
         'address': _address.text.trim(),
         'note': _note.text.trim(),
-        'items': items,
-        'subtotal': subtotal,
-        'delivery': delivery,
-        'total': total,
-        'paymentMethod': 'COD',
-        'paymentStatus': 'unpaid',
-        'confirmationPin': pin,
-        'status': 'New Order',
-        'estimatedDelivery': '',
-        'statusNote': 'Order received',
-        'cancellationReason': '',
-        'rating': null,
-        'createdAt': now.millisecondsSinceEpoch,
-        'updatedAt': now.millisecondsSinceEpoch,
-        'time': now.toLocal().toString(),
-      };
-
-      // Persist the order first. A failed optional Sheets sync must not make
-      // a successfully saved Firestore order appear to have failed.
-      await doc.set(order);
-      // These integrations are best-effort; only the Firestore write determines
-      // whether the order was placed successfully.
+        'expectedSubtotal': subtotal,
+        'items': requestItems,
+      });
+      final response = result.data;
+      final visibleId = (response['orderId'] ?? '').toString();
+      final pin = (response['confirmationPin'] ?? '').toString();
+      final rawOrder = response['order'];
+      if (visibleId.isEmpty || pin.length != 4 || rawOrder is! Map) {
+        throw StateError('The server did not return a valid order confirmation. Please check My Orders before retrying.');
+      }
+      final order = Map<String, dynamic>.from(rawOrder);
+      _orderRequestId = null;
       unawaited(syncOrderToGoogleAppsScript(order));
+
       try {
         await ref.read(savedAddressRepositoryProvider).upsert(
           uid: user.uid,
@@ -387,6 +376,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
           ),
         );
+      }
+    } on FirebaseFunctionsException catch (error) {
+      if (error.code == 'failed-precondition' || error.code == 'invalid-argument') {
+        _orderRequestId = null;
+        ref.invalidate(productsProvider);
+      }
+      if (mounted) {
+        setState(() => _error = error.message ?? 'Order could not be placed. Please check your cart and retry.');
       }
     } on FirebaseException catch (error) {
       if (mounted) setState(() => _error = 'Order could not be saved. Please retry. (${error.code})');
