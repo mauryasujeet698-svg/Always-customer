@@ -47,11 +47,18 @@ class PhoneAuthRepository {
     final current = _auth.currentUser;
     // Link the verified phone to an existing Google/email account where possible
     // so existing order ownership and preferences retain the same Firebase UID.
+    final UserCredential result;
     if (current != null &&
         (current.phoneNumber == null || current.phoneNumber!.isEmpty)) {
-      return current.linkWithCredential(credential);
+      result = await current.linkWithCredential(credential);
+    } else {
+      result = await _auth.signInWithCredential(credential);
     }
-    return _auth.signInWithCredential(credential);
+
+    // Refresh the Firebase ID token so the phone_number claim is available
+    // to server-side Firestore Rules immediately after OTP verification.
+    await result.user?.getIdToken(true);
+    return result;
   }
 
   Future<UserCredential> signInWithEmail({
