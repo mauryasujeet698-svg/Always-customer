@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_mode_provider.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../cart/presentation/cart_provider.dart';
+import '../../favorites/presentation/favorites_provider.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../orders/presentation/orders_screen.dart';
@@ -238,6 +239,7 @@ class ShopTab extends ConsumerStatefulWidget {
 
 class _ShopTabState extends ConsumerState<ShopTab> {
   String _category = 'All';
+  bool _favoritesOnly = false;
 
   @override
   Widget build(BuildContext context) {
@@ -266,12 +268,14 @@ class _ShopTabState extends ConsumerState<ShopTab> {
         categories.insert(0, 'All');
         final filtered = allProducts.where((p) {
           final categoryMatch = _category == 'All' || p.category == _category;
+          final favoriteIds = ref.watch(favoriteIdsProvider).asData?.value ?? const <String>{};
+          final favoriteMatch = !_favoritesOnly || favoriteIds.contains(p.id);
           final queryMatch = widget.searchQuery.isEmpty ||
               p.name.toLowerCase().contains(widget.searchQuery) ||
               p.category.toLowerCase().contains(widget.searchQuery) ||
               p.brand.toLowerCase().contains(widget.searchQuery) ||
               p.description.toLowerCase().contains(widget.searchQuery);
-          return categoryMatch && queryMatch;
+          return categoryMatch && favoriteMatch && queryMatch;
         }).toList();
 
         return RefreshIndicator(
@@ -315,7 +319,19 @@ class _ShopTabState extends ConsumerState<ShopTab> {
               ),
               const SizedBox(height: 12),
               Row(children: [
-                const Expanded(child: Text('All items', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
+                Expanded(child: Text(_favoritesOnly ? 'Saved favourites' : 'All items', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
+                IconButton(
+                  tooltip: _favoritesOnly ? 'Show all items' : 'Show saved favourites',
+                  onPressed: () {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user == null) {
+                      context.push('/login');
+                    } else {
+                      setState(() => _favoritesOnly = !_favoritesOnly);
+                    }
+                  },
+                  icon: Icon(_favoritesOnly ? Icons.favorite : Icons.favorite_border, color: _favoritesOnly ? Colors.red : null),
+                ),
                 Text('${filtered.length} found', style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ]),
               const SizedBox(height: 8),
@@ -373,19 +389,51 @@ class ProductCard extends ConsumerWidget {
                 width: double.infinity,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: product.imageUrl.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: product.imageUrl,
-                          fit: BoxFit.cover,
-                          memCacheHeight: 320,
-                          placeholder: (_, __) => Container(
-                            color: const Color(0xFFF0F5F1),
-                            alignment: Alignment.center,
-                            child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      product.imageUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: product.imageUrl,
+                              fit: BoxFit.cover,
+                              memCacheHeight: 320,
+                              placeholder: (_, __) => Container(
+                                color: const Color(0xFFF0F5F1),
+                                alignment: Alignment.center,
+                                child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                              ),
+                              errorWidget: (_, __, ___) => _ProductPlaceholder(emoji: product.emoji),
+                            )
+                          : _ProductPlaceholder(emoji: product.emoji),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Material(
+                          color: Colors.white.withValues(alpha: 0.94),
+                          shape: const CircleBorder(),
+                          child: Consumer(
+                            builder: (context, ref, _) {
+                              final favorites = ref.watch(favoriteIdsProvider).asData?.value ?? const <String>{};
+                              final isFavorite = favorites.contains(product.id);
+                              return IconButton(
+                                iconSize: 20,
+                                visualDensity: VisualDensity.compact,
+                                tooltip: isFavorite ? 'Remove favourite' : 'Save favourite',
+                                onPressed: () {
+                                  if (FirebaseAuth.instance.currentUser == null) {
+                                    context.push('/login');
+                                    return;
+                                  }
+                                  ref.read(favoriteIdsProvider.notifier).toggle(product.id).catchError((_) {});
+                                },
+                                icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : Colors.black87),
+                              );
+                            },
                           ),
-                          errorWidget: (_, __, ___) => _ProductPlaceholder(emoji: product.emoji),
-                        )
-                      : _ProductPlaceholder(emoji: product.emoji),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
