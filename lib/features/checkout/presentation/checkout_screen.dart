@@ -310,7 +310,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       await context.push('/login');
       return;
     }
-    final phoneDigits = currentUser.phoneNumber!.replaceAll(RegExp(r'\\D'), '');
+    final phoneDigits = currentUser.phoneNumber!.replaceAll(RegExp(r'\D'), '');
     final cleanPhone = phoneDigits.length > 10
         ? phoneDigits.substring(phoneDigits.length - 10)
         : phoneDigits;
@@ -327,7 +327,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     setState(() { _placingOrder = true; _error = null; });
     try {
       final requestId = _orderRequestId ??=
-          '\${DateTime.now().microsecondsSinceEpoch}_\${Random.secure().nextInt(1 << 32)}';
+          '${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(1 << 32)}';
       final requestItems = products.map((product) => <String, dynamic>{
         'id': product.id,
         'qty': quantities[product.id] ?? 0,
