@@ -11,6 +11,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/order_sync_service.dart';
 import '../../auth/domain/phone_gate.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../addresses/domain/saved_address.dart';
+import '../../addresses/presentation/address_providers.dart';
 import '../../cart/presentation/cart_provider.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
@@ -29,6 +31,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _note = TextEditingController();
   bool _placingOrder = false;
   String? _error;
+  String? _selectedAddressId;
 
   @override
   void initState() {
@@ -62,6 +65,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cart = ref.watch(cartProvider);
     final auth = ref.watch(authStateProvider).valueOrNull;
     final productsAsync = ref.watch(productsProvider);
+    final savedAddressesAsync = auth == null ? null : ref.watch(savedAddressesProvider(auth.uid));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Complete your order')),
@@ -149,6 +153,42 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ),
               const SizedBox(height: 10),
+              if (savedAddressesAsync != null)
+                savedAddressesAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (addresses) {
+                    if (addresses.isEmpty) return const SizedBox.shrink();
+                    final safeValue = addresses.any((item) => item.id == _selectedAddressId)
+                        ? _selectedAddressId
+                        : null;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: DropdownButtonFormField<String>(
+                        value: safeValue,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Use a saved address',
+                          prefixIcon: Icon(Icons.bookmark_border),
+                        ),
+                        items: addresses.map((item) => DropdownMenuItem<String>(
+                          value: item.id,
+                          child: Text(item.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        )).toList(),
+                        onChanged: _placingOrder ? null : (id) {
+                          final item = addresses.where((address) => address.id == id).firstOrNull;
+                          if (item == null) return;
+                          setState(() => _selectedAddressId = id);
+                          _name.text = item.name;
+                          if (!phoneVerified && _phone.text.trim().isEmpty) {
+                            _phone.text = item.phone;
+                          }
+                          _address.text = item.address;
+                        },
+                      ),
+                    );
+                  },
+                ),
               TextField(
                 controller: _address,
                 minLines: 2,
@@ -274,8 +314,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         'price': product.price,
       }).where((item) => (item['qty'] as int) > 0).toList();
 
-      final doc = FirebaseFirestore.instance.collection('orders').doc();
-      final visibleId = 'AW${doc.id.substring(0, min(7, doc.id.length)).toUpperCase()}';
+      // Keep the Firestore document ID equal to the visible order ID, as the
+      // existing partner and admin apps resolve orders using this ID.
+      final timeSuffix = now.millisecondsSinceEpoch.toString().substring(6);
+      final randomSuffix = Random.secure().nextInt(10000).toString().padLeft(4, '0');
+      final visibleId = 'AW$timeSuffix$randomSuffix';
+      final doc = FirebaseFirestore.instance.collection('orders').doc(visibleId);
       final pin = (1000 + Random.secure().nextInt(9000)).toString();
       final order = <String, dynamic>{
         'id': visibleId,
@@ -305,7 +349,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Persist the order first. A failed optional Sheets sync must not make
       // a successfully saved Firestore order appear to have failed.
       await doc.set(order);
+      // These integrations are best-effort; only the Firestore write determines
+      // whether the order was placed successfully.
       unawaited(syncOrderToGoogleAppsScript(order));
+      try {
+        await ref.read(savedAddressRepositoryProvider).upsert(
+          uid: user.uid,
+          name: _name.text.trim(),
+          phone: cleanPhone,
+          address: _address.text.trim(),
+        );
+        ref.invalidate(savedAddressesProvider(user.uid));
+      } catch (_) {}
       ref.read(cartProvider.notifier).clear();
       if (mounted) {
         await showDialog<void>(
