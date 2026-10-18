@@ -142,6 +142,18 @@ exports.createCustomerOrder = onCall(async (request) => {
     }
 
     subtotal = Math.round((subtotal + Number.EPSILON) * 100) / 100;
+
+    // The client subtotal is only a stale-cart check. Prices used for the
+    // order are always re-read and calculated above on the trusted server.
+    const expectedSubtotal = money(data.expectedSubtotal);
+    if (expectedSubtotal == null
+        || Math.round((expectedSubtotal + Number.EPSILON) * 100) / 100 !== subtotal) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Prices or availability changed. Refresh your cart and review the total before ordering."
+      );
+    }
+
     const delivery = subtotal >= 499 ? 0 : 30;
     const total = Math.round((subtotal + delivery + Number.EPSILON) * 100) / 100;
     const confirmationPin = String(1000 + crypto.randomInt(0, 9000));
@@ -194,6 +206,21 @@ exports.createCustomerOrder = onCall(async (request) => {
       confirmationPin,
       order,
     };
+    // Decrement the same stock field used by the live customer catalog.
+    // These writes occur in the same transaction as the order, so two
+    // customers cannot both buy the final unit based on stale client caches.
+    for (let index = 0; index < requestedItems.length; index++) {
+      const product = productSnapshots[index].data() || {};
+      const stockField = product.stock !== undefined ? "stock"
+        : product.Stock !== undefined ? "Stock"
+          : product.quantity !== undefined ? "quantity" : "Quantity";
+      const currentStock = normalizeStock(product);
+      transaction.update(productRefs[index], {
+        [stockField]: currentStock - requestedItems[index].quantity,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
     transaction.create(orderRef, order);
     transaction.create(idempotencyRef, {
       uid,
