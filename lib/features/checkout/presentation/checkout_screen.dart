@@ -101,30 +101,28 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
           final delivery = subtotal >= 499 ? 0.0 : 30.0;
           final total = subtotal + delivery;
-          final phoneVerified = hasVerifiedPhoneForCheckout(auth?.phoneNumber);
-
           return ListView(
             key: const PageStorageKey<String>('customer-checkout-scroll'),
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
-              if (!phoneVerified)
+              if (auth == null)
                 Card(
-                  color: const Color(0xFFE7F8ED),
+                  color: const Color(0xFFFFE1EC),
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const Row(children: [
-                        Icon(Icons.verified_user_outlined, color: AllwaysTheme.green),
+                        Icon(Icons.account_circle_outlined, color: AllwaysTheme.purple),
                         SizedBox(width: 8),
-                        Expanded(child: Text('Mobile verification required', style: TextStyle(fontWeight: FontWeight.w900, color: AllwaysTheme.green))),
+                        Expanded(child: Text('Sign in to place your order', style: TextStyle(fontWeight: FontWeight.w900, color: AllwaysTheme.purple))),
                       ]),
                       const SizedBox(height: 6),
-                      const Text('You can browse as a guest, but you must verify your phone number before placing an order.'),
+                      const Text('Continue with Google to securely save and track your order.'),
                       const SizedBox(height: 10),
                       FilledButton.icon(
                         onPressed: _placingOrder ? null : () => context.push('/login'),
-                        icon: const Icon(Icons.phone_android),
-                        label: const Text('Verify phone number'),
+                        icon: const Icon(Icons.login_rounded),
+                        label: const Text('Continue with Google'),
                       ),
                     ]),
                   ),
