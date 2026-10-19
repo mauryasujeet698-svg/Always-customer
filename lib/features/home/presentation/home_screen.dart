@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../../core/theme/theme_mode_provider.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../cart/presentation/cart_provider.dart';
 import '../../favorites/presentation/favorites_provider.dart';
