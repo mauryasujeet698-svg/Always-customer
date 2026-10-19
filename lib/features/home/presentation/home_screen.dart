@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +23,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedTab = 0;
   String _query = '';
+  bool _showWelcomeCard = true;
   final _searchController = TextEditingController();
 
   @override
@@ -132,57 +134,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
+          if (_showWelcomeCard)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Dismissible(
+                key: const ValueKey('allways-welcome-card'),
+                direction: DismissDirection.horizontal,
+                onDismissed: (_) => setState(() => _showWelcomeCard = false),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(22), border: Border.all(color: AllwaysTheme.line.withValues(alpha: 0.65))),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Row(children: [
+                    Container(width: 42, height: 42, decoration: const BoxDecoration(color: AllwaysTheme.blush, shape: BoxShape.circle), child: const Icon(Icons.local_offer_outlined, color: AllwaysTheme.green, size: 23)),
+                    const SizedBox(width: 14),
+                    const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Welcome back', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                      SizedBox(height: 3),
+                      Text("We're ready", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    ])),
+                  ]),
+                ),
+              ),
+            ),
+          const SizedBox(height: 10),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: AllwaysTheme.line.withValues(alpha: 0.65)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Row(children: [
-                Container(
-                  width: 42, height: 42,
-                  decoration: const BoxDecoration(color: AllwaysTheme.blush, shape: BoxShape.circle),
-                  child: const Icon(Icons.local_offer_outlined, color: AllwaysTheme.green, size: 23),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Welcome back', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                  SizedBox(height: 3),
-                  Text("We're ready", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                ])),
-              ]),
+            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
+              builder: (context, snapshot) {
+                final data = snapshot.data?.data() ?? const <String, dynamic>{};
+                final title = (data['title'] ?? data['heroTitle'] ?? 'Closer to You, Always').toString();
+                final subtitle = (data['subtitle'] ?? data['deliveryText'] ?? 'Fast local delivery').toString();
+                final raw = data['imageUrls'] ?? data['banners'] ?? data['items'];
+                final urls = raw is List ? raw.map((item) {
+                  if (item is Map) return (item['imageUrl'] ?? item['image'] ?? item['url'] ?? '').toString();
+                  return item.toString();
+                }).where((url) => url.startsWith('http')).toList() : <String>[];
+                return SizedBox(height: 150, width: double.infinity, child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: urls.isNotEmpty ? PageView.builder(itemCount: urls.length, itemBuilder: (context, index) => Stack(fit: StackFit.expand, children: [
+                    CachedNetworkImage(imageUrl: urls[index], fit: BoxFit.cover, placeholder: (_, __) => const ColoredBox(color: Color(0xFFF9DCE8)), errorWidget: (_, __, ___) => const ColoredBox(color: Color(0xFF8D174F), child: Icon(Icons.image_not_supported_outlined, color: Colors.white))),
+                    DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)]))),
+                    Positioned(left: 18, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                    ])),
+                  ])) : Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF8D174F), Color(0xFFE65C91)], begin: Alignment.bottomLeft, end: Alignment.topRight)), child: Stack(children: [
+                    Positioned(right: 14, top: 12, child: Icon(Icons.shopping_bag_outlined, size: 104, color: Colors.white.withValues(alpha: 0.17))),
+                    Positioned(left: 18, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text(subtitle, style: const TextStyle(color: Colors.white, fontSize: 13))])),
+                  ])),
+                ));
+              },
             ),
           ),
           const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Container(
-              height: 150,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF8D174F), Color(0xFFE65C91)],
-                  begin: Alignment.bottomLeft,
-                  end: Alignment.topRight,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(children: [
-                Positioned(right: 14, top: 12, child: Icon(Icons.shopping_bag_outlined, size: 104, color: Colors.white.withValues(alpha: 0.17))),
-                const Positioned(left: 18, bottom: 20, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                  SizedBox(height: 4),
-                  Text('Fast local delivery', style: TextStyle(color: Colors.white, fontSize: 13)),
-                ])),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 10),
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
@@ -211,41 +220,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: cartCount == 0
-          ? null
-          : SafeArea(
-              minimum: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8E174F),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('$cartCount item${cartCount == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                          Text('₹${subtotal.toStringAsFixed(0)} subtotal', style: const TextStyle(color: Color(0xFFD5EADC))),
-                        ],
-                      ),
-                    ),
-                    FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: AllwaysTheme.greenBright, foregroundColor: Colors.white),
-                      onPressed: () => context.push('/checkout'),
-                      child: const Text('View cart →'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(12, 5, 12, 8),
+        child: Container(decoration: BoxDecoration(color: Theme.of(context).cardColor.withValues(alpha: 0.97), borderRadius: BorderRadius.circular(28), border: Border.all(color: AllwaysTheme.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, -3))]), padding: const EdgeInsets.all(5), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (cartCount > 0) Container(margin: const EdgeInsets.only(bottom: 5), decoration: BoxDecoration(color: const Color(0xFF8E174F), borderRadius: BorderRadius.circular(18)), padding: const EdgeInsets.fromLTRB(14, 8, 8, 8), child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('\$cartCount item\${cartCount == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text('₹\${subtotal.toStringAsFixed(0)} subtotal', style: const TextStyle(color: Color(0xFFF4C8DC)))])),
+            FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65C91), foregroundColor: Colors.white), onPressed: () => context.push('/checkout'), child: const Text('View cart →')),
+          ])),
+          Row(children: [
+            _BottomNavItem(icon: Icons.shopping_bag_outlined, label: 'Shop', selected: true, onTap: () => setState(() => _selectedTab = 0)),
+            _BottomNavItem(icon: Icons.directions_bus_outlined, label: 'Travel', selected: false, onTap: () => setState(() => _selectedTab = 2)),
+            _BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile', selected: false, onTap: () => context.push('/profile')),
+          ]),
+        ])),
+      ),
     );
   }
 }
 
+class _BottomNavItem extends StatelessWidget {
+  const _BottomNavItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  final IconData icon; final String label; final bool selected; final VoidCallback onTap;
+  @override Widget build(BuildContext context) => Expanded(child: Material(color: selected ? const Color(0xFFFFD9E5) : Colors.transparent, borderRadius: BorderRadius.circular(22), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(22), child: Padding(padding: const EdgeInsets.symmetric(vertical: 9), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: const Color(0xFF6E4053), size: 23), const SizedBox(height: 3), Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6E4053), fontWeight: FontWeight.w600))])))));
+}
 class _TopTab extends StatelessWidget {
   const _TopTab({required this.label, required this.selected, required this.onTap});
   final String label;
