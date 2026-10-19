@@ -131,15 +131,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('WELCOME BACK TO ALLways', style: TextStyle(color: Color(0xE6FFFFFF), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+                        Text('WELCOME BACK TO ALLways', style: TextStyle(color: Color(0xE6FFFFFF), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
                         SizedBox(height: 8),
-                        const Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
+                        Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
                         SizedBox(height: 7),
-                        const Text('Food, shopping and travel — all in one place.', style: TextStyle(color: Colors.white, fontSize: 12)),
+                        Text('Food, shopping and travel — all in one place.', style: TextStyle(color: Colors.white, fontSize: 12)),
                       ],
                     ),
                   ),
