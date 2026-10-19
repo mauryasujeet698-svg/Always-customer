@@ -175,7 +175,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 return SizedBox(height: 150, width: double.infinity, child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
                   child: urls.isNotEmpty ? PageView.builder(itemCount: urls.length, itemBuilder: (context, index) => Stack(fit: StackFit.expand, children: [
-                    CachedNetworkImage(imageUrl: urls[index], fit: BoxFit.cover, placeholder: (_, __) => const ColoredBox(color: Color(0xFFF9DCE8)), errorWidget: (_, _, _) => const ColoredBox(color: Color(0xFF8D174F), child: Icon(Icons.image_not_supported_outlined, color: Colors.white))),
+                    CachedNetworkImage(imageUrl: urls[index], fit: BoxFit.cover, placeholder: (_, _) => const ColoredBox(color: Color(0xFFF9DCE8)), errorWidget: (_, _, _) => const ColoredBox(color: Color(0xFF8D174F), child: Icon(Icons.image_not_supported_outlined, color: Colors.white))),
                     DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)]))),
                     Positioned(left: 18, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
