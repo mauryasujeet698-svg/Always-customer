@@ -102,7 +102,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   decoration: InputDecoration(
                     hintText: 'Search food, groceries and more...',
                     prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _query.isEmpty ? IconButton(tooltip: 'Voice search', onPressed: () {}, icon: const Icon(Icons.mic_none_rounded)) : IconButton(
+                    suffixIcon: _query.isEmpty ? IconButton(tooltip: 'Voice search', onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voice search is not available yet.'))), icon: const Icon(Icons.mic_none_rounded)) : IconButton(
                       tooltip: 'Clear search',
                       icon: const Icon(Icons.close),
                       onPressed: () {
@@ -184,7 +184,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               minimum: const EdgeInsets.fromLTRB(12, 6, 12, 8),
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF123B24),
+                  color: const Color(0xFF8E174F),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
@@ -316,8 +316,8 @@ class _ShopTabState extends ConsumerState<ShopTab> {
                       label: Text(category),
                       selected: selected,
                       onSelected: (_) => setState(() => _category = category),
-                      selectedColor: const Color(0xFFE6F7ED),
-                      side: BorderSide(color: selected ? const Color(0xFF9DD6B5) : AllwaysTheme.line),
+                      selectedColor: const Color(0xFFFFE1EC),
+                      side: BorderSide(color: selected ? const Color(0xFFE8A7C4) : AllwaysTheme.line),
                       labelStyle: TextStyle(color: selected ? AllwaysTheme.green : null, fontWeight: selected ? FontWeight.w800 : FontWeight.w500),
                     );
                   },
@@ -325,7 +325,7 @@ class _ShopTabState extends ConsumerState<ShopTab> {
               ),
               const SizedBox(height: 12),
               Container(
-                decoration: BoxDecoration(color: const Color(0xFFE7F8ED), borderRadius: BorderRadius.circular(14)),
+                decoration: BoxDecoration(color: const Color(0xFFFFE1EC), borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.all(12),
                 child: const Text('🚚  FREE DELIVERY on orders above ₹499 · ₹30 below ₹499', style: TextStyle(color: AllwaysTheme.green, fontWeight: FontWeight.w700)),
               ),
@@ -410,7 +410,7 @@ class ProductCard extends ConsumerWidget {
                               fit: BoxFit.cover,
                               memCacheHeight: 320,
                               placeholder: (_, _) => Container(
-                                color: const Color(0xFFF0F5F1),
+                                color: const Color(0xFFFFF1F6),
                                 alignment: Alignment.center,
                                 child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                               ),
