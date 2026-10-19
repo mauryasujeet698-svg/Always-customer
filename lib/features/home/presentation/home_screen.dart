@@ -194,34 +194,6 @@ class _BottomNavItem extends StatelessWidget {
   final IconData icon; final String label; final bool selected; final VoidCallback onTap;
   @override Widget build(BuildContext context) => Expanded(child: Material(color: selected ? const Color(0xFFFFD9E5) : Colors.transparent, borderRadius: BorderRadius.circular(22), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(22), child: Padding(padding: const EdgeInsets.symmetric(vertical: 9), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: const Color(0xFF6E4053), size: 23), const SizedBox(height: 3), Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6E4053), fontWeight: FontWeight.w600))])))));
 }
-class _TopTab extends StatelessWidget {
-  const _TopTab({required this.label, required this.selected, required this.onTap});
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Material(
-      color: selected ? AllwaysTheme.green : Theme.of(context).cardColor,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-          decoration: BoxDecoration(
-            border: selected ? null : Border.all(color: AllwaysTheme.line),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: selected ? Colors.white : null)),
-        ),
-      ),
-    ),
-  );
-}
-
 class _ShopBanner extends StatelessWidget {
   const _ShopBanner();
 
