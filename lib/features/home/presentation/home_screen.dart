@@ -179,8 +179,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65C91), foregroundColor: Colors.white), onPressed: () => context.push('/checkout'), child: const Text('View cart →')),
           ])),
           Row(children: [
-            _BottomNavItem(icon: Icons.shopping_bag_outlined, label: 'Shop', selected: true, onTap: () => setState(() => _selectedTab = 0)),
-            _BottomNavItem(icon: Icons.directions_bus_outlined, label: 'Travel', selected: false, onTap: () => setState(() => _selectedTab = 2)),
+            _BottomNavItem(icon: Icons.shopping_bag_outlined, label: 'Shop', selected: _selectedTab == 0, onTap: () => setState(() => _selectedTab = 0)),
+            _BottomNavItem(icon: Icons.directions_bus_outlined, label: 'Travel', selected: _selectedTab == 2, onTap: () => setState(() => _selectedTab = 2)),
             _BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile', selected: false, onTap: () => context.push('/profile')),
           ]),
         ])),
