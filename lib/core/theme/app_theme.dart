@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 class AllwaysTheme {
-  static const green = Color(0xFF087B3E);
-  static const greenBright = Color(0xFF20A65B);
-  static const background = Color(0xFFF7FAF8);
-  static const ink = Color(0xFF132018);
-  static const line = Color(0xFFE5ECE7);
+  // Restored from the original ALLways customer app's pink/purple visual identity.
+  static const green = Color(0xFFC21868);
+  static const greenBright = Color(0xFFE65C91);
+  static const background = Color(0xFFFFF8FB);
+  static const ink = Color(0xFF241923);
+  static const line = Color(0xFFF0DDE6);
+  static const blush = Color(0xFFFFE1EC);
+  static const purple = Color(0xFF7C3AED);
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
@@ -16,12 +19,12 @@ class AllwaysTheme {
       useMaterial3: true,
       colorScheme: scheme.copyWith(
         primary: green,
-        secondary: greenBright,
+        secondary: purple,
         surface: Colors.white,
       ),
       scaffoldBackgroundColor: background,
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xFFFFFBFD),
         foregroundColor: ink,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -31,20 +34,24 @@ class AllwaysTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           side: const BorderSide(color: line),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: const Color(0xFFFFF7FA),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           borderSide: const BorderSide(color: line),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           borderSide: const BorderSide(color: line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(color: green, width: 1.5),
         ),
       ),
     );
@@ -57,20 +64,20 @@ class AllwaysTheme {
     );
     return ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: const Color(0xFF101412),
+      colorScheme: scheme.copyWith(primary: greenBright, secondary: purple),
+      scaffoldBackgroundColor: const Color(0xFF171219),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF171C19),
+        backgroundColor: Color(0xFF201821),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF171C19),
+        color: const Color(0xFF251D26),
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFF303A34)),
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFF443442)),
         ),
       ),
     );
