@@ -85,25 +85,37 @@ class PhoneAuthRepository {
     return _auth.sendPasswordResetEmail(email: email.trim());
   }
 
+  static Future<void>? _googleSignInInitialization;
+
   Future<UserCredential> signInWithGoogle() async {
+    // Use the existing Firebase project's Web OAuth client as the server
+    // client ID so GoogleSignIn returns an ID token for Firebase Auth.
+    _googleSignInInitialization ??= GoogleSignIn.instance.initialize(
+      serverClientId:
+          '869987297351-bonithsodhkkhb8a994d6hbiau8a3ltv.apps.googleusercontent.com',
+    );
+    await _googleSignInInitialization;
+
     if (!GoogleSignIn.instance.supportsAuthenticate()) {
       throw FirebaseAuthException(
         code: 'google-sign-in-not-supported',
         message: 'Google Sign-In is not supported on this device.',
       );
     }
+
     final googleUser = await GoogleSignIn.instance.authenticate();
     final googleAuth = googleUser.authentication;
     final idToken = googleAuth.idToken;
     if (idToken == null || idToken.isEmpty) {
       throw FirebaseAuthException(
         code: 'google-id-token-missing',
-        message: 'Google Sign-In did not return an ID token.',
+        message:
+            'Google Sign-In returned no ID token. Check the Firebase Android SHA fingerprints and OAuth client configuration.',
       );
     }
-    return _auth.signInWithCredential(
-      GoogleAuthProvider.credential(idToken: idToken),
-    );
+
+    final credential = GoogleAuthProvider.credential(idToken: idToken);
+    return _auth.signInWithCredential(credential);
   }
 
   Future<void> signOut() => _auth.signOut();
