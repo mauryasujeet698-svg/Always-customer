@@ -52,7 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Icon(Icons.location_on, size: 14, color: Colors.white),
             ),
             SizedBox(width: 8),
-            Text('ALLways', style: TextStyle(color: AllwaysTheme.green, fontWeight: FontWeight.w900, fontSize: 23)),
+            Text('ALLways', style: TextStyle(color: AllwaysTheme.ink, fontWeight: FontWeight.w900, fontSize: 23)),
           ],
         ),
         actions: [
@@ -111,7 +111,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
                 gradient: const LinearGradient(
-                  colors: [AllwaysTheme.green, AllwaysTheme.greenBright],
+                  colors: [const Color(0xFFC21868), const Color(0xFFE65C91)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -123,16 +123,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('ALLways local', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                        Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
                         SizedBox(height: 8),
-                        Text('Everything you need, closer to home.', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
+                        Text('Everything you need, delivered locally.', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
                         SizedBox(height: 7),
-                        Text('Shop local essentials. Open-box delivery.', style: TextStyle(color: Colors.white)),
+                        Text('Fast local delivery', style: TextStyle(color: Colors.white)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text('🛒', style: TextStyle(fontSize: 48)),
+                  const Text('🛍️', style: TextStyle(fontSize: 48)),
                 ],
               ),
             ),
