@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/order_sync_service.dart';
-import '../../auth/domain/phone_gate.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../addresses/domain/saved_address.dart';
 import '../../addresses/presentation/address_providers.dart';
@@ -65,11 +64,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     ref.listen(authStateProvider, (previous, next) {
       final user = next.asData?.value;
-      if (user != null && hasVerifiedPhoneForCheckout(user.phoneNumber)) {
-        if (_phone.text != user.phoneNumber) _phone.text = user.phoneNumber!;
-        if (_name.text.trim().isEmpty && (user.displayName ?? '').isNotEmpty) {
-          _name.text = user.displayName!;
-        }
+      if (user != null) {
+        if (_phone.text.trim().isEmpty && (user.phoneNumber ?? '').isNotEmpty) _phone.text = user.phoneNumber!;
+        if (_name.text.trim().isEmpty && (user.displayName ?? '').isNotEmpty) _name.text = user.displayName!;
+        if (_email.text.trim().isEmpty && (user.email ?? '').isNotEmpty) _email.text = user.email!;
       }
     });
 
@@ -301,20 +299,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     required double total,
   }) async {
     final currentUser = user;
-    if (currentUser == null ||
-        !hasVerifiedPhoneForCheckout(currentUser.phoneNumber)) {
+    if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verify your phone number before placing an order.')),
+        const SnackBar(content: Text('Continue with Google to place your order.')),
       );
       await context.push('/login');
       return;
     }
-    final phoneDigits = currentUser.phoneNumber!.replaceAll(RegExp(r'\D'), '');
+    // A contact phone can be entered for delivery, but phone OTP is not used
+    // as an authentication method in this launch phase.
+    final phoneDigits = _phone.text.replaceAll(RegExp(r'\D'), '');
     final cleanPhone = phoneDigits.length > 10
         ? phoneDigits.substring(phoneDigits.length - 10)
         : phoneDigits;
     if (cleanPhone.length != 10) {
-      setState(() => _error = 'The verified mobile number is invalid. Verify it again before ordering.');
+      setState(() => _error = 'Enter a 10-digit contact phone number for delivery.');
       return;
     }
     if (_name.text.trim().isEmpty || _address.text.trim().isEmpty) {
@@ -340,6 +339,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         'requestId': requestId,
         'name': _name.text.trim(),
         'email': currentUser.email ?? '',
+        'phone': cleanPhone,
         'address': _address.text.trim(),
         'note': _note.text.trim(),
         'expectedSubtotal': subtotal,
