@@ -159,21 +159,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           const SizedBox(height: 10),
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              children: [
-                _TopTab(label: '🛒 Shop', selected: _selectedTab == 0, onTap: () => setState(() => _selectedTab = 0)),
-                const SizedBox(width: 7),
-                _TopTab(label: '🍲 Food', selected: _selectedTab == 1, onTap: () => setState(() => _selectedTab = 1)),
-                const SizedBox(width: 7),
-                _TopTab(label: '🚗 Travel', selected: _selectedTab == 2, onTap: () => setState(() => _selectedTab = 2)),
-                const SizedBox(width: 7),
-                _TopTab(label: '📦 Orders', selected: _selectedTab == 3, onTap: () => setState(() => _selectedTab = 3)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
           Expanded(
             child: IndexedStack(
               index: _selectedTab,
