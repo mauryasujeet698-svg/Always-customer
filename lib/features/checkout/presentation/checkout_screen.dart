@@ -67,7 +67,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (user != null) {
         if (_phone.text.trim().isEmpty && (user.phoneNumber ?? '').isNotEmpty) _phone.text = user.phoneNumber!;
         if (_name.text.trim().isEmpty && (user.displayName ?? '').isNotEmpty) _name.text = user.displayName!;
-        if (_email.text.trim().isEmpty && (user.email ?? '').isNotEmpty) _email.text = user.email!;
       }
     });
 
@@ -146,17 +145,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               const SizedBox(height: 10),
               TextField(
                 controller: _phone,
-                readOnly: phoneVerified,
                 keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Verified phone number',
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                  suffixIcon: phoneVerified ? const Icon(Icons.verified, color: AllwaysTheme.green) : IconButton(
-                    tooltip: 'Verify phone',
-                    onPressed: () => context.push('/login'),
-                    icon: const Icon(Icons.arrow_forward),
-                  ),
-                  helperText: phoneVerified ? 'Verified by Firebase Authentication' : 'Verify the number before placing your order.',
+                decoration: const InputDecoration(
+                  labelText: 'Contact phone number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  helperText: 'Used by the delivery partner to contact you.',
                 ),
               ),
               const SizedBox(height: 10),
@@ -193,7 +186,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           if (item == null) return;
                           setState(() => _selectedAddressId = id);
                           _name.text = item.name;
-                          if (!phoneVerified && _phone.text.trim().isEmpty) {
+                          if (_phone.text.trim().isEmpty) {
                             _phone.text = item.phone;
                           }
                           _address.text = item.address;
