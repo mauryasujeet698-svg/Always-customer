@@ -123,7 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
                 gradient: const LinearGradient(
-                  colors: [const Color(0xFFC21868), const Color(0xFFE65C91)],
+                  colors: [Color(0xFFC21868), Color(0xFFE65C91)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -135,7 +135,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('WELCOME BACK TO ALLways', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
+                        Text('WELCOME BACK TO ALLways', style: TextStyle(color: Color(0xE6FFFFFF), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
                         SizedBox(height: 8),
                         Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
                         SizedBox(height: 7),
