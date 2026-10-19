@@ -44,18 +44,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 14,
-        title: const Row(
-          children: [
-            CircleAvatar(
-              radius: 12,
-              backgroundColor: AllwaysTheme.green,
-              child: Icon(Icons.location_on, size: 14, color: Colors.white),
-            ),
-            SizedBox(width: 8),
-            Text('ALLways', style: TextStyle(color: AllwaysTheme.ink, fontWeight: FontWeight.w900, fontSize: 23)),
-          ],
+        title: const Text(
+          'ALLways',
+          style: TextStyle(color: AllwaysTheme.ink, fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -0.7),
         ),
         actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: FilledButton.tonalIcon(
+              onPressed: () => setState(() => _selectedTab = 1),
+              icon: const Icon(Icons.restaurant, size: 17),
+              label: const Text('Food Corner'),
+              style: FilledButton.styleFrom(
+                foregroundColor: AllwaysTheme.purple,
+                backgroundColor: const Color(0xFFF1E8FF),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Switch theme',
             onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
@@ -76,21 +83,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Deliver to', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('YOUR LOCATION', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
                 const SizedBox(height: 3),
-                const Row(children: [
-                  Icon(Icons.place_outlined, size: 18, color: AllwaysTheme.green),
-                  SizedBox(width: 4),
-                  Expanded(child: Text('Choose your delivery location at checkout', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700))),
+                Row(children: [
+                  const Icon(Icons.location_on_rounded, size: 19, color: AllwaysTheme.green),
+                  const SizedBox(width: 5),
+                  const Expanded(child: Text('Choose delivery location', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800))),
+                  TextButton(
+                    onPressed: () => context.push('/profile'),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 32)),
+                    child: const Text('Change'),
+                  ),
                 ]),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
                   decoration: InputDecoration(
-                    hintText: 'Search items...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _query.isEmpty ? null : IconButton(
+                    hintText: 'Search food, groceries and more...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _query.isEmpty ? IconButton(tooltip: 'Voice search', onPressed: () {}, icon: const Icon(Icons.mic_none_rounded)) : IconButton(
                       tooltip: 'Clear search',
                       icon: const Icon(Icons.close),
                       onPressed: () {
@@ -123,11 +135,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                        Text('WELCOME BACK TO ALLways', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
                         SizedBox(height: 8),
-                        Text('Everything you need, delivered locally.', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
+                        Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
                         SizedBox(height: 7),
-                        Text('Fast local delivery', style: TextStyle(color: Colors.white)),
+                        Text('Food, shopping and travel — all in one place.', style: TextStyle(color: Colors.white, fontSize: 12)),
                       ],
                     ),
                   ),
