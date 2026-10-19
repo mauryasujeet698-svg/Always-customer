@@ -70,10 +70,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               leading: const CircleAvatar(child: Icon(Icons.person_outline)),
               title: Text(user?.displayName ?? user?.phoneNumber ?? user?.email ?? 'Guest customer'),
               subtitle: Text(user == null
-                  ? 'Browse as guest. Verify your phone before placing an order.'
+                  ? 'Browse as a guest, or continue with Google to save your account.'
                   : (user.phoneNumber?.isNotEmpty == true
                       ? 'Mobile number verified'
-                      : 'Phone verification is required before ordering')),
+                      : 'Signed in with Google')),
               trailing: user?.phoneNumber?.isNotEmpty == true
                   ? const Icon(Icons.verified, color: AllwaysTheme.green)
                   : const Icon(Icons.chevron_right),
