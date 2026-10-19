@@ -161,39 +161,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
-              builder: (context, snapshot) {
-                final data = snapshot.data?.data() ?? const <String, dynamic>{};
-                final title = (data['title'] ?? data['heroTitle'] ?? 'Closer to You, Always').toString();
-                final subtitle = (data['subtitle'] ?? data['deliveryText'] ?? 'Fast local delivery').toString();
-                final raw = data['imageUrls'] ?? data['banners'] ?? data['items'];
-                final urls = raw is List ? raw.map((item) {
-                  if (item is Map) return (item['imageUrl'] ?? item['image'] ?? item['url'] ?? '').toString();
-                  return item.toString();
-                }).where((url) => url.startsWith('http')).toList() : <String>[];
-                return SizedBox(height: 150, width: double.infinity, child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: urls.isNotEmpty ? PageView.builder(itemCount: urls.length, itemBuilder: (context, index) => Stack(fit: StackFit.expand, children: [
-                    CachedNetworkImage(imageUrl: urls[index], fit: BoxFit.cover, placeholder: (_, _) => const ColoredBox(color: Color(0xFFF9DCE8)), errorWidget: (_, _, _) => const ColoredBox(color: Color(0xFF8D174F), child: Icon(Icons.image_not_supported_outlined, color: Colors.white))),
-                    DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)]))),
-                    Positioned(left: 18, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                    ])),
-                  ])) : Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF8D174F), Color(0xFFE65C91)], begin: Alignment.bottomLeft, end: Alignment.topRight)), child: Stack(children: [
-                    Positioned(right: 14, top: 12, child: Icon(Icons.shopping_bag_outlined, size: 104, color: Colors.white.withValues(alpha: 0.17))),
-                    Positioned(left: 18, right: 16, bottom: 16, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text(subtitle, style: const TextStyle(color: Colors.white, fontSize: 13))])),
-                  ])),
-                ));
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
               children: [
                 _TopTab(label: '🛒 Shop', selected: _selectedTab == 0, onTap: () => setState(() => _selectedTab = 0)),
@@ -211,10 +178,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: IndexedStack(
               index: _selectedTab,
               children: [
-                ShopTab(searchQuery: _query),
+                ShopTab(searchQuery: _query, showBanner: true),
                 const FoodTab(),
                 const TravelTab(),
-                OrdersTab(user: auth),
               ],
             ),
           ),
@@ -271,9 +237,107 @@ class _TopTab extends StatelessWidget {
   );
 }
 
+class _ShopBanner extends StatelessWidget {
+  const _ShopBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('settings').doc('banners').snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data() ?? const <String, dynamic>{};
+        final title = (data['title'] ?? data['heroTitle'] ?? 'Closer to You, Always').toString();
+        final subtitle = (data['subtitle'] ?? data['deliveryText'] ?? 'Fast local delivery').toString();
+        final raw = data['imageUrls'] ?? data['banners'] ?? data['items'];
+        final urls = raw is List
+            ? raw.map((item) {
+                if (item is Map) return (item['imageUrl'] ?? item['image'] ?? item['url'] ?? '').toString();
+                return item.toString();
+              }).where((url) => url.startsWith('http')).toList()
+            : <String>[];
+        return SizedBox(
+          height: 150,
+          width: double.infinity,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: urls.isNotEmpty
+                ? PageView.builder(
+                    itemCount: urls.length,
+                    itemBuilder: (context, index) => Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: urls[index],
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) => const ColoredBox(color: Color(0xFFF9DCE8)),
+                          errorWidget: (_, _, _) => const ColoredBox(
+                            color: Color(0xFF8D174F),
+                            child: Icon(Icons.image_not_supported_outlined, color: Colors.white),
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Colors.black.withValues(alpha: 0.55)],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 14,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 4),
+                              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF8D174F), Color(0xFFE65C91)],
+                        begin: Alignment.bottomLeft,
+                        end: Alignment.topRight,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(right: 12, top: 8,
+                          child: Icon(Icons.shopping_bag_outlined, size: 100, color: Colors.white.withValues(alpha: 0.17))),
+                        Positioned(
+                          left: 16, right: 16, bottom: 14,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, fontSize: 13)),
+                          ]),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class ShopTab extends ConsumerStatefulWidget {
-  const ShopTab({required this.searchQuery, super.key});
+  const ShopTab({required this.searchQuery, this.showBanner = false, super.key});
   final String searchQuery;
+  final bool showBanner;
 
   @override
   ConsumerState<ShopTab> createState() => _ShopTabState();
@@ -326,6 +390,10 @@ class _ShopTabState extends ConsumerState<ShopTab> {
             key: const PageStorageKey<String>('customer-shop-scroll'),
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
             children: [
+              if (widget.showBanner) ...[
+                const _ShopBanner(),
+                const SizedBox(height: 14),
+              ],
               Row(
                 children: [
                   const Expanded(child: Text('Categories', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
