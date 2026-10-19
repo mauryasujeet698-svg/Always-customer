@@ -224,7 +224,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         minimum: const EdgeInsets.fromLTRB(12, 5, 12, 8),
         child: Container(decoration: BoxDecoration(color: Theme.of(context).cardColor.withValues(alpha: 0.97), borderRadius: BorderRadius.circular(28), border: Border.all(color: AllwaysTheme.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, -3))]), padding: const EdgeInsets.all(5), child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (cartCount > 0) Container(margin: const EdgeInsets.only(bottom: 5), decoration: BoxDecoration(color: const Color(0xFF8E174F), borderRadius: BorderRadius.circular(18)), padding: const EdgeInsets.fromLTRB(14, 8, 8, 8), child: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('\$cartCount item\${cartCount == 1 ? '' : 's'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text('₹\${subtotal.toStringAsFixed(0)} subtotal', style: const TextStyle(color: Color(0xFFF4C8DC)))])),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('$cartCount item${cartCount == 1 ? "" : "s"}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text('₹${subtotal.toStringAsFixed(0)} subtotal', style: const TextStyle(color: Color(0xFFF4C8DC)))])),
             FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65C91), foregroundColor: Colors.white), onPressed: () => context.push('/checkout'), child: const Text('View cart →')),
           ])),
           Row(children: [
