@@ -43,35 +43,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 14,
-        title: const Text(
-          'ALLways',
-          style: TextStyle(color: AllwaysTheme.ink, fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -0.7),
+        toolbarHeight: 76,
+        titleSpacing: 18,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text.rich(
+              TextSpan(children: [
+                TextSpan(text: 'ALL', style: TextStyle(color: AllwaysTheme.purple)),
+                TextSpan(text: 'ways', style: TextStyle(color: AllwaysTheme.ink)),
+              ]),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 27, letterSpacing: -1.0),
+            ),
+            Text('Everything you need, delivered locally.',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
+          ],
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: () => setState(() => _selectedTab = 1),
-              icon: const Icon(Icons.restaurant, size: 17),
-              label: const Text('Food Corner'),
-              style: FilledButton.styleFrom(
-                foregroundColor: AllwaysTheme.purple,
-                backgroundColor: const Color(0xFFF1E8FF),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-              ),
-            ),
+          IconButton(
+            tooltip: 'Food Corner',
+            onPressed: () => setState(() => _selectedTab = 1),
+            icon: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text('🍔', style: TextStyle(fontSize: 22)),
+              Text('Food Corner', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
+            ]),
           ),
           IconButton(
-            tooltip: 'Switch theme',
-            onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
-            icon: Icon(ref.watch(themeModeProvider) == ThemeMode.dark ? Icons.light_mode : Icons.dark_mode_outlined),
+            tooltip: 'Favourites',
+            onPressed: () {
+              if (auth == null) { context.push('/login'); }
+              else { setState(() { _selectedTab = 0; }); }
+            },
+            icon: const Icon(Icons.favorite_border_rounded),
           ),
           IconButton(
-            tooltip: auth == null ? 'Sign in' : 'Account',
-            onPressed: () => context.push('/profile'),
-            icon: Icon(auth == null ? Icons.person_outline : Icons.account_circle_outlined),
+            tooltip: 'Cart',
+            onPressed: () => context.push('/checkout'),
+            icon: const Icon(Icons.shopping_cart_outlined),
           ),
           const SizedBox(width: 4),
         ],
@@ -83,18 +92,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('YOUR LOCATION', style: TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
-                const SizedBox(height: 3),
-                Row(children: [
-                  const Icon(Icons.location_on_rounded, size: 19, color: AllwaysTheme.green),
-                  const SizedBox(width: 5),
-                  const Expanded(child: Text('Choose delivery location', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800))),
-                  TextButton(
-                    onPressed: () => context.push('/profile'),
-                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 32)),
-                    child: const Text('Change'),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7FA),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AllwaysTheme.line),
                   ),
-                ]),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(children: [
+                    const Icon(Icons.location_on_rounded, size: 22, color: AllwaysTheme.green),
+                    const SizedBox(width: 8),
+                    const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Deliver to', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      Text('Choose delivery location', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700)),
+                    ])),
+                    TextButton(
+                      onPressed: () => context.push('/profile'),
+                      child: const Text('Change'),
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _searchController,
@@ -121,32 +138,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Container(
               width: double.infinity,
               decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AllwaysTheme.line.withValues(alpha: 0.65)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(children: [
+                Container(
+                  width: 42, height: 42,
+                  decoration: const BoxDecoration(color: AllwaysTheme.blush, shape: BoxShape.circle),
+                  child: const Icon(Icons.local_offer_outlined, color: AllwaysTheme.green, size: 23),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Welcome back', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  SizedBox(height: 3),
+                  Text("We're ready", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ])),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Container(
+              height: 150,
+              width: double.infinity,
+              decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFC21868), Color(0xFFE65C91)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF8D174F), Color(0xFFE65C91)],
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
                 ),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('WELCOME BACK TO ALLways', style: TextStyle(color: Color(0xE6FFFFFF), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w800)),
-                        SizedBox(height: 8),
-                        Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 23, height: 1.08)),
-                        SizedBox(height: 7),
-                        Text('Food, shopping and travel — all in one place.', style: TextStyle(color: Colors.white, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text('🛍️', style: TextStyle(fontSize: 48)),
-                ],
-              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(children: [
+                Positioned(right: 14, top: 12, child: Icon(Icons.shopping_bag_outlined, size: 104, color: Colors.white.withValues(alpha: 0.17))),
+                const Positioned(left: 18, bottom: 20, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Closer to You, Always', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 4),
+                  Text('Fast local delivery', style: TextStyle(color: Colors.white, fontSize: 13)),
+                ])),
+              ]),
             ),
           ),
           const SizedBox(height: 10),
