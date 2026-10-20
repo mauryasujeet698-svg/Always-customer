@@ -1,18 +1,28 @@
-# ALLways Customer — Flutter migration
+# ALLways Customer App
 
-This branch starts the Android-first Flutter rewrite. The old HTML/CSS/JavaScript files are intentionally retained until equivalent native features pass parity and regression testing.
+This branch is the Android-first native customer application built with **Flutter and Dart**.
 
-## Android identity and Firebase
+## Technology structure
 
-- Android application ID is `com.allways.app`, matching the already-registered Android client in the ALLways Firebase project's existing `google-services.json`.
-- The app uses project `allways-web` and Firestore collections already used by the existing customer interface, including `products`, `orders`, `announcements`, `customers`, `autoRideRequests` and `fcmTokens`.
-- Do not remove or regenerate the Firebase config, OAuth setup, package ID, release signing key, Apps Script order integration or backend fields during migration.
-- Phone OTP is required before order placement. Existing Google/email sign-in remains available, but users must link/verify a phone before checkout can submit an order.
-- Online payment is deliberately disabled and labelled "Currently unavailable"; only cash on delivery is selectable.
+- **Customer app UI and app logic:** Flutter + Dart in `lib/`.
+- **Authentication, database, messaging and storage:** the existing Firebase project and its configured Flutter SDKs.
+- **Backend functions:** JavaScript on Node.js in `functions/index.js`. This is backend infrastructure, not a second customer frontend; keep it.
+- **Android build configuration:** the native Android files required by Flutter and the existing Firebase client configuration.
+
+## Legacy frontend cleanup
+
+The unused legacy customer frontend files (`app.js`, `index.html`, `styles.css`) and old frontend/admin files removed in this migration are not part of the Flutter app. Do not restore a parallel HTML/CSS/JavaScript customer UI on this branch. The separate backend in `functions/` must remain.
+
+## Firebase safety
+
+- Keep `android/app/google-services.json` and the existing Firebase project configuration unchanged.
+- Keep the Android application ID `com.allways.app`.
+- Keep the Apps Script order-sync integration and existing backend fields unless a reviewed change specifically requires otherwise.
+- Do not rotate, replace, or delete Firebase configuration as part of language cleanup.
 
 ## Verification
 
-Run with a recent Flutter stable SDK (Dart 3.12+):
+With the Flutter stable SDK matching the Dart constraint in `pubspec.yaml`, run:
 
 ```bash
 flutter pub get
@@ -21,15 +31,4 @@ flutter test
 flutter build apk --release
 ```
 
-The first native migration pass covers the app shell, cached catalog images, shop/cart, phone verification, checkout gate, order history and notification token registration. Food ordering, saved-address management, ride request details, parcel flow, favorites, reorder, cancellation, ratings, full support flows and any existing CMS workflows must be migrated and regression-tested before the legacy web files are removed.
-
-## Caching and state
-
-- Catalog fetching is owned by a Riverpod `FutureProvider` instead of starting a new query on every widget rebuild.
-- The customer shell uses `IndexedStack` and `PageStorageKey` to preserve tab and scroll state.
-- Product images use `CachedNetworkImage` for disk/memory caching with stable layout placeholders.
-- Maps are not re-created from scroll callbacks; a native ride/map screen still needs to be migrated and its tile cache tested separately.
-
-## Rollout rule
-
-Do not merge this branch or remove website files until customer feature parity, Firebase rules, Android release builds, auth/linking, notifications and real-device tests pass.
+A successful build confirms compilation only; each customer flow and Firebase sign-in/configuration must also be tested on a real Android device before release.
