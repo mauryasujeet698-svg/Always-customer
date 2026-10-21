@@ -11,11 +11,17 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/theme/app_theme.dart';
-import '../../../features/auth/domain/phone_gate.dart';
 import '../../../map_tile_cache.dart';
 
 class RideRequestScreen extends StatefulWidget {
-  const RideRequestScreen({super.key});
+  const RideRequestScreen({
+    super.key,
+    this.initialVehicle = 'bike',
+    this.initialDestination = '',
+  });
+
+  final String initialVehicle;
+  final String initialDestination;
 
   @override
   State<RideRequestScreen> createState() => _RideRequestScreenState();
@@ -23,6 +29,7 @@ class RideRequestScreen extends StatefulWidget {
 
 class _RideRequestScreenState extends State<RideRequestScreen> {
   final _destination = TextEditingController();
+  final _phone = TextEditingController();
   final _http = http.Client();
   late final MapController _mapController;
   LatLng? _pickupPoint;
@@ -37,12 +44,18 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
   void initState() {
     super.initState();
     _mapController = MapController();
+    _destination.text = widget.initialDestination;
+    _vehicle = const {'bike', 'auto', 'car'}.contains(widget.initialVehicle)
+        ? widget.initialVehicle
+        : 'bike';
+    _phone.text = FirebaseAuth.instance.currentUser?.phoneNumber ?? '';
   }
 
   @override
   void dispose() {
     _mapController.dispose();
     _destination.dispose();
+    _phone.dispose();
     _http.close();
     super.dispose();
   }
@@ -190,11 +203,12 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
       }
       return;
     }
-    if (!hasVerifiedPhoneForCheckout(user.phoneNumber)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verify your phone number before requesting a ride.')),
-      );
-      await context.push('/login');
+    final phoneDigits = _phone.text.replaceAll(RegExp(r'\D'), '');
+    final cleanPhone = phoneDigits.length > 10
+        ? phoneDigits.substring(phoneDigits.length - 10)
+        : phoneDigits;
+    if (cleanPhone.length != 10) {
+      setState(() => _error = 'Enter a 10-digit contact phone number for your driver.');
       return;
     }
     final destinationText = _destination.text.trim();
@@ -234,7 +248,7 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
         'customerId': user.uid,
         'customerName': user.displayName ?? user.phoneNumber ?? user.email ?? 'Customer',
         'customerEmail': user.email ?? '',
-        'customerPhone': user.phoneNumber ?? '',
+        'customerPhone': cleanPhone,
         'pickupAddress': pickupAddress,
         'destinationAddress': destinationAddress,
         'pickupLatitude': position.latitude,
@@ -345,6 +359,16 @@ class _RideRequestScreenState extends State<RideRequestScreen> {
                 labelText: 'Destination',
                 hintText: 'Village, landmark or place name',
                 prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Contact phone number',
+                helperText: 'Your driver uses this number to contact you; no OTP is sent.',
+                prefixIcon: Icon(Icons.phone_outlined),
               ),
             ),
             const SizedBox(height: 12),

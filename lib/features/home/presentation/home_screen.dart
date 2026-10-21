@@ -2,6 +2,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,6 +15,8 @@ import '../../favorites/presentation/favorites_provider.dart';
 import '../../catalog/domain/product.dart';
 import '../../catalog/presentation/catalog_providers.dart';
 import '../../orders/presentation/orders_screen.dart';
+import '../../profile/presentation/profile_screen.dart';
+import '../../../map_tile_cache.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -43,7 +48,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final auth = ref.watch(authStateProvider).asData?.value;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: (_selectedTab == 1 || _selectedTab == 2) ? null : AppBar(
         toolbarHeight: 76,
         titleSpacing: 18,
         title: Column(
@@ -64,7 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         actions: [
           IconButton(
             tooltip: 'Food Corner',
-            onPressed: () => setState(() => _selectedTab = 1),
+            onPressed: () => setState(() => _selectedTab = 3),
             icon: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Text('🍔', style: TextStyle(fontSize: 22)),
               Text('Food Corner', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700)),
@@ -86,8 +91,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: Column(
+      body: IndexedStack(
+        index: _selectedTab,
         children: [
+          Column(
+            children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
             child: Column(
@@ -108,7 +116,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Text('Choose delivery location', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700)),
                     ])),
                     TextButton(
-                      onPressed: () => context.push('/profile'),
+                      onPressed: () => setState(() => _selectedTab = 2),
                       child: const Text('Change'),
                     ),
                   ]),
@@ -159,29 +167,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           const SizedBox(height: 10),
 
-          Expanded(
-            child: IndexedStack(
-              index: _selectedTab,
-              children: [
-                ShopTab(searchQuery: _query, showBanner: true),
-                const FoodTab(),
-                const TravelTab(),
-              ],
-            ),
+              Expanded(
+                child: ShopTab(searchQuery: _query, showBanner: true),
+              ),
+            ],
           ),
+          const TravelTab(),
+          const ProfileScreen(),
+          const FoodTab(),
         ],
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(12, 5, 12, 8),
         child: Container(decoration: BoxDecoration(color: Theme.of(context).cardColor.withValues(alpha: 0.97), borderRadius: BorderRadius.circular(28), border: Border.all(color: AllwaysTheme.line), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, -3))]), padding: const EdgeInsets.all(5), child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (cartCount > 0) Container(margin: const EdgeInsets.only(bottom: 5), decoration: BoxDecoration(color: const Color(0xFF8E174F), borderRadius: BorderRadius.circular(18)), padding: const EdgeInsets.fromLTRB(14, 8, 8, 8), child: Row(children: [
+          if (cartCount > 0 && (_selectedTab == 0 || _selectedTab == 3)) Container(margin: const EdgeInsets.only(bottom: 5), decoration: BoxDecoration(color: const Color(0xFF8E174F), borderRadius: BorderRadius.circular(18)), padding: const EdgeInsets.fromLTRB(14, 8, 8, 8), child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [Text('$cartCount item${cartCount == 1 ? "" : "s"}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text('₹${subtotal.toStringAsFixed(0)} subtotal', style: const TextStyle(color: Color(0xFFF4C8DC)))])),
             FilledButton(style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65C91), foregroundColor: Colors.white), onPressed: () => context.push('/checkout'), child: const Text('View cart →')),
           ])),
           Row(children: [
             _BottomNavItem(icon: Icons.shopping_bag_outlined, label: 'Shop', selected: _selectedTab == 0, onTap: () => setState(() => _selectedTab = 0)),
-            _BottomNavItem(icon: Icons.directions_bus_outlined, label: 'Travel', selected: _selectedTab == 2, onTap: () => setState(() => _selectedTab = 2)),
-            _BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile', selected: false, onTap: () => context.push('/profile')),
+            _BottomNavItem(icon: Icons.directions_bus_outlined, label: 'Travel', selected: _selectedTab == 1, onTap: () => setState(() => _selectedTab = 1)),
+            _BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile', selected: _selectedTab == 2, onTap: () => setState(() => _selectedTab = 2)),
           ]),
         ])),
       ),
@@ -568,44 +574,230 @@ class FoodTab extends StatelessWidget {
   );
 }
 
-class TravelTab extends StatelessWidget {
+class TravelTab extends StatefulWidget {
   const TravelTab({super.key});
+
   @override
-  Widget build(BuildContext context) => ListView(
-    key: const PageStorageKey<String>('customer-travel-scroll'),
-    padding: const EdgeInsets.all(14),
-    children: [
-      const Text('ALLways Travel', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 8),
-      const Text('Local rides and parcel services', style: TextStyle(color: Colors.grey)),
-      const SizedBox(height: 16),
-      _serviceCard(context, icon: Icons.two_wheeler, title: 'Local rides', subtitle: 'Request a bike, auto or car ride', available: true, onTap: () => context.push('/ride')),
-      const SizedBox(height: 10),
-      _serviceCard(context, icon: Icons.local_shipping_outlined, title: 'Parcel delivery', subtitle: 'Send items locally', available: false, onTap: () {}),
-      const SizedBox(height: 10),
-      _serviceCard(context, icon: Icons.storefront_outlined, title: 'Local sellers', subtitle: 'Browse items from nearby businesses', available: true, onTap: () => context.go('/')),
-      const SizedBox(height: 12),
-      const Text('Service availability depends on your area.', style: TextStyle(color: Colors.grey, fontSize: 12)),
-    ],
-  );
+  State<TravelTab> createState() => _TravelTabState();
 }
 
-Widget _serviceCard(
-  BuildContext context, {
-  required IconData icon,
-  required String title,
-  required String subtitle,
-  required bool available,
-  required VoidCallback onTap,
-}) => Card(
-  child: ListTile(
-    leading: CircleAvatar(backgroundColor: const Color(0xFFE7F8ED), child: Icon(icon, color: AllwaysTheme.green)),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-    subtitle: Text(available ? subtitle : '$subtitle · Currently unavailable'),
-    trailing: available ? const Icon(Icons.chevron_right) : const Icon(Icons.lock_outline),
-    onTap: available ? onTap : null,
-  ),
-);
+class _TravelTabState extends State<TravelTab> {
+  final _destinationController = TextEditingController();
+  late final MapController _mapController;
+  LatLng _center = const LatLng(25.45, 81.85);
+  String _vehicle = 'bike';
+  bool _locating = false;
+  bool _hasCurrentLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapController = MapController();
+  }
+
+  @override
+  void dispose() {
+    _destinationController.dispose();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _useCurrentLocation() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw StateError('Turn on location services to set your pickup point.');
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw StateError('Allow location permission to use your current pickup point.');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _center = LatLng(position.latitude, position.longitude);
+        _hasCurrentLocation = true;
+      });
+      _mapController.move(_center, 15);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  void _continueToBooking() {
+    final destination = _destinationController.text.trim();
+    if (destination.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter where you want to go first.')),
+      );
+      return;
+    }
+    context.push(Uri(
+      path: '/ride',
+      queryParameters: {'vehicle': _vehicle, 'destination': destination},
+    ).toString());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          flex: 5,
+          child: Stack(
+            children: [
+              FlutterMap(
+                key: const PageStorageKey<String>('customer-travel-home-map'),
+                mapController: _mapController,
+                options: MapOptions(initialCenter: _center, initialZoom: 14),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.allways.app',
+                    maxZoom: 19,
+                    tileProvider: allwaysCustomerMapTileProvider,
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _center,
+                        width: 46,
+                        height: 54,
+                        child: const Icon(
+                          Icons.location_on_rounded,
+                          color: AllwaysTheme.green,
+                          size: 42,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const RichAttributionWidget(
+                    attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+                  ),
+                ],
+              ),
+              Positioned(
+                top: 16,
+                left: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AllwaysTheme.green,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [BoxShadow(color: Color(0x24000000), blurRadius: 12, offset: Offset(0, 4))],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  child: Text(
+                    _hasCurrentLocation ? 'Pickup point' : 'Pickup area preview',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 12,
+                bottom: 14,
+                child: Column(
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'travel-zoom-in',
+                      onPressed: () => _mapController.move(_center, 16),
+                      child: const Icon(Icons.add),
+                    ),
+                    const SizedBox(height: 8),
+                    FloatingActionButton.small(
+                      heroTag: 'travel-use-location',
+                      onPressed: _locating ? null : _useCurrentLocation,
+                      child: _locating
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.my_location),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 6,
+          child: ListView(
+            key: const PageStorageKey<String>('customer-travel-panel'),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            children: [
+              Card(
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE7F8ED),
+                    child: Icon(Icons.my_location, color: AllwaysTheme.green),
+                  ),
+                  title: const Text('Pickup point', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(_hasCurrentLocation ? 'Current device location selected' : 'Use the location button to find your current position'),
+                  trailing: IconButton(
+                    tooltip: 'Use current location',
+                    onPressed: _locating ? null : _useCurrentLocation,
+                    icon: const Icon(Icons.my_location, color: AllwaysTheme.green),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _destinationController,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _continueToBooking(),
+                decoration: const InputDecoration(
+                  hintText: 'Where are you going?',
+                  prefixIcon: Icon(Icons.search_rounded),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(28))),
+                  filled: true,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Travel with ALLways', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'bike', icon: Icon(Icons.two_wheeler), label: Text('Bike')),
+                  ButtonSegment(value: 'auto', icon: Icon(Icons.electric_rickshaw), label: Text('Auto')),
+                  ButtonSegment(value: 'car', icon: Icon(Icons.directions_car_outlined), label: Text('Car')),
+                ],
+                selected: {_vehicle},
+                onSelectionChanged: (values) => setState(() => _vehicle = values.first),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _continueToBooking,
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('Continue to booking'),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AllwaysTheme.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _ServiceLanding extends StatelessWidget {
   const _ServiceLanding({required this.icon, required this.title, required this.description, required this.label});

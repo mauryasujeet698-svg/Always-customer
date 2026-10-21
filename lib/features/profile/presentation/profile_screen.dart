@@ -26,10 +26,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _loadNotificationPreference() async {
-    final prefs = await SharedPreferences.getInstance();
+    var enabled = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      enabled = prefs.getBool('notifications_enabled') ?? true;
+    } catch (_) {
+      // Keep the default usable when local preferences are unavailable.
+    }
     if (!mounted) return;
     setState(() {
-      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      _notificationsEnabled = enabled;
       _loadingPreference = false;
     });
   }
@@ -78,7 +84,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? const Icon(Icons.verified, color: AllwaysTheme.green)
                   : const Icon(Icons.chevron_right),
               onTap: () {
-                if (user?.phoneNumber?.isNotEmpty != true) context.push('/login');
+                if (user == null) context.push('/login');
               },
             ),
           ),

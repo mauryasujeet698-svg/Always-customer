@@ -42,7 +42,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/orders',
         builder: (context, state) => const OrdersScreen(),
       ),
-      GoRoute(path: '/ride', builder: (context, state) => const RideRequestScreen()),
+      GoRoute(
+        path: '/ride',
+        builder: (context, state) => RideRequestScreen(
+          initialVehicle: state.uri.queryParameters['vehicle'] ?? 'bike',
+          initialDestination: state.uri.queryParameters['destination'] ?? '',
+        ),
+      ),
       GoRoute(path: '/addresses', builder: (context, state) => const SavedAddressesScreen()),
       GoRoute(path: '/support', builder: (context, state) => SupportScreen(orderId: state.uri.queryParameters['orderId'])),
       GoRoute(

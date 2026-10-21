@@ -94,7 +94,13 @@ class PhoneAuthRepository {
       serverClientId:
           '869987297351-bonithsodhkkhb8a994d6hbiau8a3ltv.apps.googleusercontent.com',
     );
-    await _googleSignInInitialization;
+    try {
+      await _googleSignInInitialization;
+    } catch (_) {
+      // A failed one-time initialization must not poison every later attempt.
+      _googleSignInInitialization = null;
+      rethrow;
+    }
 
     if (!GoogleSignIn.instance.supportsAuthenticate()) {
       throw FirebaseAuthException(
@@ -118,5 +124,8 @@ class PhoneAuthRepository {
     return _auth.signInWithCredential(credential);
   }
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    await GoogleSignIn.instance.signOut();
+    await _auth.signOut();
+  }
 }

@@ -47,8 +47,18 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
           _ => error.message ?? 'Google sign-in failed. Please try again.',
         };
       });
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Google sign-in failed. Please try again.');
+    } catch (error) {
+      debugPrint('ALLways Google Sign-In failed: $error');
+      if (!mounted) return;
+      final details = error.toString();
+      final oauthMismatch = details.contains('ApiException: 10') ||
+          details.contains('DEVELOPER_ERROR') ||
+          details.contains('clientConfigurationError');
+      setState(() {
+        _error = oauthMismatch
+            ? 'Google Sign-In configuration error. Add the SHA-1 and SHA-256 fingerprints for com.allways.app in Firebase Console, ensure Google is enabled, then download the updated google-services.json.'
+            : 'Google sign-in failed: $details';
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
