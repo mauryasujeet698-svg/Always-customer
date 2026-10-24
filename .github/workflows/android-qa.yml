@@ -2,7 +2,7 @@ name: ALLways Customer Android QA
 
 on:
   push:
-    branches: [migration/flutter-native-customer]
+    branches: [migration/flutter-native-customer, ui-first-native]
   pull_request:
     paths:
       - "lib/**"
