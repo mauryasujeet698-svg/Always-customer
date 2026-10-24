@@ -1,0 +1,223 @@
+name: ALLways Customer Android QA
+
+on:
+  push:
+    branches: [migration/flutter-native-customer, ui-first-native]
+  pull_request:
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "pubspec.yaml"
+      - "android/app/google-services.json"
+      - ".github/workflows/android-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: allways-customer-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files
+        run: flutter create --platforms=android --org com.allways --project-name app .
+
+      - name: Configure Firebase, package identity and Android permissions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          settings = Path("android/settings.gradle.kts")
+          text = settings.read_text()
+          plugin = 'id("com.google.gms.google-services") version "4.5.0" apply false'
+          if plugin not in text:
+              text = text.replace("plugins {", "plugins {\n    " + plugin, 1)
+          settings.write_text(text)
+
+          gradle = Path("android/app/build.gradle.kts")
+          text = gradle.read_text()
+          if 'id("com.google.gms.google-services")' not in text:
+              text = text.replace("plugins {", 'plugins {\n    id("com.google.gms.google-services")', 1)
+          text = re.sub(r'applicationId = "[^"]+"', 'applicationId = "com.allways.app"', text, count=1)
+          text = re.sub(r'namespace = "[^"]+"', 'namespace = "com.allways.app"', text, count=1)
+          text = re.sub(r'minSdk = [^\n]+', 'minSdk = 24', text, count=1)
+          gradle.write_text(text)
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          for perm in (
+              "android.permission.INTERNET",
+              "android.permission.POST_NOTIFICATIONS",
+              "android.permission.ACCESS_FINE_LOCATION",
+              "android.permission.ACCESS_COARSE_LOCATION",
+          ):
+              tag = f'<uses-permission android:name="{perm}"/>'
+              if perm not in text:
+                  text = text.replace("<application", f"    {tag}\n    <application", 1)
+          text = text.replace('android:label="app"', 'android:label="ALLways"')
+          default_channel = '<meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="allways_customer_updates"/>'
+          if "com.google.firebase.messaging.default_notification_channel_id" not in text:
+              text = text.replace("</application>", f"        {default_channel}\n    </application>", 1)
+          manifest.write_text(text)
+
+          # Native notification bridge: FCM automatically displays notification
+          # payloads in background; this bridge displays them while foregrounded.
+          activity = Path("android/app/src/main/kotlin/com/allways/app/MainActivity.kt")
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text(r'''package com.allways.app
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.content.Context
+          import android.content.Intent
+          import android.os.Build
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {
+              private val notificationChannelId = "allways_customer_updates"
+
+              override fun onCreate(savedInstanceState: android.os.Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  createNotificationChannel()
+              }
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  MethodChannel(
+                      flutterEngine.dartExecutor.binaryMessenger,
+                      "allways_notifications"
+                  ).setMethodCallHandler { call, result ->
+                      when (call.method) {
+                          "showNotification" -> {
+                              try {
+                                  showNotification(
+                                      call.argument<String>("title") ?: "ALLways",
+                                      call.argument<String>("body") ?: "You have a new ALLways update."
+                                  )
+                                  result.success(null)
+                              } catch (error: SecurityException) {
+                                  result.error(
+                                      "NOTIFICATION_PERMISSION",
+                                      error.message ?: "Notification permission is not granted.",
+                                      null
+                                  )
+                              } catch (error: Exception) {
+                                  result.error("NOTIFICATION_FAILED", error.message, null)
+                              }
+                          }
+                          else -> result.notImplemented()
+                      }
+                  }
+              }
+
+              private fun createNotificationChannel() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      manager.createNotificationChannel(
+                          NotificationChannel(
+                              notificationChannelId,
+                              "ALLways updates",
+                              NotificationManager.IMPORTANCE_HIGH
+                          ).apply {
+                              description = "Order, ride and service notifications"
+                              enableVibration(true)
+                          }
+                      )
+                  }
+              }
+
+              private fun showNotification(title: String, body: String) {
+                  createNotificationChannel()
+                  val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                      flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                  }
+                  val immutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                      PendingIntent.FLAG_IMMUTABLE
+                  } else 0
+                  val pending = intent?.let {
+                      PendingIntent.getActivity(
+                          this,
+                          (System.currentTimeMillis() and 0x7fffffff).toInt(),
+                          it,
+                          PendingIntent.FLAG_UPDATE_CURRENT or immutable
+                      )
+                  }
+                  val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      Notification.Builder(this, notificationChannelId)
+                  } else {
+                      Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH)
+                  }
+                  builder
+                      .setSmallIcon(android.R.drawable.ic_dialog_info)
+                      .setContentTitle(title)
+                      .setContentText(body)
+                      .setAutoCancel(true)
+                      .setContentIntent(pending)
+                  (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                      .notify((System.currentTimeMillis() and 0x7fffffff).toInt(), builder.build())
+              }
+          }
+          ''')
+          PY
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path("android/app/google-services.json").read_text())
+          registered = {
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for client in config.get("client", [])
+          }
+          if "com.allways.app" not in registered:
+              raise SystemExit(f"Firebase config missing com.allways.app; found: {sorted(registered)}")
+          gradle = Path("android/app/build.gradle.kts").read_text()
+          if 'applicationId = "com.allways.app"' not in gradle:
+              raise SystemExit("Android applicationId was not set to com.allways.app")
+          if 'id("com.google.gms.google-services")' not in gradle:
+              raise SystemExit("Google Services Gradle plugin was not applied")
+          PY
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run unit and widget tests
+        run: flutter test
+
+      - name: Build ARM64 release APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Upload QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: allways-customer-android-qa
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7

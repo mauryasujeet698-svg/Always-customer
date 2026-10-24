@@ -1,0 +1,8 @@
+{
+  "project_info":{"project_number":"869987297351","project_id":"allways-web","storage_bucket":"allways-web.firebasestorage.app"},
+  "client":[
+    {"client_info":{"mobilesdk_app_id":"1:869987297351:android:265545ec1a81d5c8976962","android_client_info":{"package_name":"com.allways.admin"}},"oauth_client":[{"client_id":"869987297351-bonithsodhkkhb8a994d6hbiau8a3ltv.apps.googleusercontent.com","client_type":3}],"api_key":[{"current_key":"AIzaSyALo6RBHA9Rt4NbES7yML006RtaAujMZr0"}],"services":{"appinvite_service":{"other_platform_oauth_client":[{"client_id":"869987297351-bonithsodhkkhb8a994d6hbiau8a3ltv.apps.googleusercontent.com","client_type":3}]}}},
+    {"client_info":{"mobilesdk_app_id":"1:869987297351:android:51229aaff7b13c68976962","android_client_info":{"package_name":"com.allways.app"}},"oauth_client":[{"client_id":"869987297351-bonithsodhkkhb8a994d6hbiau8a3ltv.apps.googleusercontent.com","client_type":3}],"api_key":[{"current_key":"AIzaSyALo6RBHA9Rt4NbES7yML006RtaAujMZr0"}]}
+  ],
+  "configuration_version":"1"
+}

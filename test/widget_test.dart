@@ -1,0 +1,16 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:allways_customer/core/theme/app_theme.dart';
+
+void main() {
+  test('ALLways theme preserves the original pink and purple brand palette', () {
+    expect(AllwaysTheme.green, const Color(0xFFC21868));
+    expect(AllwaysTheme.greenBright, const Color(0xFFE65C91));
+    expect(AllwaysTheme.purple, const Color(0xFF7C3AED));
+  });
+
+  test('light and dark themes can be created', () {
+    expect(AllwaysTheme.light.brightness, Brightness.light);
+    expect(AllwaysTheme.dark.brightness, Brightness.dark);
+  });
+}
